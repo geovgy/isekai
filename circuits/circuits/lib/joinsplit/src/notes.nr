@@ -4,21 +4,20 @@ fn hash<let N: u32>(inputs: [Field; N]) -> Field {
     Poseidon2::hash(inputs, N)
 }
 
-// Verify merkle membership of leaf in leaf_root then leaf_root in master tree
 pub struct InputNote<let M: u32> {
     pub chain_id: Field,
     pub blinding: Field,
     pub amount: Field,
-    pub leaf_index: Field, // in shielded pool commitment tree
-    pub leaf_siblings: [Field; M], // in shielded pool commitment tree
-    pub leaf_root: Field, // in shielded pool commitment tree
-    pub master_leaf_index: Field, // in shielded pool commitment tree
-    pub master_leaf_siblings: [Field; M], // in shielded pool commitment tree
+    pub branch_index: Field, // in shielded pool branch commitment tree
+    pub branch_siblings: [Field; M], // in shielded pool branch commitment tree
+    pub branch_root: Field, // in shielded pool branch commitment tree
+    pub master_index: Field, // where branch root is in shielded pool master commitment tree
+    pub master_siblings: [Field; M], // where branch root is in shielded pool master commitment tree
 }
 
 pub impl <let M: u32> InputNote<M> {
-    pub fn from(chain_id: Field, blinding: Field, amount: Field, leaf_index: Field, leaf_siblings: [Field; M], leaf_root: Field, master_leaf_index: Field, master_leaf_siblings: [Field; M]) -> Self {
-        Self { chain_id, blinding, amount, leaf_index, leaf_siblings, leaf_root, master_leaf_index, master_leaf_siblings }
+    pub fn from(chain_id: Field, blinding: Field, amount: Field, branch_index: Field, branch_siblings: [Field; M], branch_root: Field, master_index: Field, master_siblings: [Field; M]) -> Self {
+        Self { chain_id, blinding, amount, branch_index, branch_siblings, branch_root, master_index, master_siblings }
     }
 
     pub fn to_commitment(self, owner_address: Field, asset_id: Field) -> Field {
@@ -28,7 +27,7 @@ pub impl <let M: u32> InputNote<M> {
 
     pub fn get_nullifier(self, owner_address: Field, asset_id: Field) -> Field {
         let secret_commitment = hash([owner_address, asset_id, self.amount]);
-        hash([self.chain_id, self.leaf_root, self.leaf_index, self.blinding, secret_commitment])
+        hash([self.chain_id, self.branch_root, self.branch_index, self.blinding, secret_commitment])
     }
 }
 
@@ -62,15 +61,20 @@ pub impl OutputNote {
 }
 
 // Used for depositing from wormhole into shielded pool
-pub struct WormholeNote {
-    pub chain_id: Field,
+pub struct WormholeNote<let M: u32> {
+    pub chain_id: Field, // destination chain id
+    pub entry_id: Field, // unique ID of wormhole entry in contract (hash of entry id + source chain id?)
     pub recipient: Field,
     pub wormhole_secret: Field,
     pub asset_id: Field,
     pub sender: Field,
     pub amount: Field,
-    // leaf_index: Field, // in wormhole commitment tree  
-    // leaf_siblings: [Field; M], // in wormhole commitment tree
+    pub branch_index: Field,
+    pub branch_siblings: [Field; M],
+    pub branch_root: Field,
+    pub master_index: Field,
+    pub master_siblings: [Field; M],
+    pub is_approved: bool,
 }
 
 pub fn get_wormhole_pseudo_nullifier(chain_id: Field, address: Field, asset_id: Field, secret: Field) -> Field {
@@ -78,9 +82,9 @@ pub fn get_wormhole_pseudo_nullifier(chain_id: Field, address: Field, asset_id: 
     hash([1, chain_id, secret, pseudo_commitment])
 }
 
-pub impl WormholeNote {
-    fn from(chain_id: Field, recipient: Field, wormhole_secret: Field, asset_id: Field, sender: Field, amount: Field) -> Self {
-        Self { chain_id, recipient, wormhole_secret, asset_id, sender, amount }
+pub impl <let M: u32> WormholeNote<M> {
+    fn from(chain_id: Field, entry_id: Field, recipient: Field, wormhole_secret: Field, asset_id: Field, sender: Field, amount: Field, branch_index: Field, branch_siblings: [Field; M], branch_root: Field, master_index: Field, master_siblings: [Field; M], is_approved: bool) -> Self {
+        Self { chain_id, entry_id, recipient, wormhole_secret, asset_id, sender, amount, branch_index, branch_siblings, branch_root, master_index, master_siblings, is_approved }
     }
 
     pub fn get_burn_address(self) -> Field {
@@ -94,14 +98,14 @@ pub impl WormholeNote {
         Field::from_be_bytes(address_bytes)
     }
 
-    pub fn to_burn_commitment(self, approved: bool) -> Field {
+    pub fn to_burn_commitment(self) -> Field {
         let burn_address = self.get_burn_address();
         // Must match contract ordering: poseidon2(approved, sender, burn_address, assetId, amount)
-        hash([approved as Field, self.sender, burn_address, self.asset_id, self.amount])
+        hash([self.entry_id, self.is_approved as Field, self.sender, burn_address, self.asset_id, self.amount])
     }
 
     pub fn get_nullifier(self) -> Field {
         let secret_commitment = hash([self.recipient, self.asset_id, self.sender, self.amount]);
-        hash([1, self.chain_id, self.wormhole_secret, secret_commitment])
+        hash([1, self.entry_id, self.wormhole_secret, secret_commitment])
     }
 }

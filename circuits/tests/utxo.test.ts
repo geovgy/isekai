@@ -130,11 +130,11 @@ describe("utxo", () => {
         chain_id: 1n,
         blinding: note.blinding,
         amount: note.amount,
-        leaf_index: BigInt(proof.index),
-        leaf_siblings: proof.siblings,
-        leaf_root: utxoBranchTree.root,
-        master_leaf_index: BigInt(masterUtxoProof.index),
-        master_leaf_siblings: masterUtxoProof.siblings,
+        branch_index: BigInt(proof.index),
+        branch_siblings: proof.siblings,
+        branch_root: utxoBranchTree.root,
+        master_index: BigInt(masterUtxoProof.index),
+        master_siblings: masterUtxoProof.siblings,
       }
     })
 
@@ -163,11 +163,11 @@ describe("utxo", () => {
         chain_id: note.chain_id.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
-        leaf_index: note.leaf_index.toString(),
-        leaf_siblings: note.leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.leaf_siblings.length).fill("0")),
-        leaf_root: note.leaf_root.toString(),
-        master_leaf_index: note.master_leaf_index.toString(),
-        master_leaf_siblings: note.master_leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_leaf_siblings.length).fill("0")),
+        branch_index: note.branch_index.toString(),
+        branch_siblings: note.branch_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.branch_siblings.length).fill("0")),
+        branch_root: note.branch_root.toString(),
+        master_index: note.master_index.toString(),
+        master_siblings: note.master_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_siblings.length).fill("0")),
       })),
       output_notes: outputNotes.map(note => ({
         chain_id: note.chain_id.toString(),
@@ -180,19 +180,20 @@ describe("utxo", () => {
         _is_some: false, 
         _value: { 
           chain_id: "0",
+          entry_id: "0",
           recipient: "0", 
           wormhole_secret: "0", 
           asset_id: "0", 
           sender: "0", 
-          amount: "0" 
+          amount: "0",
+          branch_index: "0",
+          branch_siblings: Array(MERKLE_TREE_DEPTH).fill("0"),
+          branch_root: "0",
+          master_index: "0",
+          master_siblings: Array(MERKLE_TREE_DEPTH).fill("0"),
+          is_approved: false,
         } 
       },
-      wormhole_leaf_index: { _is_some: false, _value: "0" },
-      wormhole_leaf_siblings: { _is_some: false, _value: Array(MERKLE_TREE_DEPTH).fill("0") },
-      wormhole_leaf_root: { _is_some: false, _value: "0" },
-      wormhole_master_leaf_index: { _is_some: false, _value: "0" },
-      wormhole_master_leaf_siblings: { _is_some: false, _value: Array(MERKLE_TREE_DEPTH).fill("0") },
-      wormhole_approved: { _is_some: false, _value: false },
       wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
     }
 
@@ -245,6 +246,7 @@ describe("utxo", () => {
     const wormholeSecret = 42069n
     const burnCommitment = getWormholeBurnCommitment({
       chain_id: 1n,
+      entry_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
@@ -264,22 +266,22 @@ describe("utxo", () => {
         chain_id: 1n,
         blinding: note.blinding,
         amount: note.amount,
-        leaf_index: BigInt(proof.index),
-        leaf_siblings: proof.siblings,
-        leaf_root: utxoBranchTree.root,
-        master_leaf_index: BigInt(masterUtxoProof.index),
-        master_leaf_siblings: masterUtxoProof.siblings,
+        branch_index: BigInt(proof.index),
+        branch_siblings: proof.siblings,
+        branch_root: utxoBranchTree.root,
+        master_index: BigInt(masterUtxoProof.index),
+        master_siblings: masterUtxoProof.siblings,
       }
     }).concat([
       {
         chain_id: 1n,
         blinding: 0n,
         amount: 0n,
-        leaf_index: 0n,
-        leaf_siblings: Array(MERKLE_TREE_DEPTH).fill(0n),
-        leaf_root: utxoBranchTree.root,
-        master_leaf_index: BigInt(masterUtxoProof.index),
-        master_leaf_siblings: masterUtxoProof.siblings,
+        branch_index: 0n,
+        branch_siblings: Array(MERKLE_TREE_DEPTH).fill(0n),
+        branch_root: utxoBranchTree.root,
+        master_index: BigInt(masterUtxoProof.index),
+        master_siblings: masterUtxoProof.siblings,
       },
     ])
     
@@ -287,6 +289,7 @@ describe("utxo", () => {
     const masterWormholeProof = wormholeMasterTree.generateProof(0)
     const wormholeNote: WormholeNote = {
       chain_id: 1n,
+      entry_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
@@ -317,11 +320,11 @@ describe("utxo", () => {
         chain_id: note.chain_id.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
-        leaf_index: note.leaf_index.toString(),
-        leaf_siblings: note.leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.leaf_siblings.length).fill("0")),
-        leaf_root: note.leaf_root.toString(),
-        master_leaf_index: note.master_leaf_index.toString(),
-        master_leaf_siblings: note.master_leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_leaf_siblings.length).fill("0")),
+        branch_index: note.branch_index.toString(),
+        branch_siblings: note.branch_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.branch_siblings.length).fill("0")),
+        branch_root: note.branch_root.toString(),
+        master_index: note.master_index.toString(),
+        master_siblings: note.master_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_siblings.length).fill("0")),
       })),
       output_notes: outputNotes.map(note => ({
         chain_id: note.chain_id.toString(),
@@ -334,19 +337,20 @@ describe("utxo", () => {
         _is_some: true, 
         _value: { 
           chain_id: "1",
+          entry_id: "1",
           recipient: account.address.toString(), 
           wormhole_secret: wormholeSecret.toString(), 
           asset_id: assetId.toString(), 
           sender: account.address.toString(), 
           amount: BigInt(100e18).toString(), 
+          branch_index: wormholeProof.index.toString(),
+          branch_siblings: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")),
+          branch_root: wormholeBranchTree.root.toString(),
+          master_index: BigInt(masterWormholeProof.index).toString(),
+          master_siblings: masterWormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - masterWormholeProof.siblings.length).fill("0")),
+          is_approved: true,
         } 
       },
-      wormhole_leaf_index: { _is_some: true, _value: wormholeProof.index.toString() },
-      wormhole_leaf_siblings: { _is_some: true, _value: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")) },
-      wormhole_leaf_root: { _is_some: true, _value: wormholeBranchTree.root.toString() },
-      wormhole_master_leaf_index: { _is_some: true, _value: BigInt(masterUtxoProof.index).toString() },
-      wormhole_master_leaf_siblings: { _is_some: true, _value: masterUtxoProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - masterUtxoProof.siblings.length).fill("0")) },
-      wormhole_approved: { _is_some: true, _value: true },
       wormhole_pseudo_secret: { _is_some: false, _value: "0" },
     }
 

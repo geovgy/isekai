@@ -16,13 +16,13 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     owner_address: Field,
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
-    wormhole_note: Option<WormholeNote>,
-    wormhole_leaf_root: Option<Field>,
-    wormhole_leaf_index: Option<Field>,
-    wormhole_leaf_siblings: Option<[Field; M]>,
-    wormhole_master_leaf_index: Option<Field>,
-    wormhole_master_leaf_siblings: Option<[Field; M]>,
-    wormhole_approved: Option<bool>,
+    wormhole_note: Option<WormholeNote<M>>,
+    // wormhole_leaf_root: Option<Field>,
+    // wormhole_leaf_index: Option<Field>,
+    // wormhole_leaf_siblings: Option<[Field; M]>,
+    // wormhole_master_leaf_index: Option<Field>,
+    // wormhole_master_leaf_siblings: Option<[Field; M]>,
+    // wormhole_approved: Option<bool>,
     wormhole_pseudo_secret: Option<Field>,
 ) -> (Field, Field, Field, [Field; N], [Field; C]) {
     let address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
@@ -46,12 +46,6 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
         input_notes, 
         output_notes, 
         wormhole_note, 
-        wormhole_leaf_root,
-        wormhole_leaf_index, 
-        wormhole_leaf_siblings, 
-        wormhole_master_leaf_index,
-        wormhole_master_leaf_siblings,
-        wormhole_approved, 
         wormhole_pseudo_secret
     );
     let (wormhole_nullifier, input_nullifiers, output_commitments) = joinsplit.execute();

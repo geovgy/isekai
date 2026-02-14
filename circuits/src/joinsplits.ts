@@ -16,7 +16,7 @@ export function getCommitment(assetId: bigint, outputNote: OutputNote): bigint {
 
 export function getNullifier(chainId: bigint, branchRoot: bigint, ownerAddress: Address, assetId: bigint, inputNote: InputNote): bigint {
   const secretCommitment = poseidon2Hash([BigInt(ownerAddress), assetId, inputNote.amount]);
-  return poseidon2Hash([chainId, branchRoot, inputNote.leaf_index, inputNote.blinding, secretCommitment]);
+  return poseidon2Hash([chainId, branchRoot, inputNote.branch_index, inputNote.blinding, secretCommitment]);
 }
 
 export function getWormholeBurnAddress(chainId: bigint, recipient: Address, wormholeSecret: bigint): Address {
@@ -29,12 +29,12 @@ export function getWormholeBurnCommitment(args: WormholeNote & {
 }): bigint {
   const burnAddress = getWormholeBurnAddress(args.chain_id, args.recipient, args.wormhole_secret);
   // Must match contract ordering: poseidon2(approved, sender, burn_address, assetId, amount)
-  return poseidon2Hash([BigInt(args.approved), BigInt(args.sender), BigInt(burnAddress), args.asset_id, args.amount]);
+  return poseidon2Hash([args.entry_id, BigInt(args.approved), BigInt(args.sender), BigInt(burnAddress), args.asset_id, args.amount]);
 }
 
 export function getWormholeNullifier(args: WormholeNote): bigint {
   const secretCommitment = poseidon2Hash([BigInt(args.recipient), args.asset_id, BigInt(args.sender), args.amount]);
-  return poseidon2Hash([1n, args.chain_id, args.wormhole_secret, secretCommitment]);
+  return poseidon2Hash([1n, args.entry_id, args.wormhole_secret, secretCommitment]);
 }
 
 export function getWormholePseudoNullifier(chainId: bigint, address: Address, assetId: bigint, secret: bigint): bigint {

@@ -9,11 +9,11 @@ export interface InputNote {
   chain_id: bigint;
   blinding: bigint;
   amount: bigint;
-  leaf_index: bigint;
-  leaf_siblings: bigint[];
-  leaf_root: bigint;
-  master_leaf_index: bigint;
-  master_leaf_siblings: bigint[];
+  branch_index: bigint;
+  branch_siblings: bigint[];
+  branch_root: bigint;
+  master_index: bigint;
+  master_siblings: bigint[];
 }
 
 export interface OutputNote {
@@ -26,6 +26,7 @@ export interface OutputNote {
 
 export interface WormholeNote {
   chain_id: bigint;
+  entry_id: bigint;
   recipient: Address;
   wormhole_secret: bigint;
   asset_id: bigint;
@@ -34,11 +35,11 @@ export interface WormholeNote {
 }
 
 export interface WormholeDeposit extends WormholeNote {
-  tree_root: bigint;
-  leaf_root: bigint;
-  leaf_index: bigint;
-  leaf_siblings: bigint[];
-  master_leaf_index: bigint;
-  master_leaf_siblings: bigint[];
+  master_root: bigint;
+  branch_root: bigint;
+  branch_index: bigint;
+  branch_siblings: bigint[];
+  master_index: bigint;
+  master_siblings: bigint[];
   is_approved: boolean;
 }

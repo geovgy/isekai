@@ -27,6 +27,7 @@ describe("ragequit", () => {
     const wormholeSecret = 42069n
     const wormholeNote: WormholeNote = {
       chain_id: 1n,
+      entry_id: 1n,
       recipient,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
@@ -47,20 +48,21 @@ describe("ragequit", () => {
 
     const circuitInputs = {
       wormhole_master_root: wormholeTree.root.toString(),
-      wormhole_branch_root: wormholeProof.root.toString(),
       wormhole_note: { 
         chain_id: wormholeNote.chain_id.toString(),
+        entry_id: wormholeNote.entry_id.toString(),
         recipient: wormholeNote.recipient.toString(), 
         wormhole_secret: wormholeNote.wormhole_secret.toString(), 
         asset_id: assetId.toString(), 
         sender: wormholeNote.sender.toString(), 
         amount: wormholeNote.amount.toString(), 
+        branch_index: wormholeProof.index.toString(),
+        branch_siblings: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")),
+        branch_root: wormholeProof.root.toString(),
+        master_index: wormholeMasterProof.index.toString(),
+        master_siblings: wormholeMasterProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeMasterProof.siblings.length).fill("0")),
+        is_approved: false,
       },
-      wormhole_leaf_index: wormholeProof.index.toString(),
-      wormhole_leaf_siblings: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")),
-      wormhole_master_leaf_index: wormholeMasterProof.index.toString(),
-      wormhole_master_leaf_siblings: wormholeMasterProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeMasterProof.siblings.length).fill("0")),
-      is_approved: false,
     }
 
     const prover = new Prover("ragequit")
