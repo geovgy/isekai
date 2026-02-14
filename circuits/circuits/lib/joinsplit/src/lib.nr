@@ -3,8 +3,9 @@ use notes::{InputNote, OutputNote, WormholeNote, get_wormhole_pseudo_nullifier};
 use poseidon::poseidon2::Poseidon2;
 
 pub struct JoinSplit<let M: u32, let N: u32, let C: u32> {
-    shielded_root: Field,
-    wormhole_root: Field,
+    chain_id: Field,
+    shielded_root: Field, // master tree root
+    wormhole_root: Field, // master tree root
     asset_id: Field,
     owner_address: Field,
     input_notes: [InputNote<M>; N],
@@ -12,6 +13,9 @@ pub struct JoinSplit<let M: u32, let N: u32, let C: u32> {
     wormhole_note: Option<WormholeNote>,
     wormhole_leaf_index: Option<Field>,
     wormhole_leaf_siblings: Option<[Field; M]>,
+    wormhole_leaf_root: Option<Field>,
+    wormhole_master_leaf_index: Option<Field>,
+    wormhole_master_leaf_siblings: Option<[Field; M]>,
     wormhole_approved: Option<bool>,
     wormhole_pseudo_secret: Option<Field>, // Only required if no wormhole note is provided (to obfuscate whether a wormhole note is provided or not)
 }
@@ -46,8 +50,8 @@ pub fn assert_merkle_leaf_membership<let M: u32>(root: Field, leaf: Field, index
 }
 
 pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
-    pub fn new(shielded_root: Field, wormhole_root: Field, asset_id: Field, owner_address: Field, input_notes: [InputNote<M>; N], output_notes: [OutputNote; C], wormhole_note: Option<WormholeNote>, wormhole_leaf_index: Option<Field>, wormhole_leaf_siblings: Option<[Field; M]>, wormhole_approved: Option<bool>, wormhole_pseudo_secret: Option<Field>) -> Self {
-        Self { shielded_root, wormhole_root, asset_id, owner_address, input_notes, output_notes, wormhole_note, wormhole_leaf_index, wormhole_leaf_siblings, wormhole_approved, wormhole_pseudo_secret }
+    pub fn new(chain_id: Field, shielded_root: Field, wormhole_root: Field, asset_id: Field, owner_address: Field, input_notes: [InputNote<M>; N], output_notes: [OutputNote; C], wormhole_note: Option<WormholeNote>, wormhole_leaf_root: Option<Field>, wormhole_leaf_index: Option<Field>, wormhole_leaf_siblings: Option<[Field; M]>, wormhole_master_leaf_index: Option<Field>, wormhole_master_leaf_siblings: Option<[Field; M]>, wormhole_approved: Option<bool>, wormhole_pseudo_secret: Option<Field>) -> Self {
+        Self { chain_id, shielded_root, wormhole_root, asset_id, owner_address, input_notes, output_notes, wormhole_note, wormhole_leaf_root, wormhole_leaf_index, wormhole_leaf_siblings, wormhole_master_leaf_index, wormhole_master_leaf_siblings, wormhole_approved, wormhole_pseudo_secret }
     }
 
     // Returns (wormhole nullifier, input nullifiers, output commitments)
@@ -63,17 +67,21 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
         // Verify wormhole note (if provided - add to totalAmountIn)
         if self.wormhole_note.is_some() {
             let wormhole_note = self.wormhole_note.unwrap();
+            assert(wormhole_note.chain_id == self.chain_id, "Wormhole note chain id must match chain id");
             assert(wormhole_note.asset_id == self.asset_id, "Wormhole note asset id must match asset id");
             let is_approved = self.wormhole_approved.unwrap();
             assert(is_approved, "Wormhole note must be approved");
             let wormhole_leaf = wormhole_note.to_burn_commitment(is_approved);
-            assert_merkle_leaf_membership(self.wormhole_root, wormhole_leaf, self.wormhole_leaf_index.unwrap(), self.wormhole_leaf_siblings.unwrap());
+            // Verify wormhole note commitment is in branch tree
+            assert_merkle_leaf_membership(self.wormhole_leaf_root.unwrap(), wormhole_leaf, self.wormhole_leaf_index.unwrap(), self.wormhole_leaf_siblings.unwrap());
+            // Verify branch tree root is in master tree
+            assert_merkle_leaf_membership(self.wormhole_root, self.wormhole_leaf_root.unwrap(), self.wormhole_master_leaf_index.unwrap(), self.wormhole_master_leaf_siblings.unwrap());
             wormhole_nullifier = wormhole_note.get_nullifier();
             totalAmountIn += wormhole_note.amount;
         } else {
             // Create a pseudo nullifier
             assert(self.wormhole_pseudo_secret.is_some(), "Wormhole pseudo secret is required for pseudo nullifier");
-            wormhole_nullifier = get_wormhole_pseudo_nullifier(self.owner_address, self.asset_id, self.wormhole_pseudo_secret.unwrap());
+            wormhole_nullifier = get_wormhole_pseudo_nullifier(self.chain_id, self.owner_address, self.asset_id, self.wormhole_pseudo_secret.unwrap());
         }
 
         // Verify input notes are valid
@@ -81,7 +89,12 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
             let input_note = self.input_notes[i];
             if input_note.amount != 0 {
                 let commitment = input_note.to_commitment(self.owner_address, self.asset_id);
-                assert_merkle_leaf_membership(self.shielded_root, commitment, input_note.leaf_index, input_note.leaf_siblings);
+                // Should only use notes from this chain
+                assert(input_note.chain_id == self.chain_id, "Input note chain id must match chain id");
+                // Verify note commitment is in branch tree
+                assert_merkle_leaf_membership(input_note.leaf_root, commitment, input_note.leaf_index, input_note.leaf_siblings);
+                // Verify branch tree root is in master tree
+                assert_merkle_leaf_membership(self.shielded_root, input_note.leaf_root, input_note.master_leaf_index, input_note.master_leaf_siblings);
                 totalAmountIn += input_note.amount;
             }
             input_nullifiers[i] = input_note.get_nullifier(self.owner_address, self.asset_id);

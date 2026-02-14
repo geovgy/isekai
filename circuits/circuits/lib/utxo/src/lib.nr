@@ -9,6 +9,7 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     pub_key_y: [u8; 32],
     signature: [u8; 64],
     hashed_message: [u8; 32], // Full 256-bit EIP-712 message hash
+    chain_id: Field,
     shielded_root: Field, // pub
     wormhole_root: Field, // pub
     asset_id: Field,
@@ -16,8 +17,11 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
     wormhole_note: Option<WormholeNote>,
+    wormhole_leaf_root: Option<Field>,
     wormhole_leaf_index: Option<Field>,
     wormhole_leaf_siblings: Option<[Field; M]>,
+    wormhole_master_leaf_index: Option<Field>,
+    wormhole_master_leaf_siblings: Option<[Field; M]>,
     wormhole_approved: Option<bool>,
     wormhole_pseudo_secret: Option<Field>,
 ) -> (Field, Field, Field, [Field; N], [Field; C]) {
@@ -34,6 +38,7 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     }
 
     let joinsplit = JoinSplit::new(
+        chain_id,
         shielded_root, 
         wormhole_root, 
         asset_id, 
@@ -41,8 +46,11 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
         input_notes, 
         output_notes, 
         wormhole_note, 
+        wormhole_leaf_root,
         wormhole_leaf_index, 
         wormhole_leaf_siblings, 
+        wormhole_master_leaf_index,
+        wormhole_master_leaf_siblings,
         wormhole_approved, 
         wormhole_pseudo_secret
     );

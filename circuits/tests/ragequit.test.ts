@@ -26,6 +26,7 @@ describe("ragequit", () => {
   it("should get ragequit proof", async () => {
     const wormholeSecret = 42069n
     const wormholeNote: WormholeNote = {
+      chain_id: 1n,
       recipient,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
@@ -39,12 +40,16 @@ describe("ragequit", () => {
     })
 
     const wormholeTree = getMerkleTree([burnCommitment])
+    const wormholeMasterTree = getMerkleTree([wormholeTree.root])
 
     const wormholeProof = wormholeTree.generateProof(0)
+    const wormholeMasterProof = wormholeMasterTree.generateProof(0)
 
     const circuitInputs = {
-      wormhole_root: wormholeTree.root.toString(),
+      wormhole_master_root: wormholeTree.root.toString(),
+      wormhole_branch_root: wormholeProof.root.toString(),
       wormhole_note: { 
+        chain_id: wormholeNote.chain_id.toString(),
         recipient: wormholeNote.recipient.toString(), 
         wormhole_secret: wormholeNote.wormhole_secret.toString(), 
         asset_id: assetId.toString(), 
@@ -53,6 +58,8 @@ describe("ragequit", () => {
       },
       wormhole_leaf_index: wormholeProof.index.toString(),
       wormhole_leaf_siblings: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")),
+      wormhole_master_leaf_index: wormholeMasterProof.index.toString(),
+      wormhole_master_leaf_siblings: wormholeMasterProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeMasterProof.siblings.length).fill("0")),
       is_approved: false,
     }
 
@@ -71,7 +78,7 @@ describe("ragequit", () => {
     const expectedWormholeNullifier = getWormholeNullifier(wormholeNote)
 
     const actual = extractPublicInputs(result.publicInputs)
-    expect(actual.wormholeRoot, "wormhole root public input mismatch").toBe(toHex(wormholeTree.root, { size: 32 }))
+    expect(actual.wormholeRoot, "wormhole root public input mismatch").toBe(toHex(wormholeMasterTree.root, { size: 32 }))
     expect(actual.wormholeCommitment, "wormhole commitment public input mismatch").toBe(toHex(burnCommitment, { size: 32 }))
     expect(actual.wormholeNullifier, "wormhole nullifier public input mismatch").toBe(toHex(expectedWormholeNullifier, { size: 32 }))
     expect(actual.wormholeSender, "wormhole sender public input mismatch").toBe(pad(sender, { size: 32 }).toLowerCase())

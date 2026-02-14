@@ -13,13 +13,14 @@ const MERKLE_TREE_DEPTH = 20
 
 function extractPublicInputs(result: string[], inputLength: number, outputLength: number) {
   return {
-    shieldedRoot: result[0]!,
-    wormholeRoot: result[1]!,
-    hashedMessageHi: result[2]!,
-    hashedMessageLo: result[3]!,
-    wormholeNullifier: result[4]!,
-    inputNullifiers: result.slice(5, 5 + inputLength),
-    outputCommitments: result.slice(5 + inputLength, 5 + inputLength + outputLength),
+    chainId: result[0]!,
+    shieldedRoot: result[1]!,
+    wormholeRoot: result[2]!,
+    hashedMessageHi: result[3]!,
+    hashedMessageLo: result[4]!,
+    wormholeNullifier: result[5]!,
+    inputNullifiers: result.slice(6, 6 + inputLength),
+    outputCommitments: result.slice(6 + inputLength, 6 + inputLength + outputLength),
   }
 }
 
@@ -116,23 +117,30 @@ describe("utxo", () => {
     ]
     const commitments = notes.map(note => getCommitment(
       note.assetId, 
-      { recipient: note.owner, blinding: note.blinding, amount: note.amount, transfer_type: TransferType.TRANSFER }
+      { chain_id: 1n, recipient: note.owner, blinding: note.blinding, amount: note.amount, transfer_type: TransferType.TRANSFER }
     ))
-    const utxoTree = getMerkleTree(commitments)
+    const utxoBranchTree = getMerkleTree(commitments)
+    const utxoMasterTree = getMerkleTree([utxoBranchTree.root])
+
+    const masterUtxoProof = utxoMasterTree.generateProof(0)
 
     const inputNotes: InputNote[] = notes.map((note, i) => {
-      const proof = utxoTree.generateProof(i)
+      const proof = utxoBranchTree.generateProof(i)
       return {
+        chain_id: 1n,
         blinding: note.blinding,
         amount: note.amount,
         leaf_index: BigInt(proof.index),
         leaf_siblings: proof.siblings,
+        leaf_root: utxoBranchTree.root,
+        master_leaf_index: BigInt(masterUtxoProof.index),
+        master_leaf_siblings: masterUtxoProof.siblings,
       }
     })
 
     const outputNotes: OutputNote[] = [
-      { recipient, blinding: 111111111n, amount: BigInt(150e18), transfer_type: TransferType.TRANSFER },
-      { recipient: account.address, blinding: 222222222n, amount: BigInt(50e18), transfer_type: TransferType.TRANSFER },
+      { chain_id: 1n, recipient, blinding: 111111111n, amount: BigInt(150e18), transfer_type: TransferType.TRANSFER },
+      { chain_id: 1n, recipient: account.address, blinding: 222222222n, amount: BigInt(50e18), transfer_type: TransferType.TRANSFER },
     ]
 
     const messageHash = hashMessage("This is a fake EIP712 message hash for testing purposes")
@@ -146,17 +154,23 @@ describe("utxo", () => {
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
       signature: [...hexToBytes(signature).slice(0, 64)], // Remove recovery byte (v)
       hashed_message: [...hexToBytes(messageHash)],
-      shielded_root: utxoTree.root.toString(),
+      chain_id: "1",
+      shielded_root: utxoBranchTree.root.toString(),
       wormhole_root: "0x0000000000000000000000000000000000000000000000000000000000000000",
       asset_id: assetId.toString(),
       owner_address: account.address,
       input_notes: inputNotes.map(note => ({
+        chain_id: note.chain_id.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
         leaf_index: note.leaf_index.toString(),
         leaf_siblings: note.leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.leaf_siblings.length).fill("0")),
+        leaf_root: note.leaf_root.toString(),
+        master_leaf_index: note.master_leaf_index.toString(),
+        master_leaf_siblings: note.master_leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_leaf_siblings.length).fill("0")),
       })),
       output_notes: outputNotes.map(note => ({
+        chain_id: note.chain_id.toString(),
         recipient: note.recipient.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
@@ -165,6 +179,7 @@ describe("utxo", () => {
       wormhole_note: { 
         _is_some: false, 
         _value: { 
+          chain_id: "0",
           recipient: "0", 
           wormhole_secret: "0", 
           asset_id: "0", 
@@ -174,6 +189,9 @@ describe("utxo", () => {
       },
       wormhole_leaf_index: { _is_some: false, _value: "0" },
       wormhole_leaf_siblings: { _is_some: false, _value: Array(MERKLE_TREE_DEPTH).fill("0") },
+      wormhole_leaf_root: { _is_some: false, _value: "0" },
+      wormhole_master_leaf_index: { _is_some: false, _value: "0" },
+      wormhole_master_leaf_siblings: { _is_some: false, _value: Array(MERKLE_TREE_DEPTH).fill("0") },
       wormhole_approved: { _is_some: false, _value: false },
       wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
     }
@@ -190,8 +208,8 @@ describe("utxo", () => {
     expect(isValid).toBe(true)
     
     // Confirm proof outputs
-    const expectedWormholeNullifier = getWormholePseudoNullifier(account.address, assetId, wormholePseudoSecret)
-    const expectedNullifiers = inputNotes.map(note => getNullifier(account.address, assetId, note))
+    const expectedWormholeNullifier = getWormholePseudoNullifier(1n, account.address, assetId, wormholePseudoSecret)
+    const expectedNullifiers = inputNotes.map(note => getNullifier(1n, utxoBranchTree.root, account.address, assetId, note))
     const expectedCommitments = outputNotes.map(note => getCommitment(assetId, note))
     const expectedHashedMessageOutputs = {
       hi: BigInt("0x" + messageHash.slice(2, 34)),
@@ -202,7 +220,8 @@ describe("utxo", () => {
 
     expect(actual.hashedMessageHi, "hashed message hi public input mismatch").toBe(toHex(expectedHashedMessageOutputs.hi, { size: 32 }))
     expect(actual.hashedMessageLo, "hashed message lo public input mismatch").toBe(toHex(expectedHashedMessageOutputs.lo, { size: 32 }))
-    expect(actual.shieldedRoot, "shielded root public input mismatch").toBe(toHex(utxoTree.root, { size: 32 }))
+    expect(actual.chainId, "chain id public input mismatch").toBe(toHex(1n, { size: 32 }))
+    expect(actual.shieldedRoot, "shielded root public input mismatch").toBe(toHex(utxoMasterTree.root, { size: 32 }))
     expect(actual.wormholeRoot, "wormhole root public input mismatch").toBe(toHex(0n, { size: 32 }))
     expect(actual.wormholeNullifier, "wormhole nullifier public input mismatch").toBe(toHex(expectedWormholeNullifier, { size: 32 }))
     expect(actual.inputNullifiers, "input nullifiers public input mismatch").toEqual(expectedNullifiers.map(nullifier => toHex(nullifier, { size: 32 })))
@@ -218,12 +237,14 @@ describe("utxo", () => {
     ]
     const commitments = notes.map(note => getCommitment(
       note.assetId, 
-      { recipient: note.owner, blinding: note.blinding, amount: note.amount, transfer_type: TransferType.TRANSFER }
+      { chain_id: 1n, recipient: note.owner, blinding: note.blinding, amount: note.amount, transfer_type: TransferType.TRANSFER }
     ))
-    const utxoTree = getMerkleTree(commitments)
+    const utxoBranchTree = getMerkleTree(commitments)
+    const utxoMasterTree = getMerkleTree([utxoBranchTree.root])
 
     const wormholeSecret = 42069n
     const burnCommitment = getWormholeBurnCommitment({
+      chain_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
@@ -232,27 +253,40 @@ describe("utxo", () => {
       approved: true,
     })
 
-    const wormholeTree = getMerkleTree([burnCommitment])
+    const wormholeBranchTree = getMerkleTree([burnCommitment])
+    const wormholeMasterTree = getMerkleTree([wormholeBranchTree.root])
 
+    const masterUtxoProof = utxoMasterTree.generateProof(0)
+    
     const inputNotes: InputNote[] = notes.map((note, i) => {
-      const proof = utxoTree.generateProof(i)
+      const proof = utxoBranchTree.generateProof(i)
       return {
+        chain_id: 1n,
         blinding: note.blinding,
         amount: note.amount,
         leaf_index: BigInt(proof.index),
         leaf_siblings: proof.siblings,
+        leaf_root: utxoBranchTree.root,
+        master_leaf_index: BigInt(masterUtxoProof.index),
+        master_leaf_siblings: masterUtxoProof.siblings,
       }
     }).concat([
       {
+        chain_id: 1n,
         blinding: 0n,
         amount: 0n,
         leaf_index: 0n,
         leaf_siblings: Array(MERKLE_TREE_DEPTH).fill(0n),
+        leaf_root: utxoBranchTree.root,
+        master_leaf_index: BigInt(masterUtxoProof.index),
+        master_leaf_siblings: masterUtxoProof.siblings,
       },
     ])
-
-    const wormholeProof = wormholeTree.generateProof(0)
+    
+    const wormholeProof = wormholeBranchTree.generateProof(0)
+    const masterWormholeProof = wormholeMasterTree.generateProof(0)
     const wormholeNote: WormholeNote = {
+      chain_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
@@ -261,8 +295,8 @@ describe("utxo", () => {
     }
 
     const outputNotes: OutputNote[] = [
-      { recipient, blinding: 111111111n, amount: BigInt(150e18), transfer_type: TransferType.TRANSFER },
-      { recipient: account.address, blinding: 222222222n, amount: BigInt(50e18), transfer_type: TransferType.TRANSFER },
+      { chain_id: 1n, recipient, blinding: 111111111n, amount: BigInt(150e18), transfer_type: TransferType.TRANSFER },
+      { chain_id: 1n, recipient: account.address, blinding: 222222222n, amount: BigInt(50e18), transfer_type: TransferType.TRANSFER },
     ]
 
     const messageHash = hashMessage("This is a fake EIP712 message hash for testing purposes")
@@ -274,17 +308,23 @@ describe("utxo", () => {
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
       signature: [...hexToBytes(signature).slice(0, 64)], // Remove recovery byte (v)
       hashed_message: [...hexToBytes(messageHash)],
-      shielded_root: utxoTree.root.toString(),
-      wormhole_root: wormholeTree.root.toString(),
+      chain_id: "1",
+      shielded_root: utxoMasterTree.root.toString(),
+      wormhole_root: wormholeMasterTree.root.toString(),
       asset_id: assetId.toString(),
       owner_address: account.address,
       input_notes: inputNotes.map(note => ({
+        chain_id: note.chain_id.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
         leaf_index: note.leaf_index.toString(),
         leaf_siblings: note.leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.leaf_siblings.length).fill("0")),
+        leaf_root: note.leaf_root.toString(),
+        master_leaf_index: note.master_leaf_index.toString(),
+        master_leaf_siblings: note.master_leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_leaf_siblings.length).fill("0")),
       })),
       output_notes: outputNotes.map(note => ({
+        chain_id: note.chain_id.toString(),
         recipient: note.recipient.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
@@ -293,6 +333,7 @@ describe("utxo", () => {
       wormhole_note: { 
         _is_some: true, 
         _value: { 
+          chain_id: "1",
           recipient: account.address.toString(), 
           wormhole_secret: wormholeSecret.toString(), 
           asset_id: assetId.toString(), 
@@ -302,6 +343,9 @@ describe("utxo", () => {
       },
       wormhole_leaf_index: { _is_some: true, _value: wormholeProof.index.toString() },
       wormhole_leaf_siblings: { _is_some: true, _value: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")) },
+      wormhole_leaf_root: { _is_some: true, _value: wormholeBranchTree.root.toString() },
+      wormhole_master_leaf_index: { _is_some: true, _value: BigInt(masterUtxoProof.index).toString() },
+      wormhole_master_leaf_siblings: { _is_some: true, _value: masterUtxoProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - masterUtxoProof.siblings.length).fill("0")) },
       wormhole_approved: { _is_some: true, _value: true },
       wormhole_pseudo_secret: { _is_some: false, _value: "0" },
     }
@@ -319,7 +363,7 @@ describe("utxo", () => {
     
     // Confirm proof outputs
     const expectedWormholeNullifier = getWormholeNullifier(wormholeNote)
-    const expectedNullifiers = inputNotes.map(note => getNullifier(account.address, assetId, note))
+    const expectedNullifiers = inputNotes.map(note => getNullifier(1n, utxoBranchTree.root, account.address, assetId, note))
     const expectedCommitments = outputNotes.map(note => getCommitment(assetId, note))
     const expectedHashedMessageOutputs = {
       hi: BigInt("0x" + messageHash.slice(2, 34)),
@@ -328,8 +372,9 @@ describe("utxo", () => {
 
     const actual = extractPublicInputs(result.publicInputs, inputNotes.length, outputNotes.length)
 
-    expect(actual.shieldedRoot, "shielded root public input mismatch").toBe(toHex(utxoTree.root, { size: 32 }))
-    expect(actual.wormholeRoot, "wormhole root public input mismatch").toBe(toHex(wormholeTree.root, { size: 32 }))
+    expect(actual.chainId, "chain id public input mismatch").toBe(toHex(1n, { size: 32 }))
+    expect(actual.shieldedRoot, "shielded root public input mismatch").toBe(toHex(utxoMasterTree.root, { size: 32 }))
+    expect(actual.wormholeRoot, "wormhole root public input mismatch").toBe(toHex(wormholeBranchTree.root, { size: 32 }))
     expect(actual.hashedMessageHi, "hashed message hi public input mismatch").toBe(toHex(expectedHashedMessageOutputs.hi, { size: 32 }))
     expect(actual.hashedMessageLo, "hashed message lo public input mismatch").toBe(toHex(expectedHashedMessageOutputs.lo, { size: 32 }))
     expect(actual.wormholeNullifier, "wormhole nullifier public input mismatch").toBe(toHex(expectedWormholeNullifier, { size: 32 }))
