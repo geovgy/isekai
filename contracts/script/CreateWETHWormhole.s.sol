@@ -30,18 +30,8 @@ contract CreateWETHWormholeScript is Script {
         newWethImplementation = new WETHWormhole(kamui);
         console.log("|-- New WETHWormhole -->", address(newWethImplementation));
 
-        console.log("\nSetting wormhole asset implementation:");
-        kamui.setWormholeAssetImplementation(address(wethImplementation), false);
-        console.log("|-- Removed Old WETHWormhole -->", address(wethImplementation));
-        kamui.setWormholeAssetImplementation(address(newWethImplementation), true);
-        console.log("|-- Added New WETHWormhole -->", address(newWethImplementation));
-
         console.log("\nLaunching WETH Wormhole Asset:");
-        address asset = kamui.createWormholeAsset(address(newWethImplementation), bytes(""));
-        console.log("|-- WETH Wormhole Asset -->", asset);
-
-        console.log("    |-- name -->", IERC20Metadata(asset).name());
-        console.log("    |-- symbol -->", IERC20Metadata(asset).symbol());
+        console.log("|-- WETH Wormhole Asset -->", address(newWethImplementation));
 
         vm.stopBroadcast();
     }

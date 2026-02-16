@@ -22,7 +22,6 @@ contract KamuiTest is Test {
     address owner = makeAddr("owner");
     address screener = makeAddr("wormhole approver");
     Kamui kamui;
-    ERC4626Wormhole implementation;
     ERC4626Wormhole wormholeVault;
 
     IPoseidon2 poseidon2;
@@ -50,7 +49,7 @@ contract KamuiTest is Test {
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         verifier = new MockVerifier();
         kamui = new Kamui(poseidon2, verifier, owner);
-        implementation = new ERC4626Wormhole(kamui);
+        wormholeVault = new ERC4626Wormhole(kamui);
 
         underlying = new MockERC20();
         vault = new MockERC4626(underlying);
@@ -59,23 +58,14 @@ contract KamuiTest is Test {
         vm.prank(owner);
         kamui.addVerifier(verifier, 2, 2);
 
-        // add pool implementation
-        vm.prank(owner);
-        kamui.setWormholeAssetImplementation(address(implementation), true);
-
         // add approver
         vm.prank(owner);
         kamui.setWormholeApprover(screener, true);
 
-        // create wormhole asset
+        // initialize wormhole vault
         bytes memory initData = abi.encodePacked(address(underlying), address(vault));
-        address asset = kamui.createWormholeAsset(address(implementation), initData);
-        wormholeVault = ERC4626Wormhole(asset);
-
-        assertTrue(kamui.isWormholeAsset(asset), "Wormhole vault should be registered");
-        assertTrue(wormholeVault.initialized(), "Wormhole vault should be initialized");
-        assertEq(wormholeVault.asset(), address(underlying), "Wormhole vault should have the correct asset");
-        assertEq(address(wormholeVault.vault()), address(vault), "Wormhole vault should have the correct vault");
+        vm.prank(address(kamui));
+        wormholeVault.initialize(initData);
     }
 
     function test_requestWormholeEntry_fromTransfers() public {
@@ -479,26 +469,5 @@ contract KamuiTest is Test {
         assertEq(wormholeVault.balanceOf(to), 100e18, "to address should still have the original transfer amount (as burn address)");
         assertEq(wormholeVault.totalSupply(), 150e18, "Total supply should increase by the withdrawal amount");
         assertEq(wormholeVault.actualSupply(), 100e18, "Actual supply should not change after unshielding");
-    }
-
-    function test_createWormholeAsset() public {
-        // create new implementation since we already created one in setUp
-        ERC4626Wormhole newImplementation = new ERC4626Wormhole(kamui);
-        vm.prank(owner);
-        kamui.setWormholeAssetImplementation(address(newImplementation), true);
-
-        // create wormhole asset
-        address asset = kamui.createWormholeAsset(address(newImplementation), abi.encodePacked(address(underlying), address(vault)));
-        ERC4626Wormhole newWormholeVault = ERC4626Wormhole(asset);
-
-        assertTrue(kamui.isWormholeAsset(asset), "Wormhole asset should be registered after creation");
-        assertTrue(newWormholeVault.initialized(), "Wormhole vault should be initialized after creation");
-        assertEq(newWormholeVault.asset(), address(underlying), "Wormhole vault asset should equal underlying asset");
-        assertEq(address(newWormholeVault.vault()), address(vault), "Wormhole vault vault should equal vault");
-    }
-
-    function test_createWormholeAsset_revert_alreadyExists() public {
-        vm.expectRevert("Kamui: wormhole asset already exists");
-        kamui.createWormholeAsset(address(implementation), abi.encodePacked(address(underlying), address(vault)));
     }
 }

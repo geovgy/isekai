@@ -6,7 +6,6 @@ import {LeanIMT, LeanIMTData} from "./libraries/LeanIMT.sol";
 import {IWormhole} from "./interfaces/IWormhole.sol";
 import {IKamui} from "./interfaces/IKamui.sol";
 import {EIP712} from "openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol";
-import {Clones} from "openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {IVerifier} from "./interfaces/IVerifier.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
@@ -59,12 +58,6 @@ contract Kamui is IKamui, EIP712, Ownable {
     uint256 public totalWormholeEntries;
     uint256 public totalWormholeCommitments;
 
-    // Registered wormhole asset addresses
-    mapping(address asset => bool) internal _assets;
-
-    // Owner can register new wormhole asset implementations like different types of ERC4626 vaults or for supporting other token standards
-    mapping(address implementation => bool) internal _allowedImplementations;
-
     mapping(address approver => bool) internal _isWormholeApprover;
 
     mapping(uint256 entryId => bool) internal _wormholeEntriesCommitted;
@@ -89,10 +82,7 @@ contract Kamui is IKamui, EIP712, Ownable {
 
     event Ragequit(uint256 indexed entryId, address indexed quitter, address indexed returnedTo, address asset, uint256 id, uint256 amount);
 
-    event WormholeAssetCreated(address indexed asset, address indexed implementation, bytes initData);
-
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
-    event WormholeAssetImplementationSet(address indexed implementation, bool isApproved);
     event WormholeApproverSet(address indexed approver, bool isApprover);
 
     constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, address governor_) EIP712("Kamui", "1") Ownable(governor_) {
@@ -112,10 +102,6 @@ contract Kamui is IKamui, EIP712, Ownable {
         return (bytes32(_shieldedTrees[treeId].root()), _shieldedTrees[treeId].size, _shieldedTrees[treeId].depth);
     }
 
-    function isWormholeAsset(address asset) public view returns (bool) {
-        return _assets[asset];
-    }
-
     function wormholeEntry(uint256 entryId) external view returns (TransferMetadata memory) {
         return _wormholeEntries[entryId];
     }
@@ -128,11 +114,6 @@ contract Kamui is IKamui, EIP712, Ownable {
         require(inputs > 0 && outputs > 0, "Kamui: invalid inputs or outputs");
         _utxoVerifiers[inputs][outputs] = verifier;
         emit VerifierAdded(address(verifier), inputs, outputs);
-    }
-
-    function setWormholeAssetImplementation(address implementation, bool isApproved) external onlyOwner {
-        _allowedImplementations[implementation] = isApproved;
-        emit WormholeAssetImplementationSet(implementation, isApproved);
     }
 
     function setWormholeApprover(address approver, bool isApprover) external onlyOwner {
@@ -345,27 +326,7 @@ contract Kamui is IKamui, EIP712, Ownable {
         return bytes32(poseidon2.hash_2(uint256(uint160(asset)), id));
     }
 
-    function createWormholeAsset(address implementation, bytes calldata initData) external returns (address asset) {
-        require(_allowedImplementations[implementation], "Kamui: implementation is not registered");
-
-        bytes32 salt = keccak256(abi.encodePacked(implementation, initData));
-        address target = Clones.predictDeterministicAddress(implementation, salt);
-
-        require(target != address(0), "Kamui: target is zero address");
-        require(!_assets[target], "Kamui: wormhole asset already exists");
-        // Deploy clone of implementation
-        asset = Clones.cloneDeterministic(implementation, salt);
-        require(asset == target, "Kamui: deployed wormhole asset is not target address");
-        // Initialize the clone
-        IWormhole(asset).initialize(initData);
-        // Set the wormhole asset as registered
-        _assets[asset] = true;
-        emit WormholeAssetCreated(asset, implementation, initData);
-    }
-
     function requestWormholeEntry(address from, address to, uint256 id, uint256 amount) external returns (uint256 index) {
-        // Only wormhole assets deployed from this contract can request wormhole entries
-        require(_assets[msg.sender], "Kamui: caller is not a wormhole asset");
         // Every wormhole asset is a token (ERC20/ERC721/ERC1155/etc.)
         index = totalWormholeEntries;
         _wormholeEntries[index] = TransferMetadata({

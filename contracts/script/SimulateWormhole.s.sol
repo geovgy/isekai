@@ -76,19 +76,6 @@ contract SimulateWormholeScript is Script {
         // create and set wormhole pool implementation
         wormholeWrapper = new ERC20Wormhole(kamui, "Kamui Wrapped", "kw");
 
-        console.log("\nSetting wormhole asset implementations:");
-        kamui.setWormholeAssetImplementation(address(wormholeWrapper), true);
-        console.log("|-- ERC20Wormhole -->", address(wormholeWrapper));
-
-        // create wormhole asset
-        console.log("\nCreating Wormhole asset:");
-        bytes memory initData = abi.encodePacked(address(underlying));
-        address asset = kamui.createWormholeAsset(address(wormholeWrapper), initData);
-        wormholeWrapper = ERC20Wormhole(asset);
-
-        console.log("|-- Wormhole asset -->", address(wormholeWrapper), "--", wormholeWrapper.symbol());
-        console.log("    |-- Underlying token -->", address(underlying), "--", underlying.symbol());
-
         // deposit underlying token
         console.log("\nDepositing underlying token and sending to burn address:");
         underlying.mint(msg.sender, 100_000_000e18);
