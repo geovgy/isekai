@@ -8,9 +8,11 @@ import {IShieldedPool} from "./interfaces/IShieldedPool.sol";
 import {EIP712} from "openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol";
 import {IVerifier} from "./interfaces/IVerifier.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {IndexedMerkleTreeLib, IndexedMerkleTree} from "indexed-merkle-tree/contracts/IndexedMerkleTreePoseidon2.sol";
 
 contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     using LeanIMT for LeanIMTData;
+    using IndexedMerkleTreeLib for IndexedMerkleTree;
 
     struct TransferMetadata {
         address from;
@@ -44,7 +46,20 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         bytes32 wormholeNullifier;
     }
 
+    struct BranchInfo {
+        uint64 chainId;
+        uint256 prevIndex;
+        bytes32 shieldedRoot;
+        bytes32 wormholeRoot;
+        uint256 shieldedTreeId;
+        uint256 wormholeTreeId;
+        uint256 blockNumber;
+        uint256 blockTimestamp;
+    }
+
     uint8 public constant MERKLE_TREE_DEPTH = 20;
+
+    uint8 public constant ROLLBACK_TREE_DEPTH = 32;
 
     bytes32 public constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount)");
     bytes32 public constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount)");
@@ -66,13 +81,21 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     mapping(bytes32 nullifier => bool) public wormholeNullifierUsed;
     mapping(bytes32 nullifier => bool) public nullifierUsed;
 
-    mapping(bytes32 root => bool) public isWormholeRoot;
-    mapping(bytes32 root => bool) public isShieldedRoot;
+    mapping(bytes32 root => bool) public isMasterWormholeRoot;
+    mapping(bytes32 root => bool) public isMasterShieldedRoot;
 
     mapping(uint256 inputs => mapping(uint256 outputs => IVerifier)) internal _utxoVerifiers;
     
-    mapping(uint256 treeId => LeanIMTData) internal _shieldedTrees;
-    mapping(uint256 treeId => LeanIMTData) internal _wormholeTrees;
+    mapping(uint256 treeId => LeanIMTData) internal _masterShieldedTrees;
+    mapping(uint256 treeId => LeanIMTData) internal _masterWormholeTrees;
+    
+    mapping(uint256 treeId => LeanIMTData) internal _branchShieldedTrees; // chain-specific whose root appends to master shielded tree
+    mapping(uint256 treeId => LeanIMTData) internal _branchWormholeTrees; // chain-specific whose root appends to master wormhole tree
+
+    // TODO: implement rollback tree in shieldedTransfer function and public inputs
+    IndexedMerkleTree public rollbackTree;
+    mapping(uint64 chainId => uint256 index) internal _currentBranchIndices;
+    mapping(uint64 chainId => mapping(uint256 index => BranchInfo)) internal _branchInfos; // for tracking possible chain rollbacks
 
     event WormholeEntry(uint256 indexed entryId, address indexed token, address indexed from, address to, uint256 id, uint256 amount);
     event WormholeCommitment(uint256 indexed entryId, uint256 indexed commitment, uint256 treeId, uint256 leafIndex, bytes32 assetId, address from, address to, uint256 amount, bool approved);
@@ -87,19 +110,21 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         poseidon2 = poseidon2_;
-        uint256 shieldedRoot = _initializeMerkleTree(_shieldedTrees[currentShieldedTreeId]);
-        uint256 wormholeRoot = _initializeMerkleTree(_wormholeTrees[currentWormholeTreeId]);
-        isShieldedRoot[bytes32(shieldedRoot)] = true;
-        isWormholeRoot[bytes32(wormholeRoot)] = true;
+        uint256 shieldedRoot = _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
+        uint256 wormholeRoot = _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
+        isMasterShieldedRoot[bytes32(shieldedRoot)] = true;
+        isMasterWormholeRoot[bytes32(wormholeRoot)] = true;
         ragequitVerifier = ragequitVerifier_;
+
+        rollbackTree.init(address(poseidon2), ROLLBACK_TREE_DEPTH);
     }
 
     function wormholeTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
-        return (bytes32(_wormholeTrees[treeId].root()), _wormholeTrees[treeId].size, _wormholeTrees[treeId].depth);
+        return (bytes32(_masterWormholeTrees[treeId].root()), _masterWormholeTrees[treeId].size, _masterWormholeTrees[treeId].depth);
     }
 
     function shieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
-        return (bytes32(_shieldedTrees[treeId].root()), _shieldedTrees[treeId].size, _shieldedTrees[treeId].depth);
+        return (bytes32(_masterShieldedTrees[treeId].root()), _masterShieldedTrees[treeId].size, _masterShieldedTrees[treeId].depth);
     }
 
     function wormholeEntry(uint256 entryId) external view returns (TransferMetadata memory) {
@@ -146,17 +171,17 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         }
         bytes32 assetId = _getAssetId(entry.asset, entry.id);
         uint256 commitment = _getWormholeCommitment(entry.from, entry.to, assetId, entry.amount, approved);
-        if (_isMerkleTreeFull(_wormholeTrees[currentWormholeTreeId])) {
+        if (_isMerkleTreeFull(_branchWormholeTrees[currentWormholeTreeId])) {
             currentWormholeTreeId++;
-            _initializeMerkleTree(_wormholeTrees[currentWormholeTreeId]);
+            _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
         }
-        uint256 root = _wormholeTrees[currentWormholeTreeId].insert(commitment);
-        isWormholeRoot[bytes32(root)] = true;
+        uint256 root = _branchWormholeTrees[currentWormholeTreeId].insert(commitment);
+        isMasterWormholeRoot[bytes32(root)] = true;
         _wormholeEntriesCommitted[entryId] = true;
         unchecked {
             totalWormholeCommitments++;
         }
-        emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _wormholeTrees[currentWormholeTreeId].size - 1, assetId, entry.from, entry.to, entry.amount, approved);
+        emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _branchWormholeTrees[currentWormholeTreeId].size - 1, assetId, entry.from, entry.to, entry.amount, approved);
     }
 
     function appendManyWormholeLeaves(WormholePreCommitment[] memory nodes) external {
@@ -166,12 +191,12 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             require(!_wormholeEntriesCommitted[nodes[i].entryId], "ShieldedPool: entry is already committed in wormhole tree");
             require(nodes[i].entryId < totalWormholeEntries, "ShieldedPool: entry id does not exist");
         }
-        if (_isMerkleTreeSizeOverflow(_wormholeTrees[currentWormholeTreeId], nodes.length)) {
+        if (_isMerkleTreeSizeOverflow(_branchWormholeTrees[currentWormholeTreeId], nodes.length)) {
             currentWormholeTreeId++;
-            _initializeMerkleTree(_wormholeTrees[currentWormholeTreeId]);
+            _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
         }
         uint256[] memory commitments = new uint256[](nodes.length);
-        uint256 startLeafIndex = _wormholeTrees[currentWormholeTreeId].size;
+        uint256 startLeafIndex = _branchWormholeTrees[currentWormholeTreeId].size;
         for (uint256 i = 0; i < nodes.length; i++) {
             TransferMetadata memory entry = _wormholeEntries[nodes[i].entryId];
             bytes32 assetId = _getAssetId(entry.asset, entry.id);
@@ -189,8 +214,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
                 nodes[i].approved
             );
         }
-        uint256 root = _wormholeTrees[currentWormholeTreeId].insertMany(commitments);
-        isWormholeRoot[bytes32(root)] = true;
+        uint256 root = _branchWormholeTrees[currentWormholeTreeId].insertMany(commitments);
         unchecked {
             totalWormholeCommitments += nodes.length;
         }
@@ -208,12 +232,40 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         return tree.size + batchSize > 2 ** MERKLE_TREE_DEPTH;
     }
 
+    // TODO: Verify and extract branch tree event log from branch chain
+    function _verifyBranchTreeEvent(bytes calldata proof) internal view returns (uint64 chainId, uint256 branchShieldedRoot, uint256 branchWormholeRoot) {
+        // TODO: Implement
+    }
+
+    // TODO: Verify and extract master tree event log from master chain
+    function _verifyMasterTreeEvent(bytes calldata proof) internal view returns (uint64 chainId, uint256 masterShieldedRoot, uint256 masterWormholeRoot) {
+        // TODO: Implement
+    }
+
+    function _insertMasterTrees(uint256 branchShieldedRoot, uint256 branchWormholeRoot) internal returns (uint256 masterShieldedRoot, uint256 masterWormholeRoot) {
+        // Insert branch shielded root into master shielded tree
+        if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
+            currentShieldedTreeId++;
+            _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
+        }
+        masterShieldedRoot = _masterShieldedTrees[currentShieldedTreeId].insert(branchShieldedRoot);
+        isMasterShieldedRoot[bytes32(masterShieldedRoot)] = true;
+
+        // Insert branch wormhole root into master wormhole tree
+        if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
+            currentWormholeTreeId++;
+            _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
+        }
+        masterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(branchWormholeRoot);
+        isMasterWormholeRoot[bytes32(masterWormholeRoot)] = true;   
+    }
+
     function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof) external {
         bytes32 messageHash = _hashTypedData(shieldedTx);
         
         // Validate roots
-        require(isWormholeRoot[shieldedTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
-        require(isShieldedRoot[shieldedTx.shieldedRoot], "ShieldedPool: shielded root is not valid");
+        require(isMasterWormholeRoot[shieldedTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
+        require(isMasterShieldedRoot[shieldedTx.shieldedRoot], "ShieldedPool: shielded root is not valid");
 
         // Validate nullifiers
         require(!wormholeNullifierUsed[shieldedTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
@@ -238,13 +290,12 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         }
 
         // Insert new commitments into shielded tree
-        if (_isMerkleTreeSizeOverflow(_shieldedTrees[currentShieldedTreeId], shieldedTx.commitments.length)) {
+        if (_isMerkleTreeSizeOverflow(_branchShieldedTrees[currentShieldedTreeId], shieldedTx.commitments.length)) {
             currentShieldedTreeId++;
-            _initializeMerkleTree(_shieldedTrees[currentShieldedTreeId]);
+            _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
         }
-        uint256 startIndex = _shieldedTrees[currentShieldedTreeId].size;
-        uint256 root = _shieldedTrees[currentShieldedTreeId].insertMany(shieldedTx.commitments);
-        isShieldedRoot[bytes32(root)] = true;
+        uint256 startIndex = _branchShieldedTrees[currentShieldedTreeId].size;
+        uint256 root = _branchShieldedTrees[currentShieldedTreeId].insertMany(shieldedTx.commitments);
 
         // If withdrawals are present, mint new shares for each withdrawal
         for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
@@ -257,7 +308,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     }
 
     function ragequit(RagequitTx calldata ragequitTx, bytes calldata proof) external {
-        require(isWormholeRoot[ragequitTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
+        require(isMasterWormholeRoot[ragequitTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
         require(!wormholeNullifierUsed[ragequitTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
 
         TransferMetadata memory entry = _wormholeEntries[ragequitTx.entryId];
@@ -291,17 +342,18 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         bytes32 messageHashLo = bytes32(hashUint & type(uint128).max);
 
         // Public inputs ordering: pub params first, then return values
-        // Pub params: shielded_root, wormhole_root
+        // Pub params: chain_id, shielded_root, wormhole_root
         // Return values: hashed_message_hi, hashed_message_lo, wormhole_nullifier, nullifiers[], commitments[]
         uint256 offset = 5 + shieldedTx.nullifiers.length;
         inputs = new bytes32[](offset + shieldedTx.commitments.length + shieldedTx.withdrawals.length);
-        inputs[0] = shieldedTx.shieldedRoot;
-        inputs[1] = shieldedTx.wormholeRoot;
-        inputs[2] = messageHashHi;
-        inputs[3] = messageHashLo;
-        inputs[4] = shieldedTx.wormholeNullifier;
+        inputs[0] = bytes32(block.chainid);
+        inputs[1] = shieldedTx.shieldedRoot;
+        inputs[2] = shieldedTx.wormholeRoot;
+        inputs[3] = messageHashHi;
+        inputs[4] = messageHashLo;
+        inputs[5] = shieldedTx.wormholeNullifier;
         for (uint256 i; i < shieldedTx.nullifiers.length; i++) {
-            inputs[5 + i] = shieldedTx.nullifiers[i];
+            inputs[6 + i] = shieldedTx.nullifiers[i];
         }
         for (uint256 i; i < shieldedTx.commitments.length; i++) {
             inputs[offset + i] = bytes32(shieldedTx.commitments[i]);

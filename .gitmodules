@@ -10,3 +10,6 @@
 [submodule "contracts/lib/openzeppelin-contracts"]
 	path = contracts/lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "contracts/lib/indexed-merkle-tree"]
+	path = contracts/lib/indexed-merkle-tree
+	url = https://github.com/geovgy/indexed-merkle-tree

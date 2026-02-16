@@ -390,7 +390,7 @@ contract ShieldedPoolTest is Test {
         assertEq(newShieldedRoot, expectedRoot, "Shielded root is incorrect after shield transfer");
         assertEq(newSize, 2, "Shielded tree size should be 2");
         assertEq(newDepth, 1, "Shielded tree depth should be 1");
-        assertTrue(shieldedPool.isShieldedRoot(expectedRoot), "Shielded root should be marked as valid");
+        assertTrue(shieldedPool.isMasterShieldedRoot(expectedRoot), "Shielded root should be marked as valid");
         
         (bytes32 newWormholeRoot,,) = shieldedPool.wormholeTree(0);
         assertEq(newWormholeRoot, wormholeRoot, "Wormhole root should not change after shield transfer");
@@ -460,7 +460,7 @@ contract ShieldedPoolTest is Test {
         assertEq(newShieldedRoot, bytes32(commitments[0]), "Shielded root should be the single commitment");
         assertEq(newSize, 1, "Shielded tree size should be 1");
         assertEq(newDepth, 0, "Shielded tree depth should be 0");
-        assertTrue(shieldedPool.isShieldedRoot(bytes32(commitments[0])), "Shielded root should be marked as valid");
+        assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(commitments[0])), "Shielded root should be marked as valid");
 
         assertEq(shieldedPool.wormholeNullifierUsed(shieldedTx.wormholeNullifier), true, "Wormhole nullifier should be marked as used");
         assertEq(shieldedPool.nullifierUsed(nullifiers[0]), true, "Nullifier 1 should be marked as used");
