@@ -66,7 +66,7 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
             assert(wormhole_note.is_approved, "Wormhole note must be approved");
             let wormhole_leaf = wormhole_note.to_burn_commitment();
             // Verify wormhole note commitment is in branch tree
-            assert_merkle_leaf_membership(self.wormhole_root, wormhole_leaf, wormhole_note.branch_index, wormhole_note.branch_siblings);
+            assert_merkle_leaf_membership(wormhole_note.branch_root, wormhole_leaf, wormhole_note.branch_index, wormhole_note.branch_siblings);
             // Verify branch tree root is in master tree
             assert_merkle_leaf_membership(self.wormhole_root, wormhole_note.branch_root, wormhole_note.master_index, wormhole_note.master_siblings);
             wormhole_nullifier = wormhole_note.get_nullifier();
