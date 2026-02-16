@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {Kamui} from "../src/Kamui.sol";
+import {ShieldedPool} from "../src/ShieldedPool.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
@@ -18,7 +18,7 @@ contract SimulateWormholeScript is Script {
     address GOVERNOR = address(0x1); // TODO: set governor address
     address BURN_ADDRESS = address(0xDEAD);
 
-    Kamui kamui;
+    ShieldedPool shieldedPool;
 
     IPoseidon2 poseidon2;
     IVerifier ragequitVerifier;
@@ -37,10 +37,10 @@ contract SimulateWormholeScript is Script {
 
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         ragequitVerifier = new MockVerifier();
-        kamui = new Kamui(poseidon2, ragequitVerifier, msg.sender);
+        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, msg.sender);
 
         console.log("\nDeployment Results:");
-        console.log("\nKamui -->", address(kamui));
+        console.log("\nShieldedPool -->", address(shieldedPool));
         console.log("|-- Poseidon2 -->", address(poseidon2));
         console.log("|-- Ragequit verifier -->", address(ragequitVerifier));
         console.log("|-- Governor -->", GOVERNOR);
@@ -60,21 +60,21 @@ contract SimulateWormholeScript is Script {
 
         console.log("\nAdding UTXO verifiers:");
         for (uint256 i; i < params.length; i++) {
-            kamui.addVerifier(params[i].verifier, params[i].inputs, params[i].outputs);
+            shieldedPool.addVerifier(params[i].verifier, params[i].inputs, params[i].outputs);
 
             string memory utxoType = string(bytes.concat(bytes(params[i].inputs.toString()), "x", bytes(params[i].outputs.toString()), " -->"));
             console.log("|--", utxoType, address(params[i].verifier));
         }
 
         console.log("\nSetting wormhole entry approver:");
-        kamui.setWormholeApprover(msg.sender, true);
+        shieldedPool.setWormholeApprover(msg.sender, true);
         console.log("|-- Approver -->", msg.sender);
 
         // create underlying token
         underlying = new MockERC20();
 
         // create and set wormhole pool implementation
-        wormholeWrapper = new ERC20Wormhole(kamui, "Kamui Wrapped", "kw");
+        wormholeWrapper = new ERC20Wormhole(shieldedPool, "ShieldedPool Wrapped", "spw");
 
         // deposit underlying token
         console.log("\nDepositing underlying token and sending to burn address:");

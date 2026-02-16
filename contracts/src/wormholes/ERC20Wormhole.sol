@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {IERC20, IERC20Metadata, ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
-import {IKamui} from "../interfaces/IKamui.sol";
+import {IShieldedPool} from "../interfaces/IShieldedPool.sol";
 import {Wormhole} from "../Wormhole.sol";
 
 // A modified version of OpenZeppelin's ERC20Wrapper that supports wormhole
@@ -24,10 +24,10 @@ contract ERC20Wormhole is ERC20, Wormhole {
     error ERC20InvalidUnderlying(address token);
 
     constructor(
-        IKamui kamui_,
+        IShieldedPool shieldedPool_,
         string memory namePrefix_,
         string memory symbolPrefix_
-    ) ERC20("", "") Wormhole(kamui_) {
+    ) ERC20("", "") Wormhole(shieldedPool_) {
         _namePrefix = namePrefix_;
         _symbolPrefix = symbolPrefix_;
     }

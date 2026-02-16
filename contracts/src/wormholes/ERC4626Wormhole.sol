@@ -5,7 +5,7 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC4626} from "openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
-import {IKamui} from "../interfaces/IKamui.sol";
+import {IShieldedPool} from "../interfaces/IShieldedPool.sol";
 import {Wormhole} from "../Wormhole.sol";
 
 contract ERC4626Wormhole is IERC4626, ERC20, Wormhole {
@@ -20,7 +20,7 @@ contract ERC4626Wormhole is IERC4626, ERC20, Wormhole {
     uint256 private _totalShares; // also used as actual supply
     uint256 private _totalAssets;
     
-    constructor(IKamui kamui_) ERC20("", "") Wormhole(kamui_) {}
+    constructor(IShieldedPool shieldedPool_) ERC20("", "") Wormhole(shieldedPool_) {}
 
     function _initialize(bytes calldata data_) internal override returns (bool) {
         require(!initialized, "ERC4626Wormhole: already initialized");

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {IKamui} from "../interfaces/IKamui.sol";
+import {IShieldedPool} from "../interfaces/IShieldedPool.sol";
 import {Wormhole} from "../Wormhole.sol";
 
 contract WETHWormhole is ERC20, Wormhole {
@@ -13,7 +13,7 @@ contract WETHWormhole is ERC20, Wormhole {
 
     error WithdrawalFailed();
 
-    constructor(IKamui kamui_) ERC20("Wormhole Wrapped Ether", "whWETH") Wormhole(kamui_) {}
+    constructor(IShieldedPool shieldedPool_) ERC20("Wormhole Wrapped Ether", "whWETH") Wormhole(shieldedPool_) {}
 
     function name() public pure override returns (string memory) {
         return "Wormhole Wrapped Ether";

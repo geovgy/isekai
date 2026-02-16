@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import {IKamui} from "./interfaces/IKamui.sol";
+import {IShieldedPool} from "./interfaces/IShieldedPool.sol";
 import {IWormhole} from "./interfaces/IWormhole.sol";
 
 abstract contract Wormhole is IWormhole {
     bool public initialized;
 
-    IKamui public immutable kamui;
+    IShieldedPool public immutable shieldedPool;
     
-    modifier onlyKamui() {
-        require(msg.sender == address(kamui), "Wormhole: caller is not kamui");
+    modifier onlyShieldedPool() {
+        require(msg.sender == address(shieldedPool), "Wormhole: caller is not shielded pool");
         _;
     }
     
-    constructor(IKamui kamui_) {
-        kamui = kamui_;
+    constructor(IShieldedPool shieldedPool_) {
+        shieldedPool = shieldedPool_;
     }
 
     // Override this function to initialize the wormhole
@@ -27,7 +27,7 @@ abstract contract Wormhole is IWormhole {
     // Override this function to return the actual supply of the asset
     function actualSupply() public virtual view returns (uint256) {}
 
-    function initialize(bytes calldata data_) external onlyKamui {
+    function initialize(bytes calldata data_) external onlyShieldedPool {
         require(!initialized, "Wormhole: already initialized");
         bool success = _initialize(data_);
         require(success, "Wormhole: initialization failed");
@@ -35,7 +35,7 @@ abstract contract Wormhole is IWormhole {
         emit Initialize(data_);
     }
 
-    function unshield(address to, uint256 id, uint256 amount) external onlyKamui {
+    function unshield(address to, uint256 id, uint256 amount) external onlyShieldedPool {
         _unshield(to, id, amount);
         emit Unshield(to, id, amount);
     }
@@ -48,7 +48,7 @@ abstract contract Wormhole is IWormhole {
         if (!_isWormholeEligible(to, amount)) {
             return (false, 0);
         }
-        pendingIndex = kamui.requestWormholeEntry(from, to, id, amount);
+        pendingIndex = shieldedPool.requestWormholeEntry(from, to, id, amount);
         return (true, pendingIndex);
     }
 }

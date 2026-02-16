@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-interface IKamui {
+interface IShieldedPool {
     struct WormholePreCommitment {
         uint256 entryId;
         bool    approved;

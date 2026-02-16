@@ -6,13 +6,13 @@ import {console} from "forge-std/console.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
 import {HonkVerifier as UTXO2x2Verifier} from "../src/verifiers/UTXO2x2Verifier.sol";
 import {HonkVerifier as RagequitVerifier} from "../src/verifiers/RagequitVerifier.sol";
-import {Kamui} from "../src/Kamui.sol";
+import {ShieldedPool} from "../src/ShieldedPool.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
 contract DeployVerifiersScript is Script {
     using Strings for *;
 
-    Kamui kamui = Kamui(vm.envAddress("KAMUI"));
+    ShieldedPool shieldedPool = ShieldedPool(vm.envAddress("SHIELDED_POOL"));
     IVerifier ragequitVerifier;
     IVerifier utxo2x2Verifier;
     
@@ -27,7 +27,7 @@ contract DeployVerifiersScript is Script {
         // console.log("|-- Ragequit -->", address(ragequitVerifier));
         console.log("|-- UTXO2x2 -->", address(utxo2x2Verifier));
 
-        kamui.addVerifier(utxo2x2Verifier, 2, 2);
+        shieldedPool.addVerifier(utxo2x2Verifier, 2, 2);
 
         vm.stopBroadcast();
     }

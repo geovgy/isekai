@@ -4,12 +4,12 @@ pragma solidity ^0.8.28;
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {LeanIMT, LeanIMTData} from "./libraries/LeanIMT.sol";
 import {IWormhole} from "./interfaces/IWormhole.sol";
-import {IKamui} from "./interfaces/IKamui.sol";
+import {IShieldedPool} from "./interfaces/IShieldedPool.sol";
 import {EIP712} from "openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol";
 import {IVerifier} from "./interfaces/IVerifier.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract Kamui is IKamui, EIP712, Ownable {
+contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     using LeanIMT for LeanIMTData;
 
     struct TransferMetadata {
@@ -85,7 +85,7 @@ contract Kamui is IKamui, EIP712, Ownable {
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
     event WormholeApproverSet(address indexed approver, bool isApprover);
 
-    constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, address governor_) EIP712("Kamui", "1") Ownable(governor_) {
+    constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         poseidon2 = poseidon2_;
         uint256 shieldedRoot = _initializeMerkleTree(_shieldedTrees[currentShieldedTreeId]);
         uint256 wormholeRoot = _initializeMerkleTree(_wormholeTrees[currentWormholeTreeId]);
@@ -108,10 +108,10 @@ contract Kamui is IKamui, EIP712, Ownable {
 
     // Owner functions
     function addVerifier(IVerifier verifier, uint256 inputs, uint256 outputs) external onlyOwner {
-        require(address(verifier) != address(0), "Kamui: verifier is zero address");
+        require(address(verifier) != address(0), "ShieldedPool: verifier is zero address");
         // address existing = address(_utxoVerifiers[inputs][outputs]);
-        // require(existing == address(0), "Kamui: verifier already exists");
-        require(inputs > 0 && outputs > 0, "Kamui: invalid inputs or outputs");
+        // require(existing == address(0), "ShieldedPool: verifier already exists");
+        require(inputs > 0 && outputs > 0, "ShieldedPool: invalid inputs or outputs");
         _utxoVerifiers[inputs][outputs] = verifier;
         emit VerifierAdded(address(verifier), inputs, outputs);
     }
@@ -126,7 +126,7 @@ contract Kamui is IKamui, EIP712, Ownable {
     }
 
     function appendWormholeLeaf(uint256 entryId, bool approved) external {
-        require(_isWormholeApprover[msg.sender], "Kamui: caller is not a wormhole approver");
+        require(_isWormholeApprover[msg.sender], "ShieldedPool: caller is not a wormhole approver");
         _appendWormholeLeaf(entryId, approved, false);
     }
 
@@ -137,12 +137,12 @@ contract Kamui is IKamui, EIP712, Ownable {
     }
 
     function _appendWormholeLeaf(uint256 entryId, bool approved, bool isRagequit) internal {
-        require(entryId < totalWormholeEntries, "Kamui: entry id does not exist");
-        require(!_wormholeEntriesCommitted[entryId], "Kamui: entry is already committed in wormhole tree");
+        require(entryId < totalWormholeEntries, "ShieldedPool: entry id does not exist");
+        require(!_wormholeEntriesCommitted[entryId], "ShieldedPool: entry is already committed in wormhole tree");
         TransferMetadata memory entry = _wormholeEntries[entryId];
         if (isRagequit) {
-            require(entry.from == msg.sender, "Kamui: caller is not the original sender");
-            require(!approved, "Kamui: entry cannot be appended as approved");
+            require(entry.from == msg.sender, "ShieldedPool: caller is not the original sender");
+            require(!approved, "ShieldedPool: entry cannot be appended as approved");
         }
         bytes32 assetId = _getAssetId(entry.asset, entry.id);
         uint256 commitment = _getWormholeCommitment(entry.from, entry.to, assetId, entry.amount, approved);
@@ -160,11 +160,11 @@ contract Kamui is IKamui, EIP712, Ownable {
     }
 
     function appendManyWormholeLeaves(WormholePreCommitment[] memory nodes) external {
-        require(_isWormholeApprover[msg.sender], "Kamui: caller is not a wormhole approver");
-        require(nodes.length > 0 && nodes.length <= (2 ** MERKLE_TREE_DEPTH) / 5, "Kamui: invalid nodes length");
+        require(_isWormholeApprover[msg.sender], "ShieldedPool: caller is not a wormhole approver");
+        require(nodes.length > 0 && nodes.length <= (2 ** MERKLE_TREE_DEPTH) / 5, "ShieldedPool: invalid nodes length");
         for (uint256 i = 0; i < nodes.length; i++) {
-            require(!_wormholeEntriesCommitted[nodes[i].entryId], "Kamui: entry is already committed in wormhole tree");
-            require(nodes[i].entryId < totalWormholeEntries, "Kamui: entry id does not exist");
+            require(!_wormholeEntriesCommitted[nodes[i].entryId], "ShieldedPool: entry is already committed in wormhole tree");
+            require(nodes[i].entryId < totalWormholeEntries, "ShieldedPool: entry id does not exist");
         }
         if (_isMerkleTreeSizeOverflow(_wormholeTrees[currentWormholeTreeId], nodes.length)) {
             currentWormholeTreeId++;
@@ -212,24 +212,24 @@ contract Kamui is IKamui, EIP712, Ownable {
         bytes32 messageHash = _hashTypedData(shieldedTx);
         
         // Validate roots
-        require(isWormholeRoot[shieldedTx.wormholeRoot], "Kamui: wormhole root is not valid");
-        require(isShieldedRoot[shieldedTx.shieldedRoot], "Kamui: shielded root is not valid");
+        require(isWormholeRoot[shieldedTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
+        require(isShieldedRoot[shieldedTx.shieldedRoot], "ShieldedPool: shielded root is not valid");
 
         // Validate nullifiers
-        require(!wormholeNullifierUsed[shieldedTx.wormholeNullifier], "Kamui: wormhole nullifier is already used");
+        require(!wormholeNullifierUsed[shieldedTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
         for (uint256 i = 0; i < shieldedTx.nullifiers.length; i++) {
-            require(!nullifierUsed[shieldedTx.nullifiers[i]], "Kamui: nullifier is already used");
+            require(!nullifierUsed[shieldedTx.nullifiers[i]], "ShieldedPool: nullifier is already used");
         }
 
         // Get verifier
         IVerifier verifier = _utxoVerifiers[shieldedTx.nullifiers.length][shieldedTx.commitments.length + shieldedTx.withdrawals.length];
-        require(address(verifier) != address(0), "Kamui: verifier is not registered");
+        require(address(verifier) != address(0), "ShieldedPool: verifier is not registered");
 
         // Get public inputs
         bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash);
 
         // Verify proof
-        require(verifier.verify(proof, inputs), "Kamui: proof is not valid");
+        require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
 
         // Mark nullifiers as used
         wormholeNullifierUsed[shieldedTx.wormholeNullifier] = true;
@@ -257,8 +257,8 @@ contract Kamui is IKamui, EIP712, Ownable {
     }
 
     function ragequit(RagequitTx calldata ragequitTx, bytes calldata proof) external {
-        require(isWormholeRoot[ragequitTx.wormholeRoot], "Kamui: wormhole root is not valid");
-        require(!wormholeNullifierUsed[ragequitTx.wormholeNullifier], "Kamui: wormhole nullifier is already used");
+        require(isWormholeRoot[ragequitTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
+        require(!wormholeNullifierUsed[ragequitTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
 
         TransferMetadata memory entry = _wormholeEntries[ragequitTx.entryId];
 
@@ -273,7 +273,7 @@ contract Kamui is IKamui, EIP712, Ownable {
         inputs[3] = bytes32(bytes20(entry.from));
 
         // verify proof
-        require(ragequitVerifier.verify(proof, inputs), "Kamui: proof is not valid");
+        require(ragequitVerifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
 
         // mark wormhole nullifier as used
         wormholeNullifierUsed[ragequitTx.wormholeNullifier] = true;

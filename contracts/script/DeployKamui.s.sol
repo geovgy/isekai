@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {Kamui} from "../src/Kamui.sol";
+import {ShieldedPool} from "../src/ShieldedPool.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
@@ -11,13 +11,13 @@ import {HonkVerifier as UTXO2x2Verifier} from "../src/verifiers/UTXO2x2Verifier.
 import {HonkVerifier as RagequitVerifier} from "../src/verifiers/RagequitVerifier.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
-contract DeployKamuiScript is Script {
+contract DeployShieldedPoolScript is Script {
     using Strings for *;
 
     // address GOVERNOR = address(0x1); // TODO: set governor address
     address GOVERNOR = vm.envAddress("GOVERNOR");
 
-    Kamui kamui;
+    ShieldedPool shieldedPool;
 
     IPoseidon2 poseidon2;
     IVerifier ragequitVerifier;
@@ -37,10 +37,10 @@ contract DeployKamuiScript is Script {
 
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         ragequitVerifier = new RagequitVerifier();
-        kamui = new Kamui(poseidon2, ragequitVerifier, msg.sender);
+        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, msg.sender);
 
         console.log("\nDeployment Results:");
-        console.log("\nKamui -->", address(kamui));
+        console.log("\nShieldedPool -->", address(shieldedPool));
         console.log("|-- Poseidon2 -->", address(poseidon2));
         console.log("|-- Ragequit verifier -->", address(ragequitVerifier));
         console.log("|-- Governor -->", GOVERNOR);
@@ -55,7 +55,7 @@ contract DeployKamuiScript is Script {
 
         console.log("\nAdding UTXO verifiers:");
         for (uint256 i; i < params.length; i++) {
-            kamui.addVerifier(params[i].verifier, params[i].inputs, params[i].outputs);
+            shieldedPool.addVerifier(params[i].verifier, params[i].inputs, params[i].outputs);
 
             string memory utxoType = string(bytes.concat(bytes(params[i].inputs.toString()), "x", bytes(params[i].outputs.toString()), " -->"));
             console.log("|--", utxoType, address(params[i].verifier));
@@ -63,7 +63,7 @@ contract DeployKamuiScript is Script {
 
         // Transfer ownership to governor
         if (GOVERNOR != msg.sender) {
-            kamui.transferOwnership(GOVERNOR);
+            shieldedPool.transferOwnership(GOVERNOR);
         }
 
         vm.stopBroadcast();

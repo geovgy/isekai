@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {Kamui} from "../src/Kamui.sol";
+import {ShieldedPool} from "../src/ShieldedPool.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
@@ -17,16 +17,16 @@ import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract SetApproverScript is Script {
-    Kamui kamui = Kamui(vm.envAddress("KAMUI"));
+    ShieldedPool shieldedPool = ShieldedPool(vm.envAddress("SHIELDED_POOL"));
     address approver = vm.envAddress("APPROVER");
 
     function run() public {
         vm.startBroadcast();
 
-        console.log("Using Kamui -->", address(kamui));
+        console.log("Using ShieldedPool -->", address(shieldedPool));
 
         console.log("\nSetting wormhole approvers:");
-        kamui.setWormholeApprover(approver, true);
+        shieldedPool.setWormholeApprover(approver, true);
         console.log("|-- Approver -->", approver);
 
         vm.stopBroadcast();
