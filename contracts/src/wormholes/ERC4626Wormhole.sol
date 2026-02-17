@@ -7,10 +7,13 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {IERC4626} from "openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 import {IShieldedPool} from "../interfaces/IShieldedPool.sol";
 import {Wormhole} from "../Wormhole.sol";
+import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract ERC4626Wormhole is IERC4626, ERC20, Wormhole {
+contract ERC4626Wormhole is IERC4626, ERC20, Wormhole, Ownable {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC4626;
+
+    bool public initialized;
 
     IERC20 internal _asset;
     IERC4626 public vault;
@@ -20,20 +23,20 @@ contract ERC4626Wormhole is IERC4626, ERC20, Wormhole {
     uint256 private _totalShares; // also used as actual supply
     uint256 private _totalAssets;
     
-    constructor(IShieldedPool shieldedPool_) ERC20("", "") Wormhole(shieldedPool_) {}
+    constructor(IShieldedPool shieldedPool_) ERC20("", "") Wormhole(shieldedPool_) Ownable(msg.sender) {}
 
-    function _initialize(bytes calldata data_) internal override returns (bool) {
+    function initialize(bytes calldata data_) external onlyOwner {
         require(!initialized, "ERC4626Wormhole: already initialized");
         // extract asset and vault address from data_
-        address assetAddress = address(bytes20(data_[:20]));
-        address vaultAddress = address(bytes20(data_[20:]));
-        require(assetAddress != address(0), "ERC4626Wormhole: asset address is zero address");
+        address vaultAddress = address(bytes20(data_[:20]));
         require(vaultAddress != address(0), "ERC4626Wormhole: vault address is zero address");
         IERC4626 _vault = IERC4626(vaultAddress);
-        require(_vault.asset() == assetAddress, "ERC4626Wormhole: vault asset mismatch");
+        address assetAddress = _vault.asset();
+        require(assetAddress != address(0), "ERC4626Wormhole: asset address is zero address");
         vault = _vault;
         _asset = IERC20(assetAddress);
-        return true;
+        initialized = true;
+        renounceOwnership();
     }
 
     function _unshield(address to, uint256 /* id */, uint256 amount) internal override {

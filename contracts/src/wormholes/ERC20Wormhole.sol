@@ -6,10 +6,13 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {IERC4626} from "openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
 import {IShieldedPool} from "../interfaces/IShieldedPool.sol";
 import {Wormhole} from "../Wormhole.sol";
+import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 // A modified version of OpenZeppelin's ERC20Wrapper that supports wormhole
-contract ERC20Wormhole is ERC20, Wormhole {
+contract ERC20Wormhole is ERC20, Wormhole, Ownable {
     using SafeERC20 for IERC20;
+
+    bool public initialized;
 
     IERC20 internal _underlying;
 
@@ -23,24 +26,27 @@ contract ERC20Wormhole is ERC20, Wormhole {
      */
     error ERC20InvalidUnderlying(address token);
 
+    error ERC20InvalidOwner(address owner);
+
     constructor(
         IShieldedPool shieldedPool_,
         string memory namePrefix_,
         string memory symbolPrefix_
-    ) ERC20("", "") Wormhole(shieldedPool_) {
+    ) ERC20("", "") Wormhole(shieldedPool_) Ownable(msg.sender) {
         _namePrefix = namePrefix_;
         _symbolPrefix = symbolPrefix_;
     }
 
-    function _initialize(bytes calldata data_) internal override returns (bool) {
-        require(!initialized, "ERC4626Wormhole: already initialized");
+    function initialize(bytes calldata data_) external onlyOwner {
+        require(!initialized, "ERC20Wormhole: already initialized");
         // extract asset and vault address from data_
         address assetAddress = address(bytes20(data_[:20]));
         if (assetAddress == address(this) || assetAddress == address(0)) {
             revert ERC20InvalidUnderlying(assetAddress);
         }
         _underlying = IERC20(assetAddress);
-        return true;
+        initialized = true;
+        renounceOwnership();
     }
 
     function _unshield(address to, uint256 /* id */, uint256 amount) internal override {
@@ -91,34 +97,40 @@ contract ERC20Wormhole is ERC20, Wormhole {
     /**
      * @dev Allow a user to deposit underlying tokens and mint the corresponding number of wrapped tokens.
      */
-    function depositFor(address account, uint256 value) public virtual returns (bool) {
+    function deposit(uint256 value, address receiver) public virtual returns (bool) {
         address sender = _msgSender();
         if (sender == address(this)) {
             revert ERC20InvalidSender(address(this));
         }
-        if (account == address(this)) {
-            revert ERC20InvalidReceiver(account);
+        if (receiver == address(this)) {
+            revert ERC20InvalidReceiver(receiver);
         }
         SafeERC20.safeTransferFrom(_underlying, sender, address(this), value);
         unchecked {
             _supply += value;
         }
-        _mint(account, value);
+        _mint(receiver, value);
         return true;
     }
 
     /**
      * @dev Allow a user to burn a number of wrapped tokens and withdraw the corresponding number of underlying tokens.
      */
-    function withdrawTo(address account, uint256 value) public virtual returns (bool) {
-        if (account == address(this)) {
-            revert ERC20InvalidReceiver(account);
+    function withdraw(uint256 value, address receiver, address owner) public virtual returns (bool) {
+        if (owner == address(this)) {
+            revert ERC20InvalidOwner(owner);
         }
-        _burn(_msgSender(), value);
-        SafeERC20.safeTransfer(_underlying, account, value);
+        if (receiver == address(this)) {
+            revert ERC20InvalidReceiver(receiver);
+        }
+        if (_msgSender() != owner) {
+            _spendAllowance(owner, _msgSender(), value);
+        }
+        _burn(owner, value);
         unchecked {
             _supply -= value;
         }
+        SafeERC20.safeTransfer(_underlying, receiver, value);
         return true;
     }
 

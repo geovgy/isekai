@@ -5,8 +5,7 @@ import {IShieldedPool} from "./interfaces/IShieldedPool.sol";
 import {IWormhole} from "./interfaces/IWormhole.sol";
 
 abstract contract Wormhole is IWormhole {
-    bool public initialized;
-
+    
     IShieldedPool public immutable shieldedPool;
     
     modifier onlyShieldedPool() {
@@ -18,22 +17,11 @@ abstract contract Wormhole is IWormhole {
         shieldedPool = shieldedPool_;
     }
 
-    // Override this function to initialize the wormhole
-    function _initialize(bytes calldata data_) internal virtual returns (bool) {}
-
     // Override this function to unshield the asset
     function _unshield(address to, uint256 id, uint256 amount) internal virtual {}
 
     // Override this function to return the actual supply of the asset
     function actualSupply() public virtual view returns (uint256) {}
-
-    function initialize(bytes calldata data_) external onlyShieldedPool {
-        require(!initialized, "Wormhole: already initialized");
-        bool success = _initialize(data_);
-        require(success, "Wormhole: initialization failed");
-        initialized = true;
-        emit Initialize(data_);
-    }
 
     function unshield(address to, uint256 id, uint256 amount) external onlyShieldedPool {
         _unshield(to, id, amount);

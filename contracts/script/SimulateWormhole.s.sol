@@ -78,12 +78,16 @@ contract SimulateWormholeScript is Script {
 
         // create and set wormhole pool implementation
         wormholeWrapper = new ERC20Wormhole(shieldedPool, "ShieldedPool Wrapped", "spw");
+        
+        // initialize wormhole wrapper
+        bytes memory initData = abi.encodePacked(address(underlying));
+        wormholeWrapper.initialize(initData);
 
         // deposit underlying token
         console.log("\nDepositing underlying token and sending to burn address:");
         underlying.mint(msg.sender, 100_000_000e18);
         underlying.approve(address(wormholeWrapper), 100_000_000e18);
-        wormholeWrapper.depositFor(BURN_ADDRESS, 100_000_000e18);
+        wormholeWrapper.deposit(100_000_000e18, BURN_ADDRESS);
 
         console.log("|-- Burn address -->", BURN_ADDRESS);
         console.log("    |-- Sent:", 100_000_000e18, wormholeWrapper.symbol());

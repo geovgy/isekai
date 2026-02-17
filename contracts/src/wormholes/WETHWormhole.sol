@@ -41,12 +41,6 @@ contract WETHWormhole is ERC20, Wormhole {
         emit Withdrawal(msg.sender, amount);
     }
 
-    function _initialize(bytes calldata data_) internal view override returns (bool) {
-        require(!initialized, "WETHWormhole: already initialized");
-        require(data_.length == 0, "WETHWormhole: data is not empty");
-        return true;
-    }
-
     function _unshield(address to, uint256 /* id */, uint256 amount) internal override {
         _mint(to, amount);
     }

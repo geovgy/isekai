@@ -66,8 +66,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.setWormholeApprover(screener, true);
 
         // initialize wormhole vault
-        bytes memory initData = abi.encodePacked(address(underlying), address(vault));
-        vm.prank(address(shieldedPool));
+        bytes memory initData = abi.encodePacked(address(vault));
         wormholeVault.initialize(initData);
     }
 
