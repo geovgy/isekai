@@ -177,9 +177,20 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit WormholeApproverSet(approver, isApprover);
     }
 
-    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, bytes32 assetId, uint256 amount) internal view returns (uint256) {
-        uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
-        return poseidon2.hash_6(idHash, approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
+    function requestWormholeEntry(address from, address to, uint256 id, uint256 amount) external returns (uint256 index) {
+        // Every wormhole asset is a token (ERC20/ERC721/ERC1155/etc.)
+        index = totalWormholeEntries;
+        _wormholeEntries[index] = TransferMetadata({
+            from: from,
+            to: to,
+            asset: msg.sender,
+            id: id,
+            amount: amount
+        });
+        unchecked {
+            totalWormholeEntries++;
+        }
+        emit WormholeEntry(index, msg.sender, from, to, id, amount);
     }
 
     function appendWormholeLeaf(uint256 entryId, bool approved) external {
@@ -276,16 +287,92 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         }
     }
 
-    function _initializeMerkleTree(LeanIMTData storage tree) internal returns (uint256 root) {
-        return tree.init(address(poseidon2));
+    function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof) external {
+        bytes32 messageHash = _hashTypedData(shieldedTx);
+        
+        // Validate roots
+        require(isMasterWormholeRoot[shieldedTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
+        require(isMasterShieldedRoot[shieldedTx.shieldedRoot], "ShieldedPool: shielded root is not valid");
+
+        // Validate nullifiers
+        require(!wormholeNullifierUsed[shieldedTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
+        for (uint256 i = 0; i < shieldedTx.nullifiers.length; i++) {
+            require(!nullifierUsed[shieldedTx.nullifiers[i]], "ShieldedPool: nullifier is already used");
+        }
+
+        // Get verifier
+        IVerifier verifier = _utxoVerifiers[shieldedTx.nullifiers.length][shieldedTx.commitments.length + shieldedTx.withdrawals.length];
+        require(address(verifier) != address(0), "ShieldedPool: verifier is not registered");
+
+        // Get public inputs
+        bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash);
+
+        // Verify proof
+        require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
+
+        // Mark nullifiers as used
+        wormholeNullifierUsed[shieldedTx.wormholeNullifier] = true;
+        for (uint256 i; i < shieldedTx.nullifiers.length; i++) {
+            nullifierUsed[shieldedTx.nullifiers[i]] = true;
+        }
+
+        // Insert new commitments into shielded tree
+        if (_isMerkleTreeSizeOverflow(_branchShieldedTrees[currentShieldedTreeId], shieldedTx.commitments.length)) {
+            currentShieldedTreeId++;
+            _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
+        }
+        uint256 startIndex = _branchShieldedTrees[currentShieldedTreeId].size;
+        uint256 root = _branchShieldedTrees[currentShieldedTreeId].insertMany(shieldedTx.commitments);
+
+        // If withdrawals are present, mint new shares for each withdrawal
+        for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
+            Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
+            IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount);
+        }
+
+        emit WormholeNullifier(shieldedTx.wormholeNullifier);
+        emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
+
+        if (block.chainid == 1) {
+            // Insert branch shielded root into master shielded tree
+            if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
+                currentShieldedTreeId++;
+                _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
+            }
+            uint256 newMasterShieldedRoot = _masterShieldedTrees[currentShieldedTreeId].insert(root);
+            isMasterShieldedRoot[bytes32(newMasterShieldedRoot)] = true;
+            emit MasterTreesUpdated(newMasterShieldedRoot, _masterWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+        } else {
+            emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+        }
     }
 
-    function _isMerkleTreeFull(LeanIMTData storage tree) internal view returns (bool) {
-        return tree.size == 2 ** MERKLE_TREE_DEPTH;
-    }
+    function ragequit(RagequitTx calldata ragequitTx, bytes calldata proof) external {
+        require(isMasterWormholeRoot[ragequitTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
+        require(!wormholeNullifierUsed[ragequitTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
 
-    function _isMerkleTreeSizeOverflow(LeanIMTData storage tree, uint256 batchSize) internal view returns (bool) {
-        return tree.size + batchSize > 2 ** MERKLE_TREE_DEPTH;
+        TransferMetadata memory entry = _wormholeEntries[ragequitTx.entryId];
+
+        // get wormhole commitment
+        bytes32 assetId = _getAssetId(entry.asset, entry.id);
+        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, assetId, entry.amount);
+
+        bytes32[] memory inputs = new bytes32[](4);
+        inputs[0] = ragequitTx.wormholeRoot;
+        inputs[1] = bytes32(commitment);
+        inputs[2] = ragequitTx.wormholeNullifier;
+        inputs[3] = bytes32(uint256(uint160(entry.from)));
+
+        // verify proof
+        require(ragequitVerifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
+
+        // mark wormhole nullifier as used
+        wormholeNullifierUsed[ragequitTx.wormholeNullifier] = true;
+        emit WormholeNullifier(ragequitTx.wormholeNullifier);
+
+        // return asset amount back to sender
+        IWormhole(entry.asset).unshield(entry.from, entry.id, entry.amount);
+        emit Ragequit(ragequitTx.entryId, msg.sender, entry.from, entry.asset, entry.id, entry.amount);
     }
 
     function updateMasterTrees(bytes calldata proof) external {
@@ -381,94 +468,6 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         isMasterWormholeRoot[bytes32(masterWormholeRoot)] = true;
     }
 
-    function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof) external {
-        bytes32 messageHash = _hashTypedData(shieldedTx);
-        
-        // Validate roots
-        require(isMasterWormholeRoot[shieldedTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
-        require(isMasterShieldedRoot[shieldedTx.shieldedRoot], "ShieldedPool: shielded root is not valid");
-
-        // Validate nullifiers
-        require(!wormholeNullifierUsed[shieldedTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
-        for (uint256 i = 0; i < shieldedTx.nullifiers.length; i++) {
-            require(!nullifierUsed[shieldedTx.nullifiers[i]], "ShieldedPool: nullifier is already used");
-        }
-
-        // Get verifier
-        IVerifier verifier = _utxoVerifiers[shieldedTx.nullifiers.length][shieldedTx.commitments.length + shieldedTx.withdrawals.length];
-        require(address(verifier) != address(0), "ShieldedPool: verifier is not registered");
-
-        // Get public inputs
-        bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash);
-
-        // Verify proof
-        require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
-
-        // Mark nullifiers as used
-        wormholeNullifierUsed[shieldedTx.wormholeNullifier] = true;
-        for (uint256 i; i < shieldedTx.nullifiers.length; i++) {
-            nullifierUsed[shieldedTx.nullifiers[i]] = true;
-        }
-
-        // Insert new commitments into shielded tree
-        if (_isMerkleTreeSizeOverflow(_branchShieldedTrees[currentShieldedTreeId], shieldedTx.commitments.length)) {
-            currentShieldedTreeId++;
-            _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
-        }
-        uint256 startIndex = _branchShieldedTrees[currentShieldedTreeId].size;
-        uint256 root = _branchShieldedTrees[currentShieldedTreeId].insertMany(shieldedTx.commitments);
-
-        // If withdrawals are present, mint new shares for each withdrawal
-        for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
-            Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
-            IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount);
-        }
-
-        emit WormholeNullifier(shieldedTx.wormholeNullifier);
-        emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
-
-        if (block.chainid == 1) {
-            // Insert branch shielded root into master shielded tree
-            if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
-                currentShieldedTreeId++;
-                _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
-            }
-            uint256 newMasterShieldedRoot = _masterShieldedTrees[currentShieldedTreeId].insert(root);
-            isMasterShieldedRoot[bytes32(newMasterShieldedRoot)] = true;
-            emit MasterTreesUpdated(newMasterShieldedRoot, _masterWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
-        } else {
-            emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
-        }
-    }
-
-    function ragequit(RagequitTx calldata ragequitTx, bytes calldata proof) external {
-        require(isMasterWormholeRoot[ragequitTx.wormholeRoot], "ShieldedPool: wormhole root is not valid");
-        require(!wormholeNullifierUsed[ragequitTx.wormholeNullifier], "ShieldedPool: wormhole nullifier is already used");
-
-        TransferMetadata memory entry = _wormholeEntries[ragequitTx.entryId];
-
-        // get wormhole commitment
-        bytes32 assetId = _getAssetId(entry.asset, entry.id);
-        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, assetId, entry.amount);
-
-        bytes32[] memory inputs = new bytes32[](4);
-        inputs[0] = ragequitTx.wormholeRoot;
-        inputs[1] = bytes32(commitment);
-        inputs[2] = ragequitTx.wormholeNullifier;
-        inputs[3] = bytes32(uint256(uint160(entry.from)));
-
-        // verify proof
-        require(ragequitVerifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
-
-        // mark wormhole nullifier as used
-        wormholeNullifierUsed[ragequitTx.wormholeNullifier] = true;
-        emit WormholeNullifier(ragequitTx.wormholeNullifier);
-
-        // return asset amount back to sender
-        IWormhole(entry.asset).unshield(entry.from, entry.id, entry.amount);
-        emit Ragequit(ragequitTx.entryId, msg.sender, entry.from, entry.asset, entry.id, entry.amount);
-    }
-
     function _formatPublicInputs(ShieldedTx memory shieldedTx, bytes32 messageHash) internal view returns (bytes32[] memory inputs) {
         // Split 256-bit message hash into two 128-bit halves (matches circuit output)
         uint256 hashUint = uint256(messageHash);
@@ -504,28 +503,29 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         }
     }
 
-    function _getCommitment(uint256 recipientHash, bytes32 assetId, uint256 amount, uint256 transferType) internal view returns (uint256) {
-        return poseidon2.hash_4(recipientHash, uint256(assetId), amount, uint256(transferType));
-    }
-
     function _getAssetId(address asset, uint256 id) internal view returns (bytes32) {
         return bytes32(poseidon2.hash_2(uint256(uint160(asset)), id));
     }
 
-    function requestWormholeEntry(address from, address to, uint256 id, uint256 amount) external returns (uint256 index) {
-        // Every wormhole asset is a token (ERC20/ERC721/ERC1155/etc.)
-        index = totalWormholeEntries;
-        _wormholeEntries[index] = TransferMetadata({
-            from: from,
-            to: to,
-            asset: msg.sender,
-            id: id,
-            amount: amount
-        });
-        unchecked {
-            totalWormholeEntries++;
-        }
-        emit WormholeEntry(index, msg.sender, from, to, id, amount);
+    function _getCommitment(uint256 recipientHash, bytes32 assetId, uint256 amount, uint256 transferType) internal view returns (uint256) {
+        return poseidon2.hash_4(recipientHash, uint256(assetId), amount, uint256(transferType));
+    }
+
+    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, bytes32 assetId, uint256 amount) internal view returns (uint256) {
+        uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
+        return poseidon2.hash_6(idHash, approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
+    }
+
+    function _initializeMerkleTree(LeanIMTData storage tree) internal returns (uint256 root) {
+        return tree.init(address(poseidon2));
+    }
+
+    function _isMerkleTreeFull(LeanIMTData storage tree) internal view returns (bool) {
+        return tree.size == 2 ** MERKLE_TREE_DEPTH;
+    }
+
+    function _isMerkleTreeSizeOverflow(LeanIMTData storage tree, uint256 batchSize) internal view returns (bool) {
+        return tree.size + batchSize > 2 ** MERKLE_TREE_DEPTH;
     }
 
     // EIP712 helper functions
