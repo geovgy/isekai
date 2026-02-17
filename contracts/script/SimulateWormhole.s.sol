@@ -11,12 +11,15 @@ import {MockVerifier} from "../test/mock/MockVerifier.sol"; // TODO: use real ve
 import {ERC20Wormhole} from "../src/wormholes/ERC20Wormhole.sol";
 import {MockERC20} from "../test/mock/MockERC20.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
+import {ICrossL2ProverV2} from "../src/interfaces/ICrossL2ProverV2.sol";
 
 contract SimulateWormholeScript is Script {
     using Strings for *;
 
     address GOVERNOR = address(0x1); // TODO: set governor address
     address BURN_ADDRESS = address(0xDEAD);
+    
+    ICrossL2ProverV2 CROSS_L2_PROVER = ICrossL2ProverV2(address(0x2));
 
     ShieldedPool shieldedPool;
 
@@ -37,7 +40,7 @@ contract SimulateWormholeScript is Script {
 
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         ragequitVerifier = new MockVerifier();
-        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, msg.sender);
+        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
 
         console.log("\nDeployment Results:");
         console.log("\nShieldedPool -->", address(shieldedPool));

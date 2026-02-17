@@ -10,12 +10,14 @@ import {IVerifier} from "../src/interfaces/IVerifier.sol";
 import {HonkVerifier as UTXO2x2Verifier} from "../src/verifiers/UTXO2x2Verifier.sol";
 import {HonkVerifier as RagequitVerifier} from "../src/verifiers/RagequitVerifier.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
+import {ICrossL2ProverV2} from "../src/interfaces/ICrossL2ProverV2.sol";
 
 contract DeployShieldedPoolScript is Script {
     using Strings for *;
 
     // address GOVERNOR = address(0x1); // TODO: set governor address
     address GOVERNOR = vm.envAddress("GOVERNOR");
+    ICrossL2ProverV2 CROSS_L2_PROVER = ICrossL2ProverV2(address(0x2));
 
     ShieldedPool shieldedPool;
 
@@ -37,7 +39,7 @@ contract DeployShieldedPoolScript is Script {
 
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         ragequitVerifier = new RagequitVerifier();
-        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, msg.sender);
+        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
 
         console.log("\nDeployment Results:");
         console.log("\nShieldedPool -->", address(shieldedPool));

@@ -130,6 +130,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, ICrossL2ProverV2 crossL2Prover_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         poseidon2 = poseidon2_;
+        _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
+        _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
         uint256 shieldedRoot = _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
         uint256 wormholeRoot = _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
         isMasterShieldedRoot[bytes32(shieldedRoot)] = true;
@@ -140,11 +142,19 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         rollbackTree.init(address(poseidon2), ROLLBACK_TREE_DEPTH);
     }
 
-    function wormholeTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
+    function branchWormholeTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
+        return (bytes32(_branchWormholeTrees[treeId].root()), _branchWormholeTrees[treeId].size, _branchWormholeTrees[treeId].depth);
+    }
+
+    function masterWormholeTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
         return (bytes32(_masterWormholeTrees[treeId].root()), _masterWormholeTrees[treeId].size, _masterWormholeTrees[treeId].depth);
     }
 
-    function shieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
+    function branchShieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
+        return (bytes32(_branchShieldedTrees[treeId].root()), _branchShieldedTrees[treeId].size, _branchShieldedTrees[treeId].depth);
+    }
+
+    function masterShieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
         return (bytes32(_masterShieldedTrees[treeId].root()), _masterShieldedTrees[treeId].size, _masterShieldedTrees[treeId].depth);
     }
 
@@ -197,12 +207,24 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
         }
         uint256 root = _branchWormholeTrees[currentWormholeTreeId].insert(commitment);
-        isMasterWormholeRoot[bytes32(root)] = true;
         _wormholeEntriesCommitted[entryId] = true;
         unchecked {
             totalWormholeCommitments++;
         }
         emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _branchWormholeTrees[currentWormholeTreeId].size - 1, assetId, entry.from, entry.to, entry.amount, approved);
+
+        if (block.chainid == 1) {
+            // Insert branch wormhole root into master wormhole tree
+            if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
+                currentWormholeTreeId++;
+                _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
+            }
+            uint256 newMasterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(root);
+            isMasterWormholeRoot[bytes32(newMasterWormholeRoot)] = true;
+            emit MasterTreesUpdated(newMasterWormholeRoot, _masterShieldedTrees[currentShieldedTreeId].root(), block.number, block.timestamp);
+        } else {
+            emit BranchTreesUpdated(currentWormholeTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
+        }
     }
 
     function appendManyWormholeLeaves(WormholePreCommitment[] memory nodes) external {
@@ -239,7 +261,18 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         unchecked {
             totalWormholeCommitments += nodes.length;
         }
-        emit BranchTreesUpdated(currentWormholeTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
+        if (block.chainid == 1) {
+            // Insert branch wormhole root into master wormhole tree
+            if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
+                currentWormholeTreeId++;
+                _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
+            }
+            uint256 newMasterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(root);
+            isMasterWormholeRoot[bytes32(newMasterWormholeRoot)] = true;
+            emit MasterTreesUpdated(newMasterWormholeRoot, _masterShieldedTrees[currentShieldedTreeId].root(), block.number, block.timestamp);
+        } else {
+            emit BranchTreesUpdated(currentWormholeTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
+        }
     }
 
     function _initializeMerkleTree(LeanIMTData storage tree) internal returns (uint256 root) {
@@ -392,7 +425,19 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
         emit WormholeNullifier(shieldedTx.wormholeNullifier);
         emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
-        emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+
+        if (block.chainid == 1) {
+            // Insert branch shielded root into master shielded tree
+            if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
+                currentShieldedTreeId++;
+                _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
+            }
+            uint256 newMasterShieldedRoot = _masterShieldedTrees[currentShieldedTreeId].insert(root);
+            isMasterShieldedRoot[bytes32(newMasterShieldedRoot)] = true;
+            emit MasterTreesUpdated(newMasterShieldedRoot, _masterWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+        } else {
+            emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+        }
     }
 
     function ragequit(RagequitTx calldata ragequitTx, bytes calldata proof) external {

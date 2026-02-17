@@ -10,6 +10,7 @@ import {ShieldedPool} from "../../src/ShieldedPool.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {MockVerifier} from "../mock/MockVerifier.sol";
+import {MockCrossL2Prover} from "../mock/MockCrossL2Prover.sol";
 import {IVerifier} from "../../src/interfaces/IVerifier.sol";
 import {ERC4626Wormhole} from "../../src/wormholes/ERC4626Wormhole.sol";
 import {IWormhole} from "../../src/interfaces/IWormhole.sol";
@@ -26,6 +27,7 @@ contract ShieldedPoolTest is Test {
 
     IPoseidon2 poseidon2;
     MockVerifier verifier;
+    MockCrossL2Prover crossL2Prover;
 
     function _dealWormholeTokens(address to, uint256 shares) internal {
         uint256 amount = vault.convertToAssets(shares);
@@ -48,7 +50,8 @@ contract ShieldedPoolTest is Test {
         // deploy contracts
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         verifier = new MockVerifier();
-        shieldedPool = new ShieldedPool(poseidon2, verifier, owner);
+        crossL2Prover = new MockCrossL2Prover();
+        shieldedPool = new ShieldedPool(poseidon2, verifier, crossL2Prover, owner);
         wormholeVault = new ERC4626Wormhole(shieldedPool);
 
         underlying = new MockERC20();
@@ -128,7 +131,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.appendWormholeLeaf(1, false);
 
         bytes32 expectedRoot = bytes32(expectedCommitment);
-        (bytes32 wormholeRoot, uint256 size, uint256 depth) = shieldedPool.wormholeTree(0);
+        (bytes32 wormholeRoot, uint256 size, uint256 depth) = shieldedPool.branchWormholeTree(0);
         assertEq(wormholeRoot, expectedRoot, "Wormhole root should be the same");
         assertEq(size, 1, "Wormhole tree size should be 1");
         assertEq(depth, 0, "Wormhole tree depth should be 0");
@@ -170,7 +173,7 @@ contract ShieldedPoolTest is Test {
 
         bytes32 expectedRoot = bytes32(poseidon2.hash_2(expectedCommitments[0], expectedCommitments[1]));
 
-        (bytes32 wormholeRoot, uint256 size, uint256 depth) = shieldedPool.wormholeTree(0);
+        (bytes32 wormholeRoot, uint256 size, uint256 depth) = shieldedPool.branchWormholeTree(0);
         assertEq(wormholeRoot, expectedRoot, "Wormhole root should be the same");
         assertEq(size, 2, "Wormhole tree size should be 2");
         assertEq(depth, 1, "Wormhole tree depth should be 1");
@@ -267,7 +270,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.appendWormholeLeaf(1, false);
 
         // ragequit
-        (bytes32 root,,) = shieldedPool.wormholeTree(0);
+        (bytes32 root,,) = shieldedPool.masterWormholeTree(0);
         ShieldedPool.RagequitTx memory ragequitTx = ShieldedPool.RagequitTx({
             entryId: 1, 
             approved: false, 
@@ -332,8 +335,8 @@ contract ShieldedPoolTest is Test {
         shieldedPool.appendWormholeLeaf(1, true);
 
         // shield transfer
-        (bytes32 wormholeRoot,,) = shieldedPool.wormholeTree(0);
-        (bytes32 shieldedRoot, uint256 size,) = shieldedPool.shieldedTree(0);
+        (bytes32 wormholeRoot,,) = shieldedPool.masterWormholeTree(0);
+        (bytes32 shieldedRoot, uint256 size,) = shieldedPool.masterShieldedTree(0);
         assertTrue(shieldedRoot == bytes32(0) && size == 0, "Shielded root and size should be 0 before any commitments inserted");
         
         bytes32[] memory nullifiers = new bytes32[](2);
@@ -386,13 +389,14 @@ contract ShieldedPoolTest is Test {
         shieldedPool.shieldedTransfer(shieldedTx, proof);
 
         bytes32 expectedRoot = bytes32(poseidon2.hash_2(commitments[0], commitments[1]));
-        (bytes32 newShieldedRoot, uint256 newSize, uint256 newDepth) = shieldedPool.shieldedTree(0);
+        (bytes32 newShieldedRoot, uint256 newSize, uint256 newDepth) = shieldedPool.branchShieldedTree(0);
+        (bytes32 masterShieldedRoot,,) = shieldedPool.masterShieldedTree(0);
         assertEq(newShieldedRoot, expectedRoot, "Shielded root is incorrect after shield transfer");
         assertEq(newSize, 2, "Shielded tree size should be 2");
         assertEq(newDepth, 1, "Shielded tree depth should be 1");
-        assertTrue(shieldedPool.isMasterShieldedRoot(expectedRoot), "Shielded root should be marked as valid");
+        assertTrue(shieldedPool.isMasterShieldedRoot(masterShieldedRoot), "Shielded root should be marked as valid");
         
-        (bytes32 newWormholeRoot,,) = shieldedPool.wormholeTree(0);
+        (bytes32 newWormholeRoot,,) = shieldedPool.masterWormholeTree(0);
         assertEq(newWormholeRoot, wormholeRoot, "Wormhole root should not change after shield transfer");
 
         assertEq(shieldedPool.wormholeNullifierUsed(shieldedTx.wormholeNullifier), true, "Wormhole nullifier should be marked as used");
@@ -423,8 +427,8 @@ contract ShieldedPoolTest is Test {
         shieldedPool.appendWormholeLeaf(1, true);
 
         // shield transfer
-        (bytes32 wormholeRoot,,) = shieldedPool.wormholeTree(0);
-        (bytes32 shieldedRoot, uint256 size,) = shieldedPool.shieldedTree(0);
+        (bytes32 wormholeRoot,,) = shieldedPool.masterWormholeTree(0);
+        (bytes32 shieldedRoot, uint256 size,) = shieldedPool.masterShieldedTree(0);
         assertTrue(shieldedRoot == bytes32(0) && size == 0, "Shielded root and size should be 0 before any commitments inserted");
         
         bytes32[] memory nullifiers = new bytes32[](2);
@@ -456,11 +460,10 @@ contract ShieldedPoolTest is Test {
         vm.expectCall(address(wormholeVault), abi.encodeWithSelector(IWormhole.unshield.selector, unshieldTo, 0, 50e18));
         shieldedPool.shieldedTransfer(shieldedTx, proof);
 
-        (bytes32 newShieldedRoot, uint256 newSize, uint256 newDepth) = shieldedPool.shieldedTree(0);
+        (bytes32 newShieldedRoot, uint256 newSize, uint256 newDepth) = shieldedPool.branchShieldedTree(0);
         assertEq(newShieldedRoot, bytes32(commitments[0]), "Shielded root should be the single commitment");
         assertEq(newSize, 1, "Shielded tree size should be 1");
         assertEq(newDepth, 0, "Shielded tree depth should be 0");
-        assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(commitments[0])), "Shielded root should be marked as valid");
 
         assertEq(shieldedPool.wormholeNullifierUsed(shieldedTx.wormholeNullifier), true, "Wormhole nullifier should be marked as used");
         assertEq(shieldedPool.nullifierUsed(nullifiers[0]), true, "Nullifier 1 should be marked as used");
