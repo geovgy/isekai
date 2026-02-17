@@ -38,8 +38,9 @@ contract ShieldedPoolTest is Test {
         vm.stopPrank();
     }
 
-    function _getWormholeCommitment(address from, address to, bytes32 assetId, uint256 amount, bool approved) internal view returns (uint256) {
-        return poseidon2.hash_5(approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
+    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, bytes32 assetId, uint256 amount) internal view returns (uint256) {
+        uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
+        return poseidon2.hash_6(idHash, approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
     }
 
     function _getAssetId(address asset, uint256 id) internal view returns (bytes32) {
@@ -118,7 +119,7 @@ contract ShieldedPoolTest is Test {
         assertEq(entryCount, 2, "Should increment total wormhole entries by 2 after transfer");
 
         bytes32 assetId = _getAssetId(address(wormholeVault), 0);
-        uint256 expectedCommitment = _getWormholeCommitment(from, to, assetId, 100e18, true);
+        uint256 expectedCommitment = _getWormholeCommitment(1, true, from, to, assetId, 100e18);
 
         vm.expectEmit(address(shieldedPool));
         emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, assetId, from, to, 100e18, true);
@@ -160,8 +161,8 @@ contract ShieldedPoolTest is Test {
         nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
 
         uint256[2] memory expectedCommitments = [
-            _getWormholeCommitment(address(0), from, assetId, 100e18, nodes[0].approved),
-            _getWormholeCommitment(from, to, assetId, 100e18, nodes[1].approved)
+            _getWormholeCommitment(0, nodes[0].approved, address(0), from, assetId, 100e18),
+            _getWormholeCommitment(1, nodes[1].approved, from, to, assetId, 100e18)
         ];
 
         vm.expectEmit(address(shieldedPool));
@@ -225,7 +226,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.initiateRagequit(1);
 
         bytes32 assetId = _getAssetId(address(wormholeVault), 0);
-        uint256 expectedCommitment = _getWormholeCommitment(from, to, assetId, 100e18, false);
+        uint256 expectedCommitment = _getWormholeCommitment(1, false, from, to, assetId, 100e18);
 
         // Should succeed
         vm.expectEmit(address(shieldedPool));
@@ -238,7 +239,7 @@ contract ShieldedPoolTest is Test {
         vm.prank(from);
         shieldedPool.initiateRagequit(1);
 
-        expectedCommitment = _getWormholeCommitment(address(0), from, assetId, 100e18, false);
+        expectedCommitment = _getWormholeCommitment(0, false, address(0), from, assetId, 100e18);
 
         // Can still append leafs of older entries skipped
         vm.expectEmit(address(shieldedPool));

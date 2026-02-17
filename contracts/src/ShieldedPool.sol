@@ -177,8 +177,9 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit WormholeApproverSet(approver, isApprover);
     }
 
-    function _getWormholeCommitment(address from, address to, bytes32 assetId, uint256 amount, bool approved) internal view returns (uint256) {
-        return poseidon2.hash_5(approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
+    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, bytes32 assetId, uint256 amount) internal view returns (uint256) {
+        uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
+        return poseidon2.hash_6(idHash, approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
     }
 
     function appendWormholeLeaf(uint256 entryId, bool approved) external {
@@ -201,7 +202,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             require(!approved, "ShieldedPool: entry cannot be appended as approved");
         }
         bytes32 assetId = _getAssetId(entry.asset, entry.id);
-        uint256 commitment = _getWormholeCommitment(entry.from, entry.to, assetId, entry.amount, approved);
+        uint256 commitment = _getWormholeCommitment(entryId, approved, entry.from, entry.to, assetId, entry.amount);
         if (_isMerkleTreeFull(_branchWormholeTrees[currentWormholeTreeId])) {
             currentWormholeTreeId++;
             _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
@@ -243,7 +244,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         for (uint256 i = 0; i < nodes.length; i++) {
             TransferMetadata memory entry = _wormholeEntries[nodes[i].entryId];
             bytes32 assetId = _getAssetId(entry.asset, entry.id);
-            commitments[i] = _getWormholeCommitment(entry.from, entry.to, assetId, entry.amount, nodes[i].approved);
+            commitments[i] = _getWormholeCommitment(nodes[i].entryId, nodes[i].approved, entry.from, entry.to, assetId, entry.amount);
             _wormholeEntriesCommitted[nodes[i].entryId] = true;
             emit WormholeCommitment(
                 nodes[i].entryId,
@@ -448,13 +449,13 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
         // get wormhole commitment
         bytes32 assetId = _getAssetId(entry.asset, entry.id);
-        uint256 commitment = _getWormholeCommitment(entry.from, entry.to, assetId, entry.amount, ragequitTx.approved);
+        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, assetId, entry.amount);
 
         bytes32[] memory inputs = new bytes32[](4);
         inputs[0] = ragequitTx.wormholeRoot;
         inputs[1] = bytes32(commitment);
         inputs[2] = ragequitTx.wormholeNullifier;
-        inputs[3] = bytes32(bytes20(entry.from));
+        inputs[3] = bytes32(uint256(uint160(entry.from)));
 
         // verify proof
         require(ragequitVerifier.verify(proof, inputs), "ShieldedPool: proof is not valid");

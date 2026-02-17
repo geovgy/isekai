@@ -100,12 +100,14 @@ pub impl <let M: u32> WormholeNote<M> {
 
     pub fn to_burn_commitment(self) -> Field {
         let burn_address = self.get_burn_address();
+        let id_hash = hash([self.chain_id, self.entry_id]);
         // Must match contract ordering: poseidon2(approved, sender, burn_address, assetId, amount)
-        hash([self.entry_id, self.is_approved as Field, self.sender, burn_address, self.asset_id, self.amount])
+        hash([id_hash, self.is_approved as Field, self.sender, burn_address, self.asset_id, self.amount])
     }
 
     pub fn get_nullifier(self) -> Field {
+        let id_hash = hash([self.chain_id, self.entry_id]);
         let secret_commitment = hash([self.recipient, self.asset_id, self.sender, self.amount]);
-        hash([1, self.entry_id, self.wormhole_secret, secret_commitment])
+        hash([1, id_hash, self.wormhole_secret, secret_commitment])
     }
 }
