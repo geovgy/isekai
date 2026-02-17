@@ -473,4 +473,490 @@ contract ShieldedPoolTest is Test {
         assertEq(wormholeVault.totalSupply(), 150e18, "Total supply should increase by the withdrawal amount");
         assertEq(wormholeVault.actualSupply(), 100e18, "Actual supply should not change after unshielding");
     }
+
+    // ========================================
+    // Cross-chain event proof validation tests
+    // ========================================
+
+    function _encodeBranchTreesUpdatedTopics(
+        uint256 branchShieldedRoot,
+        uint256 branchWormholeRoot
+    ) internal pure returns (bytes memory) {
+        bytes32 eventSig = ShieldedPool.BranchTreesUpdated.selector;
+        return abi.encodePacked(eventSig, bytes32(branchShieldedRoot), bytes32(branchWormholeRoot));
+    }
+
+    function _encodeMasterTreesUpdatedTopics(
+        uint256 masterShieldedRoot,
+        uint256 masterWormholeRoot
+    ) internal pure returns (bytes memory) {
+        bytes32 eventSig = ShieldedPool.MasterTreesUpdated.selector;
+        return abi.encodePacked(eventSig, bytes32(masterShieldedRoot), bytes32(masterWormholeRoot));
+    }
+
+    function _setupBranchEventProof(
+        uint32 chainId,
+        address emittingContract,
+        uint256 branchShieldedRoot,
+        uint256 branchWormholeRoot,
+        uint256 blockNumber,
+        bool valid
+    ) internal {
+        bytes memory topics = _encodeBranchTreesUpdatedTopics(branchShieldedRoot, branchWormholeRoot);
+        bytes memory unindexedData = abi.encode(uint256(0), uint256(0), blockNumber, uint256(1000));
+        crossL2Prover.setValidateEventReturn(chainId, emittingContract, topics, unindexedData, valid);
+    }
+
+    function _setupMasterEventProof(
+        uint32 chainId,
+        address emittingContract,
+        uint256 masterShieldedRoot,
+        uint256 masterWormholeRoot,
+        bool valid
+    ) internal {
+        bytes memory topics = _encodeMasterTreesUpdatedTopics(masterShieldedRoot, masterWormholeRoot);
+        bytes memory unindexedData = abi.encode(uint256(100), uint256(1000));
+        crossL2Prover.setValidateEventReturn(chainId, emittingContract, topics, unindexedData, valid);
+    }
+
+    // -------------------------------------------------------------------
+    // Master chain (chainId == 1): updateMasterTrees with branch events
+    // -------------------------------------------------------------------
+
+    function test_updateMasterTrees_masterChain_validBranchEvent() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, true);
+
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        (bytes32 masterShieldedRoot, uint256 shieldedSize,) = shieldedPool.masterShieldedTree(0);
+        (bytes32 masterWormholeRoot, uint256 wormholeSize,) = shieldedPool.masterWormholeTree(0);
+
+        // First insert into empty tree: root == leaf value
+        assertEq(uint256(masterShieldedRoot), branchShieldedRoot, "Master shielded root should equal branch shielded root");
+        assertEq(uint256(masterWormholeRoot), branchWormholeRoot, "Master wormhole root should equal branch wormhole root");
+        assertTrue(shieldedPool.isMasterShieldedRoot(masterShieldedRoot), "Master shielded root should be marked valid");
+        assertTrue(shieldedPool.isMasterWormholeRoot(masterWormholeRoot), "Master wormhole root should be marked valid");
+        assertEq(shieldedSize, 1, "Master shielded tree should have 1 leaf");
+        assertEq(wormholeSize, 1, "Master wormhole tree should have 1 leaf");
+    }
+
+    function test_updateMasterTrees_masterChain_emitsMasterTreesUpdated() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, true);
+
+        vm.expectEmit(true, true, false, true, address(shieldedPool));
+        emit ShieldedPool.MasterTreesUpdated(branchShieldedRoot, branchWormholeRoot, block.number, block.timestamp);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_revert_branchChainIdIsOne() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(1, address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, true);
+
+        vm.expectRevert("Branch tree cannot be master chain");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_revert_invalidEmittingContract() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(0xdead), branchShieldedRoot, branchWormholeRoot, 100, true);
+
+        vm.expectRevert("Invalid emitting contract");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_revert_invalidTopicsLength() public {
+        vm.chainId(1);
+
+        // 64 bytes instead of 96 (missing one topic word)
+        bytes memory invalidTopics = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)));
+        bytes memory unindexedData = abi.encode(uint256(0), uint256(0), uint256(100), uint256(1000));
+        crossL2Prover.setValidateEventReturn(42, address(shieldedPool), invalidTopics, unindexedData, true);
+
+        vm.expectRevert("Invalid topics length");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_revert_staleBlockNumber() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        // Same block number from same chain should revert
+        uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot2, branchWormholeRoot2, 100, true);
+
+        vm.expectRevert("Branch tree event is not new");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_revert_olderBlockNumber() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        // Older block number should revert
+        uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot2, branchWormholeRoot2, 50, true);
+
+        vm.expectRevert("Branch tree event is not new");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_revert_invalidProof() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, false);
+
+        vm.expectRevert("Mock configured to return invalid data");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_masterChain_multipleUpdatesFromDifferentChains() public {
+        vm.chainId(1);
+
+        // First update from chain 42
+        uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        (bytes32 masterShieldedRoot1,,) = shieldedPool.masterShieldedTree(0);
+        (bytes32 masterWormholeRoot1,,) = shieldedPool.masterWormholeTree(0);
+
+        // Second update from chain 10
+        uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(10, address(shieldedPool), branchShieldedRoot2, branchWormholeRoot2, 200, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        (bytes32 masterShieldedRoot2, uint256 shieldedSize,) = shieldedPool.masterShieldedTree(0);
+        (bytes32 masterWormholeRoot2, uint256 wormholeSize,) = shieldedPool.masterWormholeTree(0);
+
+        // Two-element tree: root = poseidon2(leaf1, leaf2)
+        bytes32 expectedShieldedRoot = bytes32(poseidon2.hash_2(branchShieldedRoot1, branchShieldedRoot2));
+        bytes32 expectedWormholeRoot = bytes32(poseidon2.hash_2(branchWormholeRoot1, branchWormholeRoot2));
+
+        assertEq(masterShieldedRoot2, expectedShieldedRoot, "Master shielded root should be poseidon hash of both branch roots");
+        assertEq(masterWormholeRoot2, expectedWormholeRoot, "Master wormhole root should be poseidon hash of both branch roots");
+        assertEq(shieldedSize, 2, "Master shielded tree should have 2 leaves");
+        assertEq(wormholeSize, 2, "Master wormhole tree should have 2 leaves");
+
+        // All historical master roots should remain valid
+        assertTrue(shieldedPool.isMasterShieldedRoot(masterShieldedRoot1), "First master shielded root should still be valid");
+        assertTrue(shieldedPool.isMasterWormholeRoot(masterWormholeRoot1), "First master wormhole root should still be valid");
+        assertTrue(shieldedPool.isMasterShieldedRoot(masterShieldedRoot2), "Second master shielded root should be valid");
+        assertTrue(shieldedPool.isMasterWormholeRoot(masterWormholeRoot2), "Second master wormhole root should be valid");
+    }
+
+    function test_updateMasterTrees_masterChain_sameChainSequentialUpdates() public {
+        vm.chainId(1);
+
+        uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        // Same chain, higher block number succeeds
+        uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
+        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
+        _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot2, branchWormholeRoot2, 200, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        (bytes32 masterShieldedRoot, uint256 shieldedSize,) = shieldedPool.masterShieldedTree(0);
+        (bytes32 masterWormholeRoot, uint256 wormholeSize,) = shieldedPool.masterWormholeTree(0);
+
+        assertEq(shieldedSize, 2, "Master shielded tree should have 2 leaves after sequential updates");
+        assertEq(wormholeSize, 2, "Master wormhole tree should have 2 leaves after sequential updates");
+        assertTrue(shieldedPool.isMasterShieldedRoot(masterShieldedRoot), "Latest master shielded root should be valid");
+        assertTrue(shieldedPool.isMasterWormholeRoot(masterWormholeRoot), "Latest master wormhole root should be valid");
+    }
+
+    // -------------------------------------------------------------------
+    // Branch chain (chainId != 1): updateMasterTrees with master events
+    // -------------------------------------------------------------------
+
+    function test_updateMasterTrees_branchChain_validMasterEvent() public {
+        // Default chainId is 31337 (branch chain)
+        uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot, masterWormholeRoot, true);
+
+        assertFalse(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot)), "Should not be valid before update");
+        assertFalse(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot)), "Should not be valid before update");
+
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot)), "Master shielded root should be valid after update");
+        assertTrue(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot)), "Master wormhole root should be valid after update");
+    }
+
+    function test_updateMasterTrees_branchChain_revert_chainIdNotOne() public {
+        uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(42, address(shieldedPool), masterShieldedRoot, masterWormholeRoot, true);
+
+        vm.expectRevert("Invalid chain id");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_branchChain_revert_invalidEmittingContract() public {
+        uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(1, address(0xdead), masterShieldedRoot, masterWormholeRoot, true);
+
+        vm.expectRevert("Invalid emitting contract");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_branchChain_revert_invalidTopicsLength() public {
+        bytes memory invalidTopics = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)));
+        bytes memory unindexedData = abi.encode(uint256(100), uint256(1000));
+        crossL2Prover.setValidateEventReturn(1, address(shieldedPool), invalidTopics, unindexedData, true);
+
+        vm.expectRevert("Invalid topics length");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_branchChain_revert_invalidProof() public {
+        uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot, masterWormholeRoot, false);
+
+        vm.expectRevert("Mock configured to return invalid data");
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+    }
+
+    function test_updateMasterTrees_branchChain_multipleUpdates() public {
+        uint256 masterShieldedRoot1 = uint256(keccak256("master shielded root 1")) % SNARK_SCALAR_FIELD;
+        uint256 masterWormholeRoot1 = uint256(keccak256("master wormhole root 1")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        uint256 masterShieldedRoot2 = uint256(keccak256("master shielded root 2")) % SNARK_SCALAR_FIELD;
+        uint256 masterWormholeRoot2 = uint256(keccak256("master wormhole root 2")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        // Both old and new roots should be valid
+        assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot1)), "First shielded root should still be valid");
+        assertTrue(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot1)), "First wormhole root should still be valid");
+        assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot2)), "Second shielded root should be valid");
+        assertTrue(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot2)), "Second wormhole root should be valid");
+    }
+
+    // -------------------------------------------------------------------
+    // Integration: branch chain receives roots and uses them
+    // -------------------------------------------------------------------
+
+    function test_updateMasterTrees_branchChain_rootsUsableForShieldedTransfer() public {
+        // Simulate receiving master tree update on branch chain
+        uint256 newMasterShieldedRoot = uint256(keccak256("new master shielded root")) % SNARK_SCALAR_FIELD;
+        uint256 newMasterWormholeRoot = uint256(keccak256("new master wormhole root")) % SNARK_SCALAR_FIELD;
+        _setupMasterEventProof(1, address(shieldedPool), newMasterShieldedRoot, newMasterWormholeRoot, true);
+        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+
+        // Use the received roots in a shielded transfer
+        bytes32[] memory nullifiers = new bytes32[](2);
+        nullifiers[0] = keccak256(abi.encodePacked("nullifier 1"));
+        nullifiers[1] = keccak256(abi.encodePacked("nullifier 2"));
+        uint256[] memory commitments = new uint256[](2);
+        commitments[0] = uint256(keccak256(abi.encodePacked("commitment 1"))) % SNARK_SCALAR_FIELD;
+        commitments[1] = uint256(keccak256(abi.encodePacked("commitment 2"))) % SNARK_SCALAR_FIELD;
+
+        ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
+            chainId: uint64(block.chainid),
+            wormholeRoot: bytes32(newMasterWormholeRoot),
+            wormholeNullifier: keccak256(abi.encodePacked("wormhole nullifier")),
+            shieldedRoot: bytes32(newMasterShieldedRoot),
+            nullifiers: nullifiers,
+            commitments: commitments,
+            withdrawals: new ShieldedPool.Withdrawal[](0)
+        });
+
+        shieldedPool.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+
+        assertTrue(shieldedPool.wormholeNullifierUsed(shieldedTx.wormholeNullifier), "Wormhole nullifier should be used");
+        assertTrue(shieldedPool.nullifierUsed(nullifiers[0]), "Nullifier 1 should be used");
+        assertTrue(shieldedPool.nullifierUsed(nullifiers[1]), "Nullifier 2 should be used");
+
+        // Branch shielded tree should be updated with new commitments
+        (bytes32 branchShieldedRoot, uint256 branchSize,) = shieldedPool.branchShieldedTree(0);
+        bytes32 expectedBranchRoot = bytes32(poseidon2.hash_2(commitments[0], commitments[1]));
+        assertEq(branchShieldedRoot, expectedBranchRoot, "Branch shielded root should be hash of commitments");
+        assertEq(branchSize, 2, "Branch shielded tree should have 2 entries");
+    }
+
+    // -------------------------------------------------------------------
+    // Master chain: appendWormholeLeaf updates both branch and master trees
+    // -------------------------------------------------------------------
+
+    function test_appendWormholeLeaf_masterChain_updatesMasterWormholeTree() public {
+        vm.chainId(1);
+
+        address from = makeAddr("from");
+        address to = makeAddr("to");
+        _dealWormholeTokens(from, 100e18);
+        vm.prank(from);
+        wormholeVault.transfer(to, 100e18);
+
+        (bytes32 masterWormholeRootBefore, uint256 sizeBefore,) = shieldedPool.masterWormholeTree(0);
+        assertEq(sizeBefore, 0, "Master wormhole tree should start empty");
+
+        vm.prank(screener);
+        shieldedPool.appendWormholeLeaf(1, true);
+
+        (bytes32 masterWormholeRootAfter, uint256 sizeAfter,) = shieldedPool.masterWormholeTree(0);
+        assertEq(sizeAfter, 1, "Master wormhole tree should have 1 leaf after append on master chain");
+        assertTrue(masterWormholeRootAfter != masterWormholeRootBefore, "Master wormhole root should change");
+        assertTrue(shieldedPool.isMasterWormholeRoot(masterWormholeRootAfter), "New master wormhole root should be valid");
+
+        // Branch tree should also be updated
+        (bytes32 branchWormholeRoot, uint256 branchSize,) = shieldedPool.branchWormholeTree(0);
+        assertEq(branchSize, 1, "Branch wormhole tree should have 1 leaf");
+        // On master chain with single leaf, master root equals branch root
+        assertEq(uint256(masterWormholeRootAfter), uint256(branchWormholeRoot), "Master root should equal branch root for single leaf");
+    }
+
+    function test_appendManyWormholeLeaves_masterChain_updatesMasterWormholeTree() public {
+        vm.chainId(1);
+
+        address from = makeAddr("from");
+        address to = makeAddr("to");
+        _dealWormholeTokens(from, 100e18);
+        vm.prank(from);
+        wormholeVault.transfer(to, 100e18);
+
+        IShieldedPool.WormholePreCommitment[] memory nodes = new IShieldedPool.WormholePreCommitment[](2);
+        nodes[0] = IShieldedPool.WormholePreCommitment({entryId: 0, approved: false});
+        nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
+
+        vm.prank(screener);
+        shieldedPool.appendManyWormholeLeaves(nodes);
+
+        (bytes32 masterWormholeRoot, uint256 masterSize,) = shieldedPool.masterWormholeTree(0);
+        (bytes32 branchWormholeRoot, uint256 branchSize,) = shieldedPool.branchWormholeTree(0);
+
+        assertEq(masterSize, 1, "Master wormhole tree should have 1 leaf (the branch root)");
+        assertEq(branchSize, 2, "Branch wormhole tree should have 2 leaves");
+        assertTrue(shieldedPool.isMasterWormholeRoot(masterWormholeRoot), "Master wormhole root should be valid");
+        // Master root equals branch root (single leaf in master tree)
+        assertEq(uint256(masterWormholeRoot), uint256(branchWormholeRoot), "Master root should equal branch root");
+    }
+
+    // -------------------------------------------------------------------
+    // Master chain: shieldedTransfer updates both branch and master trees
+    // -------------------------------------------------------------------
+
+    function test_shieldedTransfer_masterChain_updatesMasterShieldedTree() public {
+        vm.chainId(1);
+
+        address from = makeAddr("from");
+        address to = makeAddr("to");
+        _dealWormholeTokens(from, 100e18);
+        vm.prank(from);
+        wormholeVault.transfer(to, 100e18);
+
+        vm.prank(screener);
+        shieldedPool.appendWormholeLeaf(1, true);
+
+        (bytes32 wormholeRoot,,) = shieldedPool.masterWormholeTree(0);
+        (bytes32 shieldedRoot,,) = shieldedPool.masterShieldedTree(0);
+
+        bytes32[] memory nullifiers = new bytes32[](2);
+        nullifiers[0] = keccak256(abi.encodePacked("nullifier 1"));
+        nullifiers[1] = keccak256(abi.encodePacked("nullifier 2"));
+        uint256[] memory commitments = new uint256[](2);
+        commitments[0] = uint256(keccak256(abi.encodePacked("commitment 1"))) % SNARK_SCALAR_FIELD;
+        commitments[1] = uint256(keccak256(abi.encodePacked("commitment 2"))) % SNARK_SCALAR_FIELD;
+
+        ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
+            chainId: 1,
+            wormholeRoot: wormholeRoot,
+            wormholeNullifier: keccak256(abi.encodePacked("wormhole nullifier")),
+            shieldedRoot: shieldedRoot,
+            nullifiers: nullifiers,
+            commitments: commitments,
+            withdrawals: new ShieldedPool.Withdrawal[](0)
+        });
+
+        shieldedPool.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+
+        // Master shielded tree should be updated on master chain
+        (bytes32 masterShieldedRootAfter, uint256 masterShieldedSize,) = shieldedPool.masterShieldedTree(0);
+        assertTrue(masterShieldedRootAfter != shieldedRoot, "Master shielded root should change after transfer on master chain");
+        assertEq(masterShieldedSize, 1, "Master shielded tree should have 1 leaf (the branch shielded root)");
+        assertTrue(shieldedPool.isMasterShieldedRoot(masterShieldedRootAfter), "New master shielded root should be valid");
+
+        // Branch shielded tree should also be updated
+        (bytes32 branchShieldedRoot, uint256 branchSize,) = shieldedPool.branchShieldedTree(0);
+        bytes32 expectedBranchRoot = bytes32(poseidon2.hash_2(commitments[0], commitments[1]));
+        assertEq(branchShieldedRoot, expectedBranchRoot, "Branch shielded root should be hash of commitments");
+        assertEq(branchSize, 2, "Branch shielded tree should have 2 commitment leaves");
+        // Master root equals branch root (single leaf in master tree)
+        assertEq(uint256(masterShieldedRootAfter), uint256(branchShieldedRoot), "Master root should equal branch root for single leaf");
+    }
+
+    function test_shieldedTransfer_masterChain_emitsMasterTreesUpdated() public {
+        vm.chainId(1);
+
+        address from = makeAddr("from");
+        address to = makeAddr("to");
+        _dealWormholeTokens(from, 100e18);
+        vm.prank(from);
+        wormholeVault.transfer(to, 100e18);
+
+        vm.prank(screener);
+        shieldedPool.appendWormholeLeaf(1, true);
+
+        (bytes32 wormholeRoot,,) = shieldedPool.masterWormholeTree(0);
+        (bytes32 shieldedRoot,,) = shieldedPool.masterShieldedTree(0);
+
+        bytes32[] memory nullifiers = new bytes32[](2);
+        nullifiers[0] = keccak256(abi.encodePacked("nullifier 1"));
+        nullifiers[1] = keccak256(abi.encodePacked("nullifier 2"));
+        uint256[] memory commitments = new uint256[](2);
+        commitments[0] = uint256(keccak256(abi.encodePacked("commitment 1"))) % SNARK_SCALAR_FIELD;
+        commitments[1] = uint256(keccak256(abi.encodePacked("commitment 2"))) % SNARK_SCALAR_FIELD;
+
+        ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
+            chainId: 1,
+            wormholeRoot: wormholeRoot,
+            wormholeNullifier: keccak256(abi.encodePacked("wormhole nullifier")),
+            shieldedRoot: shieldedRoot,
+            nullifiers: nullifiers,
+            commitments: commitments,
+            withdrawals: new ShieldedPool.Withdrawal[](0)
+        });
+
+        // Compute expected master shielded root (branch root is hash of 2 commitments, and it's the only master leaf)
+        uint256 expectedBranchShieldedRoot = poseidon2.hash_2(commitments[0], commitments[1]);
+
+        vm.expectEmit(true, true, false, true, address(shieldedPool));
+        emit ShieldedPool.MasterTreesUpdated(expectedBranchShieldedRoot, uint256(wormholeRoot), block.number, block.timestamp);
+        shieldedPool.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+    }
 }
