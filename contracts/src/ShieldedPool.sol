@@ -397,7 +397,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             bytes memory topics,
             bytes memory unindexedData
         ) = crossL2Prover.validateEvent(proof);
-        require(chainId != 1, "Branch tree cannot be master chain");
+        require(chainId != 1 && block.chainid == 1, "Branch tree cannot be master chain");
         require(emittingContract == address(this), "Invalid emitting contract");
         require(topics.length == 96, "Invalid topics length");
         bytes32[] memory topicsArray = new bytes32[](3);
@@ -411,6 +411,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
                 )
             }
         }
+        require(topicsArray[0] == BranchTreesUpdated.selector, "Invalid event signature");
         bytes32 shieldedTreeRoot = topicsArray[1];
         bytes32 wormholeTreeRoot = topicsArray[2];
 
@@ -424,14 +425,15 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     }
 
     // TODO: Verify and extract master tree event log from master chain
-    function _verifyMasterTreeEvent(bytes calldata proof) internal view returns (bytes32 masterShieldedRoot, bytes32 masterWormholeRoot) {
+    function _verifyMasterTreeEvent(bytes calldata proof) internal returns (bytes32 masterShieldedRoot, bytes32 masterWormholeRoot) {
         // TODO: Implement
         (
             uint32 chainId,
             address emittingContract,
             bytes memory topics,
+            bytes memory unindexedData
         ) = crossL2Prover.validateEvent(proof);
-        require(chainId == 1, "Invalid chain id");
+        require(chainId == 1 && block.chainid != 1, "Invalid chain id");
         require(emittingContract == address(this), "Invalid emitting contract");
         require(topics.length == 96, "Invalid topics length");
         bytes32[] memory topicsArray = new bytes32[](3);
@@ -445,27 +447,37 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
                 )
             }
         }
-        bytes32 shieldedTreeRoot = topicsArray[1];
-        bytes32 wormholeTreeRoot = topicsArray[2];
-        return (shieldedTreeRoot, wormholeTreeRoot);
+        require(topicsArray[0] == MasterTreesUpdated.selector, "Invalid event signature");
+        masterShieldedRoot = topicsArray[1];
+        masterWormholeRoot = topicsArray[2];
+
+        (uint256 blockNumber,) = abi.decode(unindexedData, (uint256, uint256));
+        require(blockNumber > _lastBlockNumbers[chainId], "Master tree event is not new");
+        _lastBlockNumbers[chainId] = blockNumber;
+
+        return (masterShieldedRoot, masterWormholeRoot);
     }
 
     function _insertMasterTrees(uint256 branchShieldedRoot, uint256 branchWormholeRoot) internal returns (uint256 masterShieldedRoot, uint256 masterWormholeRoot) {
         // Insert branch shielded root into master shielded tree
-        if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
-            currentShieldedTreeId++;
-            _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
+        if (!_masterShieldedTrees[currentShieldedTreeId].has(branchShieldedRoot)) {
+            if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
+                currentShieldedTreeId++;
+                _initializeMerkleTree(_masterShieldedTrees[currentShieldedTreeId]);
+            }
+            masterShieldedRoot = _masterShieldedTrees[currentShieldedTreeId].insert(branchShieldedRoot);
+            isMasterShieldedRoot[bytes32(masterShieldedRoot)] = true;
         }
-        masterShieldedRoot = _masterShieldedTrees[currentShieldedTreeId].insert(branchShieldedRoot);
-        isMasterShieldedRoot[bytes32(masterShieldedRoot)] = true;
 
         // Insert branch wormhole root into master wormhole tree
-        if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
+        if (!_masterWormholeTrees[currentWormholeTreeId].has(branchWormholeRoot)) {
+            if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
             currentWormholeTreeId++;
-            _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
+                _initializeMerkleTree(_masterWormholeTrees[currentWormholeTreeId]);
+            }
+            masterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(branchWormholeRoot);
+            isMasterWormholeRoot[bytes32(masterWormholeRoot)] = true;
         }
-        masterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(branchWormholeRoot);
-        isMasterWormholeRoot[bytes32(masterWormholeRoot)] = true;
     }
 
     function _formatPublicInputs(ShieldedTx memory shieldedTx, bytes32 messageHash) internal view returns (bytes32[] memory inputs) {
