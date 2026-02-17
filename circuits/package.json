@@ -7,6 +7,7 @@
     "build": "for f in circuits/main/*; do if [ -d \"$f\" ]; then (cd \"$f\" && nargo compile && nargo build); fi; done",
     "export": "for f in circuits/main/*; do if [ -d \"$f\" ]; then (cd \"$f\" && bb write_vk -t evm -s ultra_honk -b ./target/$(basename \"$f\").json -o ./target && bb write_solidity_verifier -t evm -s ultra_honk -k ./target/vk -o ./target/verifier.sol --optimized); fi; done",
     "export-app": "mkdir -p ../webapp/artifacts/circuits && for f in circuits/main/*; do if [ -d \"$f\" ]; then (cd \"$f\" && cp ./target/$(basename \"$f\").json ../../../../webapp/artifacts/circuits/$(basename \"$f\").json); fi; done",
+    "export-contracts": "mkdir -p ../contracts/src/verifiers && bun run scripts/generate-solidity-verifiers.ts && for f in circuits/main/*; do if [ -d \"$f\" ]; then (cd \"$f\" && cp ./target/$(basename \"$f\")_verifier.sol ../../../../contracts/src/verifiers/$(basename \"$f\")_verifier.sol); fi; done",
     "test": "bun test tests/*"
   },
   "devDependencies": {
