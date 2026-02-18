@@ -17,5 +17,5 @@ export const SUBGRAPH_URL_ARB_SEPOLIA = process.env.NEXT_PUBLIC_SUBGRAPH_URL_ARB
 export const SUBGRAPH_URL_OP_SEPOLIA = process.env.NEXT_PUBLIC_SUBGRAPH_URL_OP_SEPOLIA!;
 export const SUBGRAPH_URL_BASE_SEPOLIA = process.env.NEXT_PUBLIC_SUBGRAPH_URL_BASE_SEPOLIA!;
 
-export const WORMHOLE_TOKENS = process.env.NEXT_PUBLIC_WORMHOLE_TOKENS!.split(",") as Address[];
-export const WORMHOLE_TOKEN_TYPES = process.env.NEXT_PUBLIC_WORMHOLE_TOKEN_TYPES!.split(",") as WormholeTokenType[];
+export const WORMHOLE_TOKENS = (process.env.NEXT_PUBLIC_WORMHOLE_TOKENS?.split(",") || []) as Address[];
+export const WORMHOLE_TOKEN_TYPES = (process.env.NEXT_PUBLIC_WORMHOLE_TOKEN_TYPES?.split(",") || []) as WormholeTokenType[];

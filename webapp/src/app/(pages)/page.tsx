@@ -13,7 +13,7 @@ export default function Home() {
             <h2 className="text-lg font-semibold">Available Assets</h2>
             <p className="text-sm text-muted-foreground">Assets that support zk-wormholes and shielded transfers.</p>
           </div>
-          <CreateAssetDialog
+          {/* <CreateAssetDialog
             trigger={
               <Button 
                 className="px-6"
@@ -22,7 +22,7 @@ export default function Home() {
                 Create Asset
               </Button>
             }
-          />
+          /> */}
         </div>
         <AssetsTable />
       </div>
