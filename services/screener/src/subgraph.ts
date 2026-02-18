@@ -1,8 +1,9 @@
 import type { Address } from "viem";
-import { SUBGRAPH_URL } from "./env";
+import { getChain } from "./configs";
 
-export async function subgraphQuery<T>(queryString: string, variables: Record<string, unknown>): Promise<T> {
-  const response = await fetch(SUBGRAPH_URL, {
+export async function subgraphQuery<T>(queryString: string, variables: Record<string, unknown>, chainId: number): Promise<T> {
+  const url = getChain(chainId).subgraphUrl;
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -13,14 +14,13 @@ export async function subgraphQuery<T>(queryString: string, variables: Record<st
 
   const json = (await response.json()) as { data?: T | null; errors?: unknown[] };
   if (!json.data || json.errors) {
-    throw new Error(`GraphQL error: ${JSON.stringify(json.errors ?? "No data returned")}`);
+    throw new Error(`Subgraph error (chain ${chainId}): ${JSON.stringify(json.errors ?? "No data returned")}`);
   }
   return json.data;
 }
 
-export async function queryPendingWormholeEntries() {
-  const query = 
-  `
+export async function queryPendingWormholeEntries(chainId: number) {
+  const query = `
     query WormholeEntriesPending($orderBy: String!, $orderDirection: String!, $first: Int!) {
       wormholeEntries(
         where: { submitted: false },
@@ -52,5 +52,5 @@ export async function queryPendingWormholeEntries() {
     orderBy: "blockTimestamp",
     orderDirection: "asc",
     first: 100,
-  });
+  }, chainId);
 }

@@ -1,60 +1,69 @@
 import { createWalletClient, getAddress, http, publicActions } from "viem";
-import { queryPendingWormholeEntries } from "../src/subgraph";
-import { CHAIN } from "../src/configs";
 import { privateKeyToAccount } from "viem/accounts";
-import { CHAIN_RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY } from "../src/env";
-import KamuiABI from "../../../contracts/out/Kamui.sol/Kamui.json";
+import { queryPendingWormholeEntries } from "../src/subgraph";
+import { ALL_CHAIN_IDS, getChain } from "../src/configs";
+import { PRIVATE_KEY, CONTRACT_ADDRESS } from "../src/env";
+import ShieldedPoolAbi from "../../../contracts/out/ShieldedPool.sol/ShieldedPool.json";
 import LeanIMTAbi from "../../../contracts/out/LeanIMT.sol/LeanIMT.json";
 
-async function main() {
-  console.log("\nQuerying pending wormhole entries...");
+const account = privateKeyToAccount(PRIVATE_KEY);
 
-  const { wormholeEntries } = await queryPendingWormholeEntries();
+async function approveOnChain(chainId: number) {
+  const { label, chain, rpcUrl } = getChain(chainId);
+
+  console.log(`\n[${ label }] Querying pending wormhole entries...`);
+
+  const { wormholeEntries } = await queryPendingWormholeEntries(chainId);
 
   if (!wormholeEntries.length) {
-    console.log("\nNo pending wormhole entries found");
-    console.log("Exiting...");
+    console.log(`[${label}] No pending entries, skipping.`);
     return;
   }
 
-  console.log(`\nFound ${wormholeEntries.length} pending wormhole entries`);
-
-  console.log("\nApproving all pending wormhole entries...");
-
-  const account = privateKeyToAccount(PRIVATE_KEY as `0x${string}`);
-
-  console.log(`\nUsing account: ${account.address}`);
+  console.log(`[${label}] Found ${wormholeEntries.length} pending entries`);
 
   const client = createWalletClient({
     account,
-    chain: CHAIN,
-    transport: http(CHAIN_RPC_URL),
+    chain,
+    transport: http(rpcUrl),
   }).extend(publicActions);
 
-  console.log("\nApproving entries...");
-
-  const approvals = wormholeEntries.slice(4).map((entry) => ({
+  const approvals = wormholeEntries.map((entry) => ({
     entryId: entry.entryId,
     approved: true,
   }));
 
-  console.log(`\nSubmitting onchain...`);
+  console.log(`[${label}] Submitting ${approvals.length} approvals onchain...`);
 
   const hash = await client.writeContract({
     address: getAddress(CONTRACT_ADDRESS),
-    abi: [...KamuiABI.abi, ...LeanIMTAbi.abi],
+    abi: [...ShieldedPoolAbi.abi, ...LeanIMTAbi.abi],
     functionName: "appendManyWormholeLeaves",
     args: [approvals],
   });
 
-  console.log(`\nTransaction hash: ${hash}`);
+  console.log(`[${label}] tx hash: ${hash}`);
+  console.log(`[${label}] Waiting for confirmation...`);
 
-  console.log("\n⏳ Waiting for confirmation...");
   await client.waitForTransactionReceipt({ hash });
 
-  console.log("✅ Transaction confirmed");
+  console.log(`[${label}] Confirmed. ${approvals.length} entries approved.`);
+}
 
-  console.log("\nEntries have been approved and committed to the wormhole tree");
+async function main() {
+  console.log(`Account: ${account.address}`);
+  console.log(`Contract: ${CONTRACT_ADDRESS}`);
+  console.log(`Chains: ${ALL_CHAIN_IDS.map(id => getChain(id).label).join(", ")}`);
+
+  for (const chainId of ALL_CHAIN_IDS) {
+    try {
+      await approveOnChain(chainId);
+    } catch (err) {
+      console.error(`[${getChain(chainId).label}] Failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  console.log("\nDone.");
 }
 
 main().catch(console.error).finally(() => process.exit(0));
