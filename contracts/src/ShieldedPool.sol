@@ -62,6 +62,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     uint8 public constant ROLLBACK_TREE_DEPTH = 32;
 
+    uint64 public constant MASTER_CHAIN_ID = 1;
+
     bytes32 public constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount)");
     bytes32 public constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount)");
 
@@ -225,7 +227,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         }
         emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _branchWormholeTrees[currentWormholeTreeId].size - 1, assetId, entry.from, entry.to, entry.amount, approved);
 
-        if (block.chainid == 1) {
+        if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch wormhole root into master wormhole tree
             if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
                 currentWormholeTreeId++;
@@ -273,7 +275,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         unchecked {
             totalWormholeCommitments += nodes.length;
         }
-        if (block.chainid == 1) {
+        if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch wormhole root into master wormhole tree
             if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
                 currentWormholeTreeId++;
@@ -333,7 +335,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit WormholeNullifier(shieldedTx.wormholeNullifier);
         emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
 
-        if (block.chainid == 1) {
+        if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch shielded root into master shielded tree
             if (_isMerkleTreeFull(_masterShieldedTrees[currentShieldedTreeId])) {
                 currentShieldedTreeId++;
@@ -376,7 +378,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     }
 
     function updateMasterTrees(bytes calldata proof) external {
-        if (block.chainid == 1) {
+        if (block.chainid == MASTER_CHAIN_ID) {
             (bytes32 branchShieldedRoot, bytes32 branchWormholeRoot) = _verifyAndExtractBranchTreeEvent(proof);
             (uint256 masterShieldedRoot, uint256 masterWormholeRoot) = _insertMasterTrees(uint256(branchShieldedRoot), uint256(branchWormholeRoot));
             emit MasterTreesUpdated(masterShieldedRoot, masterWormholeRoot, block.number, block.timestamp);
@@ -397,7 +399,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             bytes memory topics,
             bytes memory unindexedData
         ) = crossL2Prover.validateEvent(proof);
-        require(chainId != 1 && block.chainid == 1, "Branch tree cannot be master chain");
+        require(chainId != MASTER_CHAIN_ID && block.chainid == MASTER_CHAIN_ID, "Branch tree cannot be master chain");
         require(emittingContract == address(this), "Invalid emitting contract");
         require(topics.length == 96, "Invalid topics length");
         bytes32[] memory topicsArray = new bytes32[](3);
@@ -433,7 +435,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             bytes memory topics,
             bytes memory unindexedData
         ) = crossL2Prover.validateEvent(proof);
-        require(chainId == 1 && block.chainid != 1, "Invalid chain id");
+        require(chainId == MASTER_CHAIN_ID && block.chainid != MASTER_CHAIN_ID, "Invalid chain id");
         require(emittingContract == address(this), "Invalid emitting contract");
         require(topics.length == 96, "Invalid topics length");
         bytes32[] memory topicsArray = new bytes32[](3);
