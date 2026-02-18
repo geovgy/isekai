@@ -1,13 +1,13 @@
 {
-  "name": "@kamui/subgraph",
+  "name": "@isekai/subgraph",
   "private": true,
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
-    "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ kamui-testnet",
-    "create-local": "graph create --node http://localhost:8020/ kamui-testnet",
-    "remove-local": "graph remove --node http://localhost:8020/ kamui-testnet",
-    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 --network localhost kamui-testnet",
+    "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ isekai-testnet",
+    "create-local": "graph create --node http://localhost:8020/ isekai-testnet",
+    "remove-local": "graph remove --node http://localhost:8020/ isekai-testnet",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 --network localhost isekai-testnet",
     "test": "graph test"
   },
   "dependencies": {
