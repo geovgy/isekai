@@ -146,7 +146,7 @@ export function WormholesTable() {
   const pendingEntriesByChain = useMemo(() => {
     const grouped: Record<number, bigint[]> = {};
     for (const e of entries?.filter((e) => e.status === "pending" || !e.status) ?? []) {
-      const chainId = e.chainId;
+      const chainId = e.srcChainId;
       if (!grouped[chainId]) grouped[chainId] = [];
       grouped[chainId].push(BigInt(e.entryId));
     }
@@ -166,7 +166,7 @@ export function WormholesTable() {
             orderDirection: "desc",
             chainId,
           });
-          return data.wormholeEntries;
+          return data.wormholeEntries.map(e => ({ ...e, chainId }));
         })
       );
       return { wormholeEntries: results.flat() };
@@ -182,7 +182,7 @@ export function WormholesTable() {
       for (const sgEntry of subgraphData!.wormholeEntries) {
         if (sgEntry.submitted && sgEntry.commitment) {
           try {
-            await shieldedPool!.updateWormholeEntryCommitment(sgEntry.entryId.toString(), {
+            await shieldedPool!.updateWormholeEntryCommitment(sgEntry.chainId, sgEntry.entryId.toString(), {
               treeNumber: Number(sgEntry.commitment.treeId),
               leafIndex: Number(sgEntry.commitment.leafIndex),
               status: sgEntry.commitment.approved ? "approved" : "rejected",
@@ -259,11 +259,11 @@ export function WormholesTable() {
             >
               <TableCell className="font-mono text-sm pl-6">#{entry.entryId}</TableCell>
               <TableCell>
-                <ChainBadge chainId={entry.chainId} />
+                <ChainBadge chainId={entry.srcChainId} />
               </TableCell>
               <TableCell>
-                {entry.destinationChainId
-                  ? <ChainBadge chainId={entry.destinationChainId} />
+                {entry.dstChainId
+                  ? <ChainBadge chainId={entry.dstChainId} />
                   : <span className="text-xs text-muted-foreground">—</span>}
               </TableCell>
               <TableCell>
@@ -285,7 +285,7 @@ export function WormholesTable() {
                   <span className="font-mono font-medium">
                     <EthAddress address={entry.entry.to} />
                   </span>
-                  <span className="text-xs text-muted-foreground">via send to <EthAddress address={getWormholeBurnAddress(entry.entry.to, BigInt(entry.entry.wormhole_secret))} /></span>
+                  <span className="text-xs text-muted-foreground">via send to <EthAddress address={getWormholeBurnAddress(BigInt(entry.srcChainId), entry.entry.to, BigInt(entry.entry.wormhole_secret))} /></span>
                 </div>
               </TableCell>
               <TableCell className="text-right">

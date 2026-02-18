@@ -5,6 +5,7 @@ import { randomBytes } from "@aztec/bb.js";
 import { getRandomBlinding } from "../joinsplits";
 
 export function createShieldedTransferOutputNotes(args: {
+  chainId: bigint,
   sender: Address,
   receiver: Address,
   amount: bigint,
@@ -14,7 +15,7 @@ export function createShieldedTransferOutputNotes(args: {
     shielded?: NoteDBShieldedEntry[],
   },
 }): OutputNote[] {
-  const { sender, receiver, amount, transferType, notes } = args
+  const { chainId, sender, receiver, amount, transferType, notes } = args
 
   const totalAmountIn = 
     (notes.shielded?.reduce((total, note) => total + BigInt(note.note.amount), BigInt(0)) ?? 0n)
@@ -25,8 +26,8 @@ export function createShieldedTransferOutputNotes(args: {
   }
 
   return [
-    { recipient: sender, blinding: getRandomBlinding(), amount: totalAmountIn - amount, transfer_type: TransferType.TRANSFER },
-    { recipient: receiver, blinding: getRandomBlinding(), amount, transfer_type: transferType },
+    { chain_id: chainId, recipient: sender, blinding: getRandomBlinding(), amount: totalAmountIn - amount, transfer_type: TransferType.TRANSFER },
+    { chain_id: chainId, recipient: receiver, blinding: getRandomBlinding(), amount, transfer_type: transferType },
   ]
 }
 
@@ -42,7 +43,7 @@ export async function getShieldedTransferInputEntries(
   }
 ): Promise<{ wormhole: NoteDBWormholeEntry | undefined, shielded: NoteDBShieldedEntry[] }> {
   const wormholeDeposits = (await _db.getWormholeNotes()).filter(w => (
-    w.chainId === args.chainId
+    w.srcChainId === args.chainId
     && w.status === "approved"
     && !w.usedAt
     && isAddressEqual(w.entry.token, args.token)
@@ -59,7 +60,7 @@ export async function getShieldedTransferInputEntries(
   }
 
   const shieldedNotes = (await _db.getShieldedNotes()).filter(s => (
-    s.chainId === args.chainId
+    s.srcChainId === args.chainId
     && s.status === "available"
     && isAddressEqual(s.note.asset, args.token)
     && BigInt(s.note.assetId ?? "0") === BigInt(args.tokenId ?? "0")

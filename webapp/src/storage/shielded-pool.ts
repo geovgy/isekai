@@ -9,7 +9,7 @@ import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormhole
 import { signTypedData, writeContract } from "wagmi/actions"
 import { Config } from "wagmi"
 import { SHIELDED_POOL_CONTRACT_ADDRESS } from "../env"
-import { getChainConfig, MASTER_CHAIN_ID } from "../config"
+import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "../config"
 import { MERKLE_TREE_DEPTH } from "../constants"
 import { InputMap } from "@noir-lang/noir_js"
 
@@ -53,12 +53,14 @@ export class ShieldedPool {
   }
 
   async wormholeTransfer(config: Config, {
+    chainId,
     to,
     tokenType,
     token,
     tokenId,
     amount,
   }: {
+    chainId: number,
     to: Address,
     tokenType?: "erc20",
     token: Address,
@@ -78,7 +80,10 @@ export class ShieldedPool {
     // }
 
     const wormholeSecret = getRandomBlinding();
-    const burnAddress = getWormholeBurnAddress(to, wormholeSecret);
+    if (!SUPPORTED_CHAIN_IDS.includes(chainId)) {
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+    }
+    const burnAddress = getWormholeBurnAddress(BigInt(chainId), to, wormholeSecret);
 
     // TODO: Check token type and use the appropriate ABI
     const tokenAbi = erc20Abi;
@@ -98,20 +103,20 @@ export class ShieldedPool {
   }
 
   async parseAndSaveWormholeEntry(args: {
-    chainId: number,
-    destinationChainId?: number,
+    srcChainId: number,
+    dstChainId: number,
     receiver: Address,
     wormholeSecret: bigint,
     receipt: TransactionReceipt,
   }) {
     const { entryId, token, from, to, id, amount } = this.parseWormholeEntryLogFromReceipt(args.receipt)
     const wormholeEntry: NoteDBWormholeEntry = {
-      id: entryId.toString(),
+      id: `${args.srcChainId}:${entryId}`,
       entryId: entryId.toString(),
       treeNumber: 0,
       leafIndex: 0,
-      chainId: args.chainId,
-      destinationChainId: args.destinationChainId,
+      srcChainId: args.srcChainId,
+      dstChainId: args.dstChainId,
       entry: {
         to: args.receiver,
         from,
@@ -123,7 +128,7 @@ export class ShieldedPool {
       status: "pending",
       blockNumber: Number(args.receipt.blockNumber),
       blockTimestamp: Math.floor(Date.now() / 1000),
-      masterTreeStatus: args.chainId === MASTER_CHAIN_ID ? "included" : "pending",
+      masterTreeStatus: args.srcChainId === MASTER_CHAIN_ID ? "included" : "pending",
     }
     await this._db.checkAndAddNote("wormhole_note", wormholeEntry)
     return wormholeEntry
@@ -180,14 +185,15 @@ export class ShieldedPool {
     }, BigInt(0));
   }
 
-  async updateWormholeEntryCommitment(entryId: string, update: {
+  async updateWormholeEntryCommitment(chainId: number, entryId: string, update: {
     treeNumber: number,
     leafIndex: number,
     status: NoteDBWormholeEntry["status"],
   }) {
-    const entry = await this._db.getNote("wormhole_note", entryId) as NoteDBWormholeEntry | undefined
+    const id = `${chainId}-${entryId}`
+    const entry = await this._db.getNote("wormhole_note", id) as NoteDBWormholeEntry | undefined
     if (!entry) {
-      throw new Error(`Wormhole entry with id ${entryId} not found in DB`)
+      throw new Error(`Wormhole entry with id ${id} not found in DB`)
     }
     const updated: NoteDBWormholeEntry = {
       ...entry,
@@ -200,7 +206,7 @@ export class ShieldedPool {
   }
 
   async parseAndSaveShieldedTransfer(args: {
-    chainId: number,
+    srcChainId: number,
     token: Address,
     tokenId?: bigint,
     receipt: TransactionReceipt,
@@ -253,10 +259,11 @@ export class ShieldedPool {
           ? toHex(note.recipient) as Address
           : note.recipient
         return {
-          id: `${args.chainId}:${Number(treeId)}:${leafIndex}`,
+          id: `${args.srcChainId}:${Number(treeId)}:${leafIndex}`,
           treeNumber: Number(treeId),
           leafIndex,
-          chainId: args.chainId,
+          srcChainId: args.srcChainId,
+          dstChainId: Number(note.chain_id),
           from: this.account,
           note: {
             account: recipient,
@@ -270,7 +277,7 @@ export class ShieldedPool {
           committedAt: now,
           blockNumber: Number(args.receipt.blockNumber),
           blockTimestamp: Math.floor(Date.now() / 1000),
-          masterTreeStatus: args.chainId === MASTER_CHAIN_ID ? "included" : "pending",
+          masterTreeStatus: args.srcChainId === MASTER_CHAIN_ID ? "included" : "pending",
         }
       })
 
@@ -289,7 +296,8 @@ export class ShieldedPool {
   }
 
   async signShieldedTransfer(config: Config, args: {
-    chainId: number,
+    srcChainId: number,
+    dstChainId: number,
     receiver: Address,
     token: Address,
     tokenId?: bigint,
@@ -298,60 +306,68 @@ export class ShieldedPool {
   }) {
     const assetId = getAssetId(args.token, args.tokenId);
     const transferType = args.unshield ? TransferType.WITHDRAWAL : TransferType.TRANSFER;
-    const { wormhole, shielded } = await getShieldedTransferInputEntries(this._db, { sender: this.account, ...args })
+    const { wormhole, shielded } = await getShieldedTransferInputEntries(this._db, { chainId: args.srcChainId, sender: this.account, receiver: args.receiver, token: args.token, tokenId: args.tokenId, amount: args.amount })
     const { wormholeTree, shieldedTree } = await getMerkleTrees({
       wormholeTreeId: BigInt(wormhole?.treeNumber ?? 0),
       shieldedTreeId: BigInt(shielded[0]?.treeNumber ?? 0),
-      chainId: args.chainId,
+      chainId: args.srcChainId,
     })
 
-    console.log({
-      wormhole: wormhole,
-      shielded: shielded.map(s => s.note),
-    })
+    // Build master trees from branch roots
+    // TODO: Query actual master tree leaves from all chains; for now use single branch root
+    const shieldedMasterTree = getMerkleTree([shieldedTree.root])
+    const wormholeMasterTree = getMerkleTree([wormholeTree.root])
+    const masterShieldedProof = shieldedMasterTree.generateProof(0)
+    const masterWormholeProof = wormholeMasterTree.generateProof(0)
 
-    console.log({
-      wormholeRoot: wormholeTree.root,
-      shieldedRoot: shieldedTree.root,
-      wormholeTreeId: wormhole?.treeNumber,
-      shieldedTreeId: shielded[0]?.treeNumber,
-      wormholeLeaves: wormholeTree.leaves,
-      shieldedLeaves: shieldedTree.leaves,
-      size: shieldedTree.size,
-      leafIndex: wormhole?.leafIndex,
-    });
     let wormholeDeposit: WormholeDeposit | undefined = undefined;
     let wormholePseudoSecret: bigint | undefined = undefined;
     if (wormhole) {
       const wormholeProof = wormholeTree.generateProof(wormhole.leafIndex);
       wormholeDeposit = {
+        chain_id: BigInt(wormhole.dstChainId),
+        entry_id: BigInt(wormhole.entryId),
         recipient: wormhole.entry.to,
         wormhole_secret: BigInt(wormhole.entry.wormhole_secret),
         asset_id: assetId,
         sender: wormhole.entry.from,
         amount: BigInt(wormhole.entry.amount),
-        leaf_index: BigInt(wormholeProof.index),
-        leaf_siblings: wormholeProof.siblings,
+        master_root: wormholeMasterTree.root,
+        branch_root: wormholeTree.root,
+        branch_index: BigInt(wormholeProof.index),
+        branch_siblings: wormholeProof.siblings,
+        master_index: BigInt(masterWormholeProof.index),
+        master_siblings: masterWormholeProof.siblings,
         is_approved: wormhole.status === "approved",
       };
     } else {
       wormholePseudoSecret = getRandomBlinding();
     }
+    
     const inputNotes: InputNote[] = shielded.map(input => {
       const proof = shieldedTree.generateProof(input.leafIndex)
       return {
+        chain_id: BigInt(input.dstChainId),
         blinding: BigInt(input.note.blinding),
         amount: BigInt(input.note.amount),
-        leaf_index: BigInt(proof.index),
-        leaf_siblings: proof.siblings,
+        branch_index: BigInt(proof.index),
+        branch_siblings: proof.siblings,
+        branch_root: shieldedTree.root,
+        master_index: BigInt(masterShieldedProof.index),
+        master_siblings: masterShieldedProof.siblings,
       }
-    }).concat(Array.from({ length: 2 - shielded.length }).map(() => ({ // TODO: Use more efficient way to generate dummy notes
-      blinding: getRandomBlinding(),
-      amount: BigInt(0),
-      leaf_index: BigInt(0),
-      leaf_siblings: Array(MERKLE_TREE_DEPTH).fill(BigInt(0)),
+    }).concat(Array.from({ length: 2 - shielded.length }).map(() => ({
+      chain_id: BigInt(args.srcChainId),
+      blinding: 0n,
+      amount: 0n,
+      branch_index: 0n,
+      branch_siblings: Array(MERKLE_TREE_DEPTH).fill(0n),
+      branch_root: shieldedTree.root,
+      master_index: BigInt(masterShieldedProof.index),
+      master_siblings: masterShieldedProof.siblings,
     })));
     const outputNotes = createShieldedTransferOutputNotes({
+      chainId: BigInt(args.dstChainId),
       sender: this.account, 
       receiver: args.receiver, 
       amount: args.amount, 
@@ -360,12 +376,12 @@ export class ShieldedPool {
     })
 
     const shieldedTxStruct = toShieldedTxStruct({
-      chainId: BigInt(args.chainId),
+      chainId: BigInt(args.srcChainId),
       sender: this.account,
       token: args.token,
       tokenId: args.tokenId,
-      shieldedRoot: shieldedTree.root ?? 0n,
-      wormholeRoot: wormholeTree.root ?? 0n,
+      shieldedRoot: shieldedMasterTree.root ?? 0n,
+      wormholeRoot: wormholeMasterTree.root ?? 0n,
       wormholeDeposit,
       wormholePseudoSecret,
       inputs: inputNotes,
@@ -376,8 +392,8 @@ export class ShieldedPool {
       domain: {
         name: "ShieldedPool",
         version: "1",
-        chainId: args.chainId,
-        verifyingContract: getAddress(getChainConfig(args.chainId).contractAddress),
+        chainId: args.srcChainId,
+        verifyingContract: getAddress(getChainConfig(args.srcChainId).contractAddress),
       },
       types: {
         ShieldedTx: [
@@ -420,19 +436,25 @@ export class ShieldedPool {
     const circuitInputs: InputMap = {
       pub_key_x: [...hexToBytes(publicKey).slice(1, 33)],
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
-      signature: [...hexToBytes(signature).slice(0, 64)], // Remove recovery byte (v)
+      signature: [...hexToBytes(signature).slice(0, 64)],
       hashed_message: [...hexToBytes(messageHash)],
-      shielded_root: toHex(shieldedTree.root ?? 0n, { size: 32 }),
-      wormhole_root: toHex(wormholeTree.root ?? 0n, { size: 32 }),
+      chain_id: args.srcChainId.toString(),
+      shielded_root: (shieldedMasterTree.root ?? 0n).toString(),
+      wormhole_root: (wormholeMasterTree.root ?? 0n).toString(),
       asset_id: assetId.toString(),
-      owner_address: BigInt(this.account).toString(),
+      owner_address: this.account,
       input_notes: inputNotes.map(note => ({
+        chain_id: note.chain_id.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
-        leaf_index: note.leaf_index.toString(),
-        leaf_siblings: note.leaf_siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - note.leaf_siblings.length).fill("0")),
+        branch_index: note.branch_index.toString(),
+        branch_siblings: note.branch_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - note.branch_siblings.length).fill("0")),
+        branch_root: note.branch_root.toString(),
+        master_index: note.master_index.toString(),
+        master_siblings: note.master_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_siblings.length).fill("0")),
       })),
       output_notes: outputNotes.map(note => ({
+        chain_id: note.chain_id.toString(),
         recipient: note.recipient.toString(),
         blinding: note.blinding.toString(),
         amount: note.amount.toString(),
@@ -441,24 +463,20 @@ export class ShieldedPool {
       wormhole_note: {
         _is_some: !!wormholeDeposit,
         _value: {
-          recipient: wormholeDeposit?.recipient ?? "0",
+          chain_id: wormholeDeposit?.chain_id?.toString() ?? "0",
+          entry_id: wormholeDeposit?.entry_id?.toString() ?? "0",
+          recipient: wormholeDeposit?.recipient?.toString() ?? "0",
           wormhole_secret: wormholeDeposit?.wormhole_secret?.toString() ?? "0",
           asset_id: wormholeDeposit?.asset_id?.toString() ?? "0",
-          sender: wormholeDeposit?.sender ?? "0x00",
+          sender: wormholeDeposit?.sender?.toString() ?? "0",
           amount: wormholeDeposit?.amount?.toString() ?? "0",
-        }
-      },
-      wormhole_leaf_index: {
-        _is_some: !!wormholeDeposit,
-        _value: wormholeDeposit?.leaf_index?.toString() ?? "0",
-      },
-      wormhole_leaf_siblings: {
-        _is_some: !!wormholeDeposit,
-        _value: (wormholeDeposit?.leaf_siblings ?? []).map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - (wormholeDeposit?.leaf_siblings?.length ?? 0)).fill("0")),
-      },
-      wormhole_approved: {
-        _is_some: !!wormholeDeposit,
-        _value: wormholeDeposit?.is_approved ?? false,
+          branch_index: wormholeDeposit?.branch_index?.toString() ?? "0",
+          branch_siblings: (wormholeDeposit?.branch_siblings ?? []).map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - (wormholeDeposit?.branch_siblings?.length ?? 0)).fill("0")),
+          branch_root: wormholeDeposit?.branch_root?.toString() ?? "0",
+          master_index: wormholeDeposit?.master_index?.toString() ?? "0",
+          master_siblings: (wormholeDeposit?.master_siblings ?? []).map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - (wormholeDeposit?.master_siblings?.length ?? 0)).fill("0")),
+          is_approved: wormholeDeposit?.is_approved ?? false,
+        },
       },
       wormhole_pseudo_secret: {
         _is_some: !wormholeDeposit,
@@ -472,8 +490,10 @@ export class ShieldedPool {
       inputNotes,
       outputNotes,
       entries: { wormhole, shielded },
-      wormholeTree, 
+      wormholeTree,
       shieldedTree,
+      wormholeMasterTree,
+      shieldedMasterTree,
       circuitInputs,
       messageHash,
       signature,
@@ -515,7 +535,7 @@ export function toShieldedTxStruct(args: {
       throw new Error("token is required");
     }
     const assetId = getAssetId(args.token, args.tokenId);
-    wormholeNullifier = toHex(getWormholePseudoNullifier(args.sender, assetId, args.wormholePseudoSecret), { size: 32 });
+    wormholeNullifier = toHex(getWormholePseudoNullifier(args.chainId, args.sender, assetId, args.wormholePseudoSecret), { size: 32 });
   }
 
   if (isUnshield) {
@@ -540,7 +560,7 @@ export function toShieldedTxStruct(args: {
     wormholeRoot: toHex(args.wormholeRoot, { size: 32 }),
     wormholeNullifier,
     shieldedRoot: toHex(args.shieldedRoot, { size: 32 }),
-    nullifiers: args.inputs.map(input => toHex(getNullifier(args.sender, assetId, input), { size: 32 })),
+    nullifiers: args.inputs.map(input => toHex(getNullifier(args.chainId, input.branch_root, args.sender, assetId, input), { size: 32 })),
     commitments: args.outputs.filter(output => output.transfer_type === TransferType.TRANSFER).map(output => getCommitment(assetId, output)),
     withdrawals,
   }

@@ -195,6 +195,7 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
       }
       setStatus("signing");
       const { hash, wormholeSecret, burnAddress } = await shieldedPool.wormholeTransfer(wagmiConfig, {
+        chainId: destinationChainId,
         to: recipient.address,
         tokenType: "erc20",
         token: wormholeAsset.address,
@@ -207,8 +208,8 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
       if (receipt.status === "success") {
         setStatus("success");
         const entry = await shieldedPool.parseAndSaveWormholeEntry({
-          chainId: sourceChainId,
-          destinationChainId,
+          srcChainId: sourceChainId,
+          dstChainId: destinationChainId,
           receiver: recipient.address,
           wormholeSecret: wormholeSecret,
           receipt: receipt,
@@ -270,11 +271,10 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
         throw new Error("Shielded pool not found");
       }
 
-      const chainId = unshield ? client.chain.id : destinationChainId;
-
       setStatus("signing");
       const { circuitInputs, entries, outputNotes, typedData, messageHash } = await shieldedPool.signShieldedTransfer(wagmiConfig, {
-        chainId,
+        srcChainId: sourceChainId,
+        dstChainId: destinationChainId,
         receiver: recipient.address,
         token: wormholeAsset.address,
         tokenId: 0n,
@@ -307,7 +307,7 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
       // Call relayer to execute transaction
       const response = await fetch("/api/shielded-relay", {
         method: "POST",
-        body: JSON.stringify({ shieldedTx, proof: toHex(proofData.proof), chainId }),
+        body: JSON.stringify({ shieldedTx, proof: toHex(proofData.proof), chainId: sourceChainId }),
       });
       if (!response.ok) {
         throw new Error("Failed to relay shielded transfer");
@@ -325,7 +325,7 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
       // Update notes and balances
       if (receipt.status === "success") {
         const result = await shieldedPool.parseAndSaveShieldedTransfer({
-          chainId,
+          srcChainId: sourceChainId,
           token: wormholeAsset.address,
           tokenId: 0n,
           receipt,

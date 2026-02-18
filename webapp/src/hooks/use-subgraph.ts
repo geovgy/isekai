@@ -84,8 +84,8 @@ export function useMasterTreeInclusionSync() {
   });
 
   const branchChainIds = [...new Set([
-    ...(pendingNotes?.shielded?.map(n => n.chainId) ?? []),
-    ...(pendingNotes?.wormhole?.map(n => n.chainId) ?? []),
+    ...(pendingNotes?.shielded?.map(n => n.srcChainId) ?? []),
+    ...(pendingNotes?.wormhole?.map(n => n.srcChainId) ?? []),
   ])].filter(id => id !== MASTER_CHAIN_ID);
 
   const { data: branchUpdates } = useQuery({
@@ -127,8 +127,8 @@ export function useMasterTreeInclusionSync() {
         store: "shielded_note" | "wormhole_note",
       ) => {
         for (const note of notes) {
-          if (note.chainId === MASTER_CHAIN_ID) continue;
-          const chainBranches = branchUpdates?.[note.chainId];
+          if (note.srcChainId === MASTER_CHAIN_ID) continue;
+          const chainBranches = branchUpdates?.[note.srcChainId];
           if (!chainBranches?.length) continue;
 
           const noteTs = BigInt(note.blockTimestamp ?? 0);
