@@ -17,7 +17,9 @@ contract DeployShieldedPoolScript is Script {
 
     // address GOVERNOR = address(0x1); // TODO: set governor address
     address GOVERNOR = vm.envAddress("GOVERNOR");
-    ICrossL2ProverV2 CROSS_L2_PROVER = ICrossL2ProverV2(address(0x2));
+    ICrossL2ProverV2 CROSS_L2_PROVER = ICrossL2ProverV2(0x03Fb5bFA4EB2Cba072A477A372bB87880A60fC96); // Testnet address
+
+    bytes32 SALT = vm.envBytes32("SALT");
 
     ShieldedPool shieldedPool;
 
@@ -37,9 +39,9 @@ contract DeployShieldedPoolScript is Script {
 
         assert(GOVERNOR != address(0));
 
-        poseidon2 = IPoseidon2(address(new Poseidon2()));
-        ragequitVerifier = new RagequitVerifier();
-        shieldedPool = new ShieldedPool(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
+        poseidon2 = IPoseidon2(address(new Poseidon2{salt: SALT}()));
+        ragequitVerifier = new RagequitVerifier{salt: SALT}();
+        shieldedPool = new ShieldedPool{salt: SALT}(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
 
         console.log("\nDeployment Results:");
         console.log("\nShieldedPool -->", address(shieldedPool));
