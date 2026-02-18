@@ -20,6 +20,9 @@ export interface NoteDBShieldedEntry {
   usedAt?: string
   committedAt?: string
   memo?: string
+  blockNumber?: number
+  blockTimestamp?: number
+  masterTreeStatus?: "pending" | "included"
 }
 
 export interface NoteDBWormholeEntry {
@@ -39,6 +42,9 @@ export interface NoteDBWormholeEntry {
   status?: "pending" | "approved" | "rejected" | "completed" | "ragequitted"
   usedAt?: string
   memo?: string
+  blockNumber?: number
+  blockTimestamp?: number
+  masterTreeStatus?: "pending" | "included"
 }
 
 // Component Params

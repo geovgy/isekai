@@ -1,5 +1,5 @@
-import { KAMUI_CONTRACT_ADDRESS } from "@/src/env";
-import { sepolia } from "wagmi/chains";
+import { SHIELDED_POOL_CONTRACT_ADDRESS } from "@/src/env";
+import { SUPPORTED_CHAINS } from "@/src/config";
 import { ShieldedTx, ShieldedTxStringified } from "@/src/types";
 import { NextRequest, NextResponse } from "next/server";
 import { Abi, createWalletClient, getAddress, http, parseAbi } from "viem";
@@ -57,9 +57,23 @@ const verifierAbi = [
   }
 ] as const satisfies Abi
 
+function getRelayerRpcUrl(chainId: number): string {
+  const chainConfig = SUPPORTED_CHAINS[chainId];
+  if (!chainConfig) {
+    throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+  // Use per-chain relayer RPC URLs if available, fallback to the chain's public RPC
+  const envKey = `RELAYER_RPC_URL_${chainId}`;
+  return process.env[envKey] ?? process.env.RELAYER_RPC_URL ?? chainConfig.rpcUrl;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { shieldedTx: shieldedTxStringified, proof } = await request.json() as { shieldedTx: ShieldedTxStringified, proof: `0x${string}` };
+    const { shieldedTx: shieldedTxStringified, proof, chainId } = await request.json() as {
+      shieldedTx: ShieldedTxStringified;
+      proof: `0x${string}`;
+      chainId?: number;
+    };
 
     console.log("Received shielded transfer request");
 
@@ -75,18 +89,25 @@ export async function POST(request: NextRequest) {
       })),
     };
 
-    const relayer = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY! as `0x${string}`)
+    const targetChainId = chainId ?? Number(shieldedTx.chainId);
+    const chainConfig = SUPPORTED_CHAINS[targetChainId];
+    if (!chainConfig) {
+      return NextResponse.json({ error: `Unsupported chain ID: ${targetChainId}` }, { status: 400 });
+    }
 
-    console.log("Creating wallet client");
+    const relayer = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY! as `0x${string}`)
+    const rpcUrl = getRelayerRpcUrl(targetChainId);
+
+    console.log(`Creating wallet client for chain ${chainConfig.label}`);
     const client = createWalletClient({
       account: relayer,
-      chain: sepolia, // TODO: Make dynamic to match chain requested in typedData `chainId`
-      transport: http(process.env.RELAYER_RPC_URL!),
+      chain: chainConfig.chain,
+      transport: http(rpcUrl),
     })
 
     console.log("Writing contract");
     const hash = await client.writeContract({
-      address: getAddress(KAMUI_CONTRACT_ADDRESS),
+      address: getAddress(SHIELDED_POOL_CONTRACT_ADDRESS),
       abi: [...verifierAbi, ...parseAbi([
         "struct Withdrawal { address to; address asset; uint256 id; uint256 amount; }",
         "struct ShieldedTx { uint64 chainId; bytes32 wormholeRoot; bytes32 wormholeNullifier; bytes32 shieldedRoot; bytes32[] nullifiers; uint256[] commitments; Withdrawal[] withdrawals; }",

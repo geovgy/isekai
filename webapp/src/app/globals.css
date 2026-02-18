@@ -45,17 +45,17 @@
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
   
-  /* Kamui Theme Colors */
-  --color-kamui-red: var(--kamui-red);
-  --color-kamui-orange: var(--kamui-orange);
-  --color-kamui-black: var(--kamui-black);
-  --color-kamui-crimson: var(--kamui-crimson);
+  /* Isekai Theme Colors */
+  --color-isekai-red: var(--isekai-red);
+  --color-isekai-orange: var(--isekai-orange);
+  --color-isekai-black: var(--isekai-black);
+  --color-isekai-crimson: var(--isekai-crimson);
 }
 
 :root {
   --radius: 0.75rem;
   
-  /* Light Theme - Red/Orange/Black Kamui Style */
+  /* Light Theme - Red/Orange/Black Isekai Style */
   --background: #faf9f7;
   --foreground: #1a1a1a;
   --card: #ffffff;
@@ -100,17 +100,17 @@
   --sidebar-border: #e7e5e4;
   --sidebar-ring: #dc2626;
   
-  /* Kamui Theme Variables */
-  --kamui-red: #dc2626;
-  --kamui-orange: #f97316;
-  --kamui-black: #1a1a1a;
-  --kamui-crimson: #b91c1c;
+  /* Isekai Theme Variables */
+  --isekai-red: #dc2626;
+  --isekai-orange: #f97316;
+  --isekai-black: #1a1a1a;
+  --isekai-crimson: #b91c1c;
 }
 
 .dark {
   --radius: 0.75rem;
   
-  /* Dark Theme - Red/Orange/Black Kamui Style */
+  /* Dark Theme - Red/Orange/Black Isekai Style */
   --background: #0a0a0a;
   --foreground: #faf9f7;
   --card: #141414;
@@ -155,11 +155,11 @@
   --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-ring: #ef4444;
   
-  /* Kamui Theme Variables */
-  --kamui-red: #ef4444;
-  --kamui-orange: #f97316;
-  --kamui-black: #0a0a0a;
-  --kamui-crimson: #dc2626;
+  /* Isekai Theme Variables */
+  --isekai-red: #ef4444;
+  --isekai-orange: #f97316;
+  --isekai-black: #0a0a0a;
+  --isekai-crimson: #dc2626;
 }
 
 @layer base {
@@ -196,7 +196,7 @@
     box-shadow: 0 20px 40px -15px rgba(220, 38, 38, 0.15);
   }
   
-  /* Kamui Button Glow - subtle red glow */
+  /* Button Glow - subtle red glow */
   .btn-glow {
     position: relative;
     overflow: hidden;
@@ -206,7 +206,7 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: var(--kamui-red);
+    background: var(--isekai-red);
     opacity: 0;
     transition: opacity 0.3s ease;
     z-index: -1;
@@ -255,11 +255,11 @@ html {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--kamui-red);
+  background: var(--isekai-red);
 }
 
 /* Selection color - Red */
 ::selection {
-  background: var(--kamui-red);
+  background: var(--isekai-red);
   color: white;
 }

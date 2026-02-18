@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -10,15 +10,17 @@ import {
   TableRow,
 } from "@/src/components/ui/table";
 import { useConnection, useReadContracts } from "wagmi";
-import { Address, erc20Abi } from "viem";
+import { erc20Abi } from "viem";
 import { NoteDBWormholeEntry } from "@/src/types";
-import { useWormholeEntriesByEntryIds } from "@/src/hooks/use-subgraph";
 import { Loader2, Clock, CheckCircle, XCircle, CircleDot, AlertTriangle, Wallet, ArrowRight } from "lucide-react";
 import { useShieldedPool, useWormholeNotes } from "@/src/hooks/use-shieldedpool";
 import { EthAddress } from "@/src/components/address";
 import { formatBalance } from "@/src/lib/utils";
 import { cn } from "@/src/lib/utils";
 import { getWormholeBurnAddress } from "../joinsplits";
+import { SUPPORTED_CHAINS } from "@/src/config";
+import { queryWormholeEntriesByEntryIds } from "@/src/subgraph-queries";
+import { useQuery } from "@tanstack/react-query";
 
 const statusConfig: Record<string, { 
   style: string; 
@@ -67,6 +69,22 @@ function StatusBadge({ status }: { status: NoteDBWormholeEntry["status"] }) {
         <span className="text-xs font-semibold">{config.label}</span>
       </div>
     </div>
+  );
+}
+
+function MasterTreeBadge({ masterTreeStatus }: { masterTreeStatus?: "pending" | "included" }) {
+  if (!masterTreeStatus || masterTreeStatus === "included") {
+    return <span className="text-xs text-green-600 font-medium">Synced</span>;
+  }
+  return <span className="text-xs text-amber-500 font-medium">Pending</span>;
+}
+
+function ChainBadge({ chainId }: { chainId: number }) {
+  const label = SUPPORTED_CHAINS[chainId]?.label ?? `Chain ${chainId}`;
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-xs font-medium text-muted-foreground border border-border/50">
+      {label}
+    </span>
   );
 }
 
@@ -125,17 +143,37 @@ export function WormholesTable() {
     },
   })
 
-  const pendingEntryIds = useMemo(() => {
-    return entries?.filter((e) => e.status === "pending" || !e.status)?.map((e) => BigInt(e.entryId)) ?? [];
+  const pendingEntriesByChain = useMemo(() => {
+    const grouped: Record<number, bigint[]> = {};
+    for (const e of entries?.filter((e) => e.status === "pending" || !e.status) ?? []) {
+      const chainId = e.chainId;
+      if (!grouped[chainId]) grouped[chainId] = [];
+      grouped[chainId].push(BigInt(e.entryId));
+    }
+    return grouped;
   }, [entries]);
 
-  const { data: subgraphData, isLoading: isSubgraphLoading } = useWormholeEntriesByEntryIds(
-    pendingEntryIds.length > 0
-      ? { entryIds: pendingEntryIds, orderDirection: "desc" }
-      : { entryIds: [] },
-  );
+  const hasPending = Object.values(pendingEntriesByChain).some(ids => ids.length > 0);
 
-  // When subgraph returns submitted entries, update the notes DB
+  const { data: subgraphData, isLoading: isSubgraphLoading } = useQuery({
+    queryKey: ["wormholeEntriesByEntryIdsMultiChain", pendingEntriesByChain],
+    queryFn: async () => {
+      const results = await Promise.all(
+        Object.entries(pendingEntriesByChain).map(async ([chainIdStr, entryIds]) => {
+          const chainId = Number(chainIdStr);
+          const data = await queryWormholeEntriesByEntryIds({
+            entryIds,
+            orderDirection: "desc",
+            chainId,
+          });
+          return data.wormholeEntries;
+        })
+      );
+      return { wormholeEntries: results.flat() };
+    },
+    enabled: hasPending,
+  });
+
   useEffect(() => {
     if (!subgraphData?.wormholeEntries?.length || !shieldedPool) return;
 
@@ -199,6 +237,7 @@ export function WormholesTable() {
         <TableHeader>
           <TableRow className="border-border/50 hover:bg-transparent">
             <TableHead className="w-[80px] pl-6">ID</TableHead>
+            <TableHead>Chain</TableHead>
             <TableHead>Asset</TableHead>
             <TableHead>From</TableHead>
             <TableHead className="text-center">
@@ -207,6 +246,7 @@ export function WormholesTable() {
             <TableHead>To</TableHead>
             <TableHead className="text-right">Amount</TableHead>
             <TableHead className="text-center">Status</TableHead>
+            <TableHead className="text-center">Master Tree</TableHead>
             <TableHead className="text-right pr-6">Position</TableHead>
           </TableRow>
         </TableHeader>
@@ -217,6 +257,9 @@ export function WormholesTable() {
               className="group border-border/30 transition-colors hover:bg-muted/30"
             >
               <TableCell className="font-mono text-sm pl-6">#{entry.entryId}</TableCell>
+              <TableCell>
+                <ChainBadge chainId={entry.chainId} />
+              </TableCell>
               <TableCell>
                 <div className="flex items-center gap-4">
                   <div>
@@ -254,6 +297,9 @@ export function WormholesTable() {
                     <Loader2 className="size-4 animate-spin ml-2 text-muted-foreground" />
                   )}
                 </div>
+              </TableCell>
+              <TableCell className="text-center">
+                <MasterTreeBadge masterTreeStatus={entry.masterTreeStatus} />
               </TableCell>
               <TableCell className="text-right pr-6">
                 <span className="font-mono text-sm text-muted-foreground">

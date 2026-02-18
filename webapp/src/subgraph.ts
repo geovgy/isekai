@@ -1,7 +1,12 @@
-import { SUBGRAPH_URL } from "./env";
+import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./config";
 
-export async function subgraphQuery<T>(queryString: string, variables: Record<string, unknown>): Promise<T> {
-  const response = await fetch(SUBGRAPH_URL, {
+export async function subgraphQuery<T>(
+  queryString: string,
+  variables: Record<string, unknown>,
+  chainId?: number,
+): Promise<T> {
+  const url = getChainConfig(chainId ?? MASTER_CHAIN_ID).subgraphUrl;
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -17,7 +22,27 @@ export async function subgraphQuery<T>(queryString: string, variables: Record<st
   return json.data;
 }
 
-export async function queryPendingWormholeEntries() {
+export async function subgraphQueryAllChains<T>(
+  queryString: string,
+  variables: Record<string, unknown>,
+): Promise<{ chainId: number; data: T }[]> {
+  const results = await Promise.all(
+    SUPPORTED_CHAIN_IDS.map(async (chainId) => {
+      const data = await subgraphQuery<T>(queryString, variables, chainId);
+      return { chainId, data };
+    })
+  );
+  return results;
+}
+
+export async function subgraphQueryMasterChain<T>(
+  queryString: string,
+  variables: Record<string, unknown>,
+): Promise<T> {
+  return subgraphQuery<T>(queryString, variables, MASTER_CHAIN_ID);
+}
+
+export async function queryPendingWormholeEntries(chainId?: number) {
   const query = 
   `
     query WormholeEntriesPending($orderBy: String!, $orderDirection: String!, $first: Int!) {
@@ -51,5 +76,5 @@ export async function queryPendingWormholeEntries() {
     orderBy: "blockTimestamp",
     orderDirection: "asc",
     first: 100,
-  });
+  }, chainId);
 }

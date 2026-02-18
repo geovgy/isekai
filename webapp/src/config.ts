@@ -1,30 +1,85 @@
 import { createConfig, http } from 'wagmi'
 import { getDefaultConfig } from 'connectkit'
-import { sepolia } from 'wagmi/chains'
-import { CHAIN_RPC_URL, WALLETCONNECT_PROJECT_ID } from './env'
+import { sepolia, arbitrumSepolia, optimismSepolia, baseSepolia, type Chain } from 'wagmi/chains'
+import {
+  WALLETCONNECT_PROJECT_ID,
+  SHIELDED_POOL_CONTRACT_ADDRESS,
+  RPC_URL_SEPOLIA,
+  RPC_URL_ARB_SEPOLIA,
+  RPC_URL_OP_SEPOLIA,
+  RPC_URL_BASE_SEPOLIA,
+  SUBGRAPH_URL_SEPOLIA,
+  SUBGRAPH_URL_ARB_SEPOLIA,
+  SUBGRAPH_URL_OP_SEPOLIA,
+  SUBGRAPH_URL_BASE_SEPOLIA,
+} from './env'
 
-export const chain = sepolia
+export interface ChainConfig {
+  chain: Chain
+  rpcUrl: string
+  subgraphUrl: string
+  contractAddress: string
+  isMaster: boolean
+  label: string
+}
 
-export const chainRpcUrl = CHAIN_RPC_URL
+export const MASTER_CHAIN_ID = sepolia.id
+
+export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
+  [sepolia.id]: {
+    chain: sepolia,
+    rpcUrl: RPC_URL_SEPOLIA,
+    subgraphUrl: SUBGRAPH_URL_SEPOLIA,
+    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+    isMaster: true,
+    label: 'Sepolia',
+  },
+  [arbitrumSepolia.id]: {
+    chain: arbitrumSepolia,
+    rpcUrl: RPC_URL_ARB_SEPOLIA,
+    subgraphUrl: SUBGRAPH_URL_ARB_SEPOLIA,
+    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+    isMaster: false,
+    label: 'Arbitrum Sepolia',
+  },
+  [optimismSepolia.id]: {
+    chain: optimismSepolia,
+    rpcUrl: RPC_URL_OP_SEPOLIA,
+    subgraphUrl: SUBGRAPH_URL_OP_SEPOLIA,
+    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+    isMaster: false,
+    label: 'Optimism Sepolia',
+  },
+  [baseSepolia.id]: {
+    chain: baseSepolia,
+    rpcUrl: RPC_URL_BASE_SEPOLIA,
+    subgraphUrl: SUBGRAPH_URL_BASE_SEPOLIA,
+    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+    isMaster: false,
+    label: 'Base Sepolia',
+  },
+}
+
+export const SUPPORTED_CHAIN_IDS = Object.keys(SUPPORTED_CHAINS).map(Number)
+
+export function getChainConfig(chainId: number): ChainConfig {
+  const config = SUPPORTED_CHAINS[chainId]
+  if (!config) {
+    throw new Error(`Unsupported chain ID: ${chainId}`)
+  }
+  return config
+}
+
+const chains = SUPPORTED_CHAIN_IDS.map(id => SUPPORTED_CHAINS[id].chain) as [Chain, ...Chain[]]
 
 export const wagmiConfig = createConfig(
   getDefaultConfig({
-    // Your dApps chains
-    chains: [chain],
-    transports: {
-      // RPC URL for each chain
-      [chain.id]: http(chainRpcUrl),
-    },
-
-    // Required API Keys
+    chains,
+    transports: Object.fromEntries(
+      SUPPORTED_CHAIN_IDS.map(id => [id, http(SUPPORTED_CHAINS[id].rpcUrl)])
+    ),
     walletConnectProjectId: WALLETCONNECT_PROJECT_ID,
-
-    // Required App Info
-    appName: "Kamui App (Demo)",
-
-    // Optional App Info
-    appDescription: "A demonstration of Kamui for onchain privacy via zkWormholes",
-    // appUrl: "https://family.co", // your app's url
-    // appIcon: "https://family.co/logo.png", // your app's icon, no bigger than 1024x1024px (max. 1MB)
+    appName: "Isekai",
+    appDescription: "Cross-chain privacy via zkWormholes and shielded transfers",
   })
 )

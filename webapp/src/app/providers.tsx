@@ -6,8 +6,14 @@ import { ConnectKitProvider } from 'connectkit'
 import { wagmiConfig } from '@/src/config'
 import { ZKProverProvider } from "@/src/context/zk-prover";
 import { TooltipProvider } from '../components/ui/tooltip'
+import { useMasterTreeInclusionSync } from '@/src/hooks/use-subgraph'
 
 const queryClient = new QueryClient()
+
+function MasterTreeSync() {
+  useMasterTreeInclusionSync();
+  return null;
+}
 
 export function Providers({
   children,
@@ -20,6 +26,7 @@ export function Providers({
         <ConnectKitProvider>
           <ZKProverProvider>
             <TooltipProvider>
+              <MasterTreeSync />
               {children}
             </TooltipProvider>
           </ZKProverProvider>

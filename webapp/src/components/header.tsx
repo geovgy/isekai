@@ -19,7 +19,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full">
       <div className="glass mx-4 mt-4 rounded-2xl px-6 py-3">
         <div className="flex items-center justify-between">
-          {/* Logo - Kamui Style */}
+          {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
             {/* <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#dc2626] transition-transform group-hover:scale-105">
               <Circle className="w-5 h-5 text-white" strokeWidth={3} />
@@ -27,12 +27,12 @@ export function Header() {
             </div> */}
             <Image
               src="/logo.png"
-              alt="Kamui"
+              alt="Isekai"
               width={50}
               height={50}
             />
             <div className="flex flex-col">
-              <span className="text-lg font-bold text-[#dc2626]">Kamui</span>
+              <span className="text-lg font-bold text-[#dc2626]">Isekai</span>
             </div>
           </Link>
 

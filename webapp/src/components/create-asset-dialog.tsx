@@ -17,10 +17,10 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useWriteContract } from "wagmi";
 import { Address, encodePacked, getAddress, isAddress, parseAbi } from "viem";
-import { KAMUI_CONTRACT_ADDRESS, WORMHOLE_ASSET_ERC20_IMPLEMENTATION_ADDRESS, WORMHOLE_ASSET_ERC4626_IMPLEMENTATION_ADDRESS } from "@/src/env";
+import { SHIELDED_POOL_CONTRACT_ADDRESS } from "@/src/env";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { useConfig as useWagmiConfig } from "wagmi";
-import { useWormholeAssets } from "@/src/hooks/use-subgraph";
+// TODO: Asset creation is no longer in ShieldedPool contract - this dialog needs redesign
 import { cn } from "@/src/lib/utils";
 
 type ImplementationType = "ERC20" | "ERC4626";
@@ -28,7 +28,7 @@ type ImplementationType = "ERC20" | "ERC4626";
 export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
   const { mutateAsync: writeContract, isPending } = useWriteContract();
   const wagmiConfig = useWagmiConfig()
-  const { refetch: refetchWormholeAssets } = useWormholeAssets()
+  const refetchWormholeAssets = () => {} // TODO: removed entity
   
   const [implementationType, setImplementationType] = useState<ImplementationType>("ERC20");
   const [tokenAddress, setTokenAddress] = useState<`0x${string}` | "">("");
@@ -36,8 +36,8 @@ export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
 
   const implementationAddresses: Record<ImplementationType, Address> = {
-    ERC20: WORMHOLE_ASSET_ERC20_IMPLEMENTATION_ADDRESS as Address,
-    ERC4626: WORMHOLE_ASSET_ERC4626_IMPLEMENTATION_ADDRESS as Address,
+    ERC20: "0x0000000000000000000000000000000000000000" as Address, // TODO: update with actual addresses
+    ERC4626: "0x0000000000000000000000000000000000000000" as Address,
   };
 
   async function handleSubmit() {
@@ -74,7 +74,7 @@ export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
 
     const hash = await writeContract(
       {
-        address: KAMUI_CONTRACT_ADDRESS as Address,
+        address: SHIELDED_POOL_CONTRACT_ADDRESS as Address,
         abi: parseAbi(["function createWormholeAsset(address implementation, bytes calldata initData) external returns (address asset)"]),
         functionName: "createWormholeAsset",
         args: [implementationAddresses[implementationType], initData],

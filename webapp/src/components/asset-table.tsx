@@ -12,11 +12,11 @@ import { Button } from "@/src/components/ui/button";
 import { WrapperDialog } from "@/src/components/wrapper-dialog";
 import { TransferDialog } from "@/src/components/transfer-dialog";
 import { ArrowUpRightIcon, Wallet, Eye, EyeOff } from "lucide-react";
-import { useWormholeAssets } from "@/src/hooks/use-subgraph";
+// TODO: useWormholeAssets was removed - asset discovery needs redesign
 import { useConnection, useReadContracts } from "wagmi";
 import { Abi, Address, erc20Abi, erc4626Abi, formatUnits, getAddress, isAddressEqual, parseAbi } from "viem";
 import { useMemo } from "react";
-import { WORMHOLE_ASSET_ERC20_IMPLEMENTATION_ADDRESS, WORMHOLE_ASSET_ERC4626_IMPLEMENTATION_ADDRESS, WORMHOLE_ASSET_WETH_IMPLEMENTATION_ADDRESS } from "@/src/env";
+// TODO: Implementation addresses removed from env - needs redesign
 import { useShieldedBalances } from "@/src/hooks/use-shieldedpool";
 import { cn } from "@/src/lib/utils";
 
@@ -41,7 +41,7 @@ function BalanceDisplay({ amount, decimals, symbol }: { amount: bigint; decimals
 export function AssetsTable() {
   const { address } = useConnection();
 
-  const { data: { wormholeAssets } = { wormholeAssets: [] } } = useWormholeAssets();
+  const wormholeAssets: { asset: Address; implementation: { address: Address } }[] = []; // TODO: asset discovery removed
 
   const { data: shieldedBalances, refetch: refetchShieldedBalances } = useShieldedBalances({ tokens: wormholeAssets.map((asset) => asset.asset), excludeWormholes: false });
 
@@ -127,14 +127,8 @@ export function AssetsTable() {
     }).filter((asset) => asset.implementationType !== undefined);
   }, [wormholeAssets, metadatas]);
 
-  function getImplementationType(implementation: Address) {
-    if (isAddressEqual(implementation, getAddress(WORMHOLE_ASSET_WETH_IMPLEMENTATION_ADDRESS))) {
-      return "WETH" as const;
-    } else if (isAddressEqual(implementation, getAddress(WORMHOLE_ASSET_ERC20_IMPLEMENTATION_ADDRESS))) {
-      return "ERC20" as const;
-    } else if (isAddressEqual(implementation, getAddress(WORMHOLE_ASSET_ERC4626_IMPLEMENTATION_ADDRESS))) {
-      return "ERC4626" as const;
-    }
+  function getImplementationType(_implementation: Address) {
+    return "ERC20" as const; // TODO: implementation type detection removed - needs redesign
   }
 
   return (

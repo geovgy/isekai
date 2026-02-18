@@ -8,7 +8,8 @@ import { getMerkleTree } from "@/src/merkle"
 import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormholeBurnAddress, getWormholeNullifier, getWormholePseudoNullifier } from "@/src/joinsplits"
 import { signTypedData, writeContract } from "wagmi/actions"
 import { Config } from "wagmi"
-import { KAMUI_CONTRACT_ADDRESS } from "../env"
+import { SHIELDED_POOL_CONTRACT_ADDRESS } from "../env"
+import { getChainConfig, MASTER_CHAIN_ID } from "../config"
 import { MERKLE_TREE_DEPTH } from "../constants"
 import { InputMap } from "@noir-lang/noir_js"
 
@@ -118,6 +119,9 @@ export class ShieldedPool {
         amount: amount.toString(),
       },
       status: "pending",
+      blockNumber: Number(args.receipt.blockNumber),
+      blockTimestamp: Math.floor(Date.now() / 1000),
+      masterTreeStatus: args.chainId === MASTER_CHAIN_ID ? "included" : "pending",
     }
     await this._db.checkAndAddNote("wormhole_note", wormholeEntry)
     return wormholeEntry
@@ -141,6 +145,10 @@ export class ShieldedPool {
 
   async getShieldedNotes() {
     return this._db.getShieldedNotes()
+  }
+
+  async updateNote(store: "wormhole_note" | "shielded_note", note: NoteDBShieldedEntry | NoteDBWormholeEntry) {
+    return this._db.updateNote(store, note)
   }
 
   async getShieldedBalance(args: {
@@ -258,6 +266,9 @@ export class ShieldedPool {
           },
           status: "available" as const,
           committedAt: now,
+          blockNumber: Number(args.receipt.blockNumber),
+          blockTimestamp: Math.floor(Date.now() / 1000),
+          masterTreeStatus: args.chainId === MASTER_CHAIN_ID ? "included" : "pending",
         }
       })
 
@@ -289,6 +300,7 @@ export class ShieldedPool {
     const { wormholeTree, shieldedTree } = await getMerkleTrees({
       wormholeTreeId: BigInt(wormhole?.treeNumber ?? 0),
       shieldedTreeId: BigInt(shielded[0]?.treeNumber ?? 0),
+      chainId: args.chainId,
     })
 
     console.log({
@@ -360,10 +372,10 @@ export class ShieldedPool {
 
     const typedData = {
       domain: {
-        name: "Kamui",
+        name: "ShieldedPool",
         version: "1",
         chainId: args.chainId,
-        verifyingContract: getAddress(KAMUI_CONTRACT_ADDRESS),
+        verifyingContract: getAddress(getChainConfig(args.chainId).contractAddress),
       },
       types: {
         ShieldedTx: [

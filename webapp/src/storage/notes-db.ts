@@ -37,17 +37,17 @@ export class NoteDB {
   // Open a connection to the IndexedDB
   private async openDB(accountId: string): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(`KamuiNotesDB-${accountId}`, 2);
+      const request = indexedDB.open(`IsekaiNotesDB-${accountId}`, 3);
 
       request.onupgradeneeded = event => {
         const db = (event.target as IDBOpenDBRequest).result;
         for (const objectStoreName of objectStoreNames) {
-          // Drop old stores with wrong keyPath on version upgrade
           if (db.objectStoreNames.contains(objectStoreName)) {
             db.deleteObjectStore(objectStoreName);
           }
           const store = db.createObjectStore(objectStoreName, { keyPath: 'id' });
           store.createIndex('id', 'id', { unique: true });
+          store.createIndex('chainId', 'chainId', { unique: false });
         }
       };
 

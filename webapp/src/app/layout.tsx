@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kamui App (Demo)",
-  description: "A demonstration of Kamui for onchain privacy via zkWormholes",
+  title: "Isekai",
+  description: "Cross-chain privacy via zkWormholes and shielded transfers",
 };
 
 export default function RootLayout({
