@@ -10,8 +10,8 @@ import { WrapperDialogContent } from "./tx-states/wrapper";
 import { Asset, WormholeAsset } from "@/src/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Address, erc20Abi, zeroAddress } from "viem";
-import { useBalance, useConnection, useReadContracts } from "wagmi";
-import { chain } from "@/src/config";
+import { useBalance, useChainId, useConnection, useReadContracts } from "wagmi";
+import { SUPPORTED_CHAINS } from "@/src/config";
 import { cn } from "@/src/lib/utils";
 
 interface WrapperDialogProps {
@@ -24,7 +24,10 @@ interface WrapperDialogProps {
 
 export function WrapperDialog({ implementationType, wormholeAsset, underlying, refreshBalance, trigger }: WrapperDialogProps) {
   const { address } = useConnection();
+  const chainId = useChainId();
   const isNative = !underlying;
+
+  const currentChain = SUPPORTED_CHAINS[chainId]?.chain;
 
   const { data: nativeAsset } = useBalance({
     address,
@@ -33,7 +36,7 @@ export function WrapperDialog({ implementationType, wormholeAsset, underlying, r
       select: (data) => {
         return {
           address: zeroAddress as Address,
-          name: chain.nativeCurrency.name as string,
+          name: currentChain?.nativeCurrency?.name ?? "ETH",
           symbol: data.symbol,
           decimals: data.decimals,
           balance: data.value,

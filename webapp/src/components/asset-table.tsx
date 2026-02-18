@@ -12,14 +12,13 @@ import { Button } from "@/src/components/ui/button";
 import { WrapperDialog } from "@/src/components/wrapper-dialog";
 import { TransferDialog } from "@/src/components/transfer-dialog";
 import { ArrowUpRightIcon, Wallet, Eye, EyeOff } from "lucide-react";
-// TODO: useWormholeAssets was removed - asset discovery needs redesign
 import { useConnection, useReadContracts } from "wagmi";
-import { Abi, Address, erc20Abi, erc4626Abi, formatUnits, getAddress, isAddressEqual, parseAbi } from "viem";
+import { Abi, Address, erc20Abi, formatUnits, getAddress } from "viem";
 import { useMemo } from "react";
-// TODO: Implementation addresses removed from env - needs redesign
 import { useShieldedBalances } from "@/src/hooks/use-shieldedpool";
 import { cn } from "@/src/lib/utils";
-
+import { WORMHOLE_TOKENS, WORMHOLE_TOKEN_TYPES } from "@/src/env";
+import { WormholeTokenType } from "@/src/types";
 
 function BalanceDisplay({ amount, decimals, symbol }: { amount: bigint; decimals: number; symbol: string }) {
   const formatted = formatUnits(amount, decimals)
@@ -38,98 +37,97 @@ function BalanceDisplay({ amount, decimals, symbol }: { amount: bigint; decimals
   )
 }
 
+function getTypeBadgeStyle(tokenType: WormholeTokenType) {
+  switch (tokenType) {
+    case "WETH":
+      return "bg-[#f97316]/10 text-[#f97316]";
+    case "ERC4626":
+    case "wERC4626":
+      return "bg-[#1a1a1a]/10 text-[#1a1a1a]";
+    default:
+      return "bg-[#dc2626]/10 text-[#dc2626]";
+  }
+}
+
+function getImplementationType(tokenType: WormholeTokenType): "WETH" | "ERC20" | "ERC4626" {
+  switch (tokenType) {
+    case "WETH": return "WETH";
+    case "ERC4626":
+    case "wERC4626": return "ERC4626";
+    default: return "ERC20";
+  }
+}
+
 export function AssetsTable() {
   const { address } = useConnection();
 
-  const wormholeAssets: { asset: Address; implementation: { address: Address } }[] = []; // TODO: asset discovery removed
+  const tokenList = useMemo(() =>
+    WORMHOLE_TOKENS.map((token, i) => ({
+      address: getAddress(token),
+      tokenType: WORMHOLE_TOKEN_TYPES[i] ?? "ERC20" as WormholeTokenType,
+    })),
+    [],
+  );
 
-  const { data: shieldedBalances, refetch: refetchShieldedBalances } = useShieldedBalances({ tokens: wormholeAssets.map((asset) => asset.asset), excludeWormholes: false });
+  const { data: shieldedBalances, refetch: refetchShieldedBalances } = useShieldedBalances({
+    tokens: tokenList.map(t => t.address),
+    excludeWormholes: false,
+  });
+
+  const contractCalls = useMemo(() =>
+    tokenList.flatMap(t => [
+      { address: t.address, abi: erc20Abi, functionName: "name" },
+      { address: t.address, abi: erc20Abi, functionName: "symbol" },
+      { address: t.address, abi: erc20Abi, functionName: "decimals" },
+      ...(address
+        ? [{ address: t.address, abi: erc20Abi, functionName: "balanceOf", args: [address] }]
+        : []),
+    ]),
+    [tokenList, address],
+  );
+
+  const callsPerToken = address ? 4 : 3;
 
   const { data: metadatas, refetch } = useReadContracts({
     query: {
-      enabled: !!wormholeAssets.length,
-      select: (data) => {
-        return data.map((d) => d.result);
-      },
+      enabled: tokenList.length > 0,
+      select: (data) => data.map(d => d.result),
     },
     allowFailure: true,
-    contracts: wormholeAssets.map((asset) => {
-      const implementationType = getImplementationType(asset.implementation.address);
-      const calls = [
-        {
-          address: getAddress(asset.asset),
-          abi: erc20Abi as Abi,
-          functionName: "name",
-        },
-        {
-          address: getAddress(asset.asset),
-          abi: erc20Abi as Abi,
-          functionName: "symbol",
-        },
-        {
-          address: getAddress(asset.asset),
-          abi: erc20Abi as Abi,
-          functionName: "decimals",
-        },
-        {
-          address: getAddress(asset.asset),
-          abi: erc20Abi as Abi,
-          functionName: "balanceOf",
-          args: [address],
-        }
-      ]
-      if (implementationType === "ERC20") {
-        calls.push({
-          address: getAddress(asset.asset),
-          abi: parseAbi(["function underlying() external view returns (address)"]),
-          functionName: "underlying",
-        })
-      } else if (implementationType === "ERC4626") {
-        calls.push({
-          address: getAddress(asset.asset),
-          abi: erc4626Abi,
-          functionName: "asset",
-          args: [address],
-        })
-      }
-      return calls
-    }).flat(),
+    contracts: contractCalls,
   });
 
-  const tokens = useMemo(() => {
-    let offset = 0;
-    return wormholeAssets.map((asset, i) => {
-      const startIndex = offset;
-      const implementationType = getImplementationType(asset.implementation.address)!;
-      if (implementationType !== "WETH") {
-        offset += 5;
-      } else {
-        offset += 4;
-      }
+  const tokens = useMemo(() =>
+    tokenList.map((token, i) => {
+      const offset = i * callsPerToken;
+      const name = metadatas?.[offset] as string ?? "Loading...";
+      const symbol = metadatas?.[offset + 1] as string ?? "-";
+      const decimals = Number(metadatas?.[offset + 2] as bigint ?? 18);
+      const publicBalance = address ? (metadatas?.[offset + 3] as bigint ?? 0n) : 0n;
+      const privateBalance = shieldedBalances?.[i] as bigint ?? 0n;
+      const implType = getImplementationType(token.tokenType);
 
       return {
-        ...asset,
+        address: token.address,
+        tokenType: token.tokenType,
+        implementationType: implType,
         metadata: {
-          address: asset.asset,
-          name: metadatas?.[startIndex] as string ?? "Unable to resolve name",
-          symbol: metadatas?.[startIndex + 1] as string ?? "-",
-          decimals: Number(metadatas?.[startIndex + 2] as bigint ?? 18),
-          balance: metadatas?.[startIndex + 3] as bigint ?? 0n,
-          implementation: asset.implementation.address
+          address: token.address,
+          name,
+          symbol,
+          decimals,
+          balance: publicBalance,
+          implementation: token.address,
         },
-        wormholeBalances: {
-          publicBalance: metadatas?.[startIndex + 3] as bigint ?? 0n,
-          privateBalance: shieldedBalances?.[i] as bigint ?? 0n,
+        balances: {
+          publicBalance,
+          privateBalance,
         },
-        underlying: implementationType !== "WETH" ? metadatas?.[startIndex + 4] as Address : undefined,
-        implementationType,
-      }
-    }).filter((asset) => asset.implementationType !== undefined);
-  }, [wormholeAssets, metadatas]);
-
-  function getImplementationType(_implementation: Address) {
-    return "ERC20" as const; // TODO: implementation type detection removed - needs redesign
-  }
+        underlying: implType !== "WETH" ? token.address : undefined,
+      };
+    }),
+    [tokenList, metadatas, shieldedBalances, callsPerToken, address],
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -154,9 +152,9 @@ export function AssetsTable() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tokens.map((asset, index) => (
+          {tokens.map((asset) => (
             <TableRow 
-              key={asset.id}
+              key={asset.address}
               className="group border-border/30 transition-colors hover:bg-muted/30"
             >
               <TableCell className="pl-6">
@@ -170,23 +168,21 @@ export function AssetsTable() {
               <TableCell className="text-center">
                 <span className={cn(
                   "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
-                  asset.implementationType === "WETH" && "bg-[#f97316]/10 text-[#f97316]",
-                  asset.implementationType === "ERC20" && "bg-[#dc2626]/10 text-[#dc2626]",
-                  asset.implementationType === "ERC4626" && "bg-[#1a1a1a]/10 text-[#1a1a1a]",
+                  getTypeBadgeStyle(asset.tokenType),
                 )}>
-                  {asset.implementationType}
+                  {asset.tokenType}
                 </span>
               </TableCell>
               <TableCell className="text-right">
                 <BalanceDisplay 
-                  amount={asset.wormholeBalances.publicBalance} 
+                  amount={asset.balances.publicBalance} 
                   decimals={asset.metadata.decimals} 
                   symbol={asset.metadata.symbol}
                 />
               </TableCell>
               <TableCell className="text-right">
                 <BalanceDisplay 
-                  amount={asset.wormholeBalances.privateBalance} 
+                  amount={asset.balances.privateBalance} 
                   decimals={asset.metadata.decimals} 
                   symbol={asset.metadata.symbol}
                 />
@@ -210,7 +206,7 @@ export function AssetsTable() {
                   />
                   <TransferDialog
                     wormholeAsset={asset.metadata}
-                    balances={asset.wormholeBalances}
+                    balances={asset.balances}
                     refetchBalances={() => {
                       refetch();
                       refetchShieldedBalances();

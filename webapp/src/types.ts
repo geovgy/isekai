@@ -1,5 +1,7 @@
 import type { Address, Hex } from "viem";
 
+export type WormholeTokenType = "WETH" | "ERC20" | "ERC721" | "ERC1155" | "ERC4626" | "wERC20" | "wERC721" | "wERC1155" | "wERC4626";
+
 // IndexedDB types
 
 export interface NoteDBShieldedEntry {
