@@ -6,10 +6,10 @@ schema:
 dataSources:
   - kind: ethereum
     name: ShieldedPool
-    network: mainnet
+    network: sepolia
     source:
-      address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
       abi: ShieldedPool
+      address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
       startBlock: 0
     mapping:
       kind: ethereum/events
@@ -32,21 +32,26 @@ dataSources:
         - name: ShieldedPool
           file: ../contracts/out/ShieldedPool.sol/ShieldedPool.json
       eventHandlers:
-        - event: Ragequit(indexed uint256,indexed address,indexed address,address,uint256,uint256)
+        - event: Ragequit(indexed uint256,indexed address,indexed
+            address,address,uint256,uint256)
           handler: handleRagequit
-        - event: ShieldedTransfer(indexed uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256)[])
+        - event: ShieldedTransfer(indexed
+            uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256)[])
           handler: handleShieldedTransfer
         - event: VerifierAdded(address,uint256,uint256)
           handler: handleVerifierAdded
         - event: WormholeApproverSet(indexed address,bool)
           handler: handleWormholeApproverSet
-        - event: WormholeCommitment(indexed uint256,indexed uint256,uint256,uint256,bytes32,address,address,uint256,bool)
+        - event: WormholeCommitment(indexed uint256,indexed
+            uint256,uint256,uint256,bytes32,address,address,uint256,bool)
           handler: handleWormholeCommitment
-        - event: WormholeEntry(indexed uint256,indexed address,indexed address,address,uint256,uint256)
+        - event: WormholeEntry(indexed uint256,indexed address,indexed
+            address,address,uint256,uint256)
           handler: handleWormholeEntry
         - event: WormholeNullifier(indexed bytes32)
           handler: handleWormholeNullifier
-        - event: BranchTreesUpdated(uint256,uint256,indexed uint256,indexed uint256,uint256,uint256)
+        - event: BranchTreesUpdated(uint256,uint256,indexed uint256,indexed
+            uint256,uint256,uint256)
           handler: handleBranchTreesUpdated
         - event: MasterTreesUpdated(indexed uint256,indexed uint256,uint256,uint256)
           handler: handleMasterTreesUpdated

@@ -7,7 +7,7 @@
     "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ kamui-testnet",
     "create-local": "graph create --node http://localhost:8020/ kamui-testnet",
     "remove-local": "graph remove --node http://localhost:8020/ kamui-testnet",
-    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 kamui-testnet",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 --network localhost kamui-testnet",
     "test": "graph test"
   },
   "dependencies": {
