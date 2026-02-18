@@ -1,102 +1,16 @@
 import { newMockEvent } from "matchstick-as"
 import { ethereum, Address, Bytes, BigInt } from "@graphprotocol/graph-ts"
 import {
-  EIP712DomainChanged,
-  OwnershipTransferred,
-  PoolCreated,
-  PoolImplementationSet,
   Ragequit,
   ShieldedTransfer,
   VerifierAdded,
   WormholeApproverSet,
   WormholeCommitment,
   WormholeEntry,
-  WormholeNullifier
-} from "../generated/Kamui/Kamui"
-
-export function createEIP712DomainChangedEvent(): EIP712DomainChanged {
-  let eip712DomainChangedEvent = changetype<EIP712DomainChanged>(newMockEvent())
-
-  eip712DomainChangedEvent.parameters = new Array()
-
-  return eip712DomainChangedEvent
-}
-
-export function createOwnershipTransferredEvent(
-  previousOwner: Address,
-  newOwner: Address
-): OwnershipTransferred {
-  let ownershipTransferredEvent =
-    changetype<OwnershipTransferred>(newMockEvent())
-
-  ownershipTransferredEvent.parameters = new Array()
-
-  ownershipTransferredEvent.parameters.push(
-    new ethereum.EventParam(
-      "previousOwner",
-      ethereum.Value.fromAddress(previousOwner)
-    )
-  )
-  ownershipTransferredEvent.parameters.push(
-    new ethereum.EventParam("newOwner", ethereum.Value.fromAddress(newOwner))
-  )
-
-  return ownershipTransferredEvent
-}
-
-export function createPoolCreatedEvent(
-  pool: Address,
-  implementation: Address,
-  asset: Address,
-  initData: Bytes
-): PoolCreated {
-  let poolCreatedEvent = changetype<PoolCreated>(newMockEvent())
-
-  poolCreatedEvent.parameters = new Array()
-
-  poolCreatedEvent.parameters.push(
-    new ethereum.EventParam("pool", ethereum.Value.fromAddress(pool))
-  )
-  poolCreatedEvent.parameters.push(
-    new ethereum.EventParam(
-      "implementation",
-      ethereum.Value.fromAddress(implementation)
-    )
-  )
-  poolCreatedEvent.parameters.push(
-    new ethereum.EventParam("asset", ethereum.Value.fromAddress(asset))
-  )
-  poolCreatedEvent.parameters.push(
-    new ethereum.EventParam("initData", ethereum.Value.fromBytes(initData))
-  )
-
-  return poolCreatedEvent
-}
-
-export function createPoolImplementationSetEvent(
-  implementation: Address,
-  isApproved: boolean
-): PoolImplementationSet {
-  let poolImplementationSetEvent =
-    changetype<PoolImplementationSet>(newMockEvent())
-
-  poolImplementationSetEvent.parameters = new Array()
-
-  poolImplementationSetEvent.parameters.push(
-    new ethereum.EventParam(
-      "implementation",
-      ethereum.Value.fromAddress(implementation)
-    )
-  )
-  poolImplementationSetEvent.parameters.push(
-    new ethereum.EventParam(
-      "isApproved",
-      ethereum.Value.fromBoolean(isApproved)
-    )
-  )
-
-  return poolImplementationSetEvent
-}
+  WormholeNullifier,
+  BranchTreesUpdated,
+  MasterTreesUpdated
+} from "../generated/ShieldedPool/ShieldedPool"
 
 export function createRagequitEvent(
   entryId: BigInt,
@@ -333,4 +247,64 @@ export function createWormholeNullifierEvent(
   )
 
   return wormholeNullifierEvent
+}
+
+export function createBranchTreesUpdatedEvent(
+  shieldedTreeId: BigInt,
+  wormholeTreeId: BigInt,
+  branchShieldedRoot: BigInt,
+  branchWormholeRoot: BigInt,
+  blockNumber: BigInt,
+  blockTimestamp: BigInt
+): BranchTreesUpdated {
+  let event = changetype<BranchTreesUpdated>(newMockEvent())
+
+  event.parameters = new Array()
+
+  event.parameters.push(
+    new ethereum.EventParam("shieldedTreeId", ethereum.Value.fromUnsignedBigInt(shieldedTreeId))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("wormholeTreeId", ethereum.Value.fromUnsignedBigInt(wormholeTreeId))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("branchShieldedRoot", ethereum.Value.fromUnsignedBigInt(branchShieldedRoot))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("branchWormholeRoot", ethereum.Value.fromUnsignedBigInt(branchWormholeRoot))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("blockNumber", ethereum.Value.fromUnsignedBigInt(blockNumber))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("blockTimestamp", ethereum.Value.fromUnsignedBigInt(blockTimestamp))
+  )
+
+  return event
+}
+
+export function createMasterTreesUpdatedEvent(
+  masterShieldedRoot: BigInt,
+  masterWormholeRoot: BigInt,
+  blockNumber: BigInt,
+  blockTimestamp: BigInt
+): MasterTreesUpdated {
+  let event = changetype<MasterTreesUpdated>(newMockEvent())
+
+  event.parameters = new Array()
+
+  event.parameters.push(
+    new ethereum.EventParam("masterShieldedRoot", ethereum.Value.fromUnsignedBigInt(masterShieldedRoot))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("masterWormholeRoot", ethereum.Value.fromUnsignedBigInt(masterWormholeRoot))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("blockNumber", ethereum.Value.fromUnsignedBigInt(blockNumber))
+  )
+  event.parameters.push(
+    new ethereum.EventParam("blockTimestamp", ethereum.Value.fromUnsignedBigInt(blockTimestamp))
+  )
+
+  return event
 }

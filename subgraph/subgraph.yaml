@@ -5,21 +5,17 @@ schema:
   file: ./schema.graphql
 dataSources:
   - kind: ethereum
-    name: Kamui
+    name: ShieldedPool
     network: mainnet
     source:
       address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
-      abi: Kamui
+      abi: ShieldedPool
       startBlock: 0
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
       language: wasm/assemblyscript
       entities:
-        - EIP712DomainChanged
-        - OwnershipTransferred
-        - WormholeAsset
-        - WormholeAssetImplementation
         - Ragequit
         - ShieldedTransfer
         - VerifierAdded
@@ -27,22 +23,15 @@ dataSources:
         - WormholeCommitment
         - WormholeEntry
         - WormholeNullifier
-        - Withdrawal
         - ShieldNullifier
         - WormholeTree
         - ShieldedTree
+        - BranchTreesUpdated
+        - MasterTreesUpdated
       abis:
-        - name: Kamui
-          file: ../contracts/out/Kamui.sol/Kamui.json
+        - name: ShieldedPool
+          file: ../contracts/out/ShieldedPool.sol/ShieldedPool.json
       eventHandlers:
-        - event: EIP712DomainChanged()
-          handler: handleEIP712DomainChanged
-        - event: OwnershipTransferred(indexed address,indexed address)
-          handler: handleOwnershipTransferred
-        - event: WormholeAssetCreated(indexed address,indexed address,bytes)
-          handler: handleWormholeAssetCreated
-        - event: WormholeAssetImplementationSet(indexed address,bool)
-          handler: handleWormholeAssetImplementationSet
         - event: Ragequit(indexed uint256,indexed address,indexed address,address,uint256,uint256)
           handler: handleRagequit
         - event: ShieldedTransfer(indexed uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256)[])
@@ -57,4 +46,8 @@ dataSources:
           handler: handleWormholeEntry
         - event: WormholeNullifier(indexed bytes32)
           handler: handleWormholeNullifier
-      file: ./src/kamui.ts
+        - event: BranchTreesUpdated(uint256,uint256,indexed uint256,indexed uint256,uint256,uint256)
+          handler: handleBranchTreesUpdated
+        - event: MasterTreesUpdated(indexed uint256,indexed uint256,uint256,uint256)
+          handler: handleMasterTreesUpdated
+      file: ./src/shielded-pool.ts

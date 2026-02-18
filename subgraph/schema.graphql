@@ -1,40 +1,3 @@
-type EIP712DomainChanged @entity(immutable: true) {
-  id: Bytes!
-
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
-}
-
-type OwnershipTransferred @entity(immutable: true) {
-  id: Bytes!
-  previousOwner: Bytes! # address
-  newOwner: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
-}
-
-type WormholeAsset @entity(immutable: false) {
-  id: Bytes! # asset address
-  asset: Bytes! # address
-  implementation: WormholeAssetImplementation!
-  initData: Bytes! # bytes
-  unshields: [Withdrawal!]! @derivedFrom(field: "asset")
-  totalUnshielded: BigInt! # uint256
-  createdAt: BigInt!
-  startBlock: BigInt!
-}
-
-type WormholeAssetImplementation @entity(immutable: false) {
-  id: Bytes! # implementation address
-  address: Bytes! # address
-  isApproved: Boolean! # bool
-  wormholeAssets: [WormholeAsset!]! @derivedFrom(field: "implementation")
-  createdAt: BigInt! # uint256
-  updatedAt: BigInt! # uint256
-}
-
 type Ragequit @entity(immutable: true) {
   id: Bytes!
   entryId: BigInt! # uint256
@@ -82,7 +45,7 @@ type ShieldedTransfer @entity(immutable: true) {
 type Withdrawal @entity(immutable: true) {
   id: ID! # shieldedTransfer id:withdrawalIndex
   to: Bytes! # address
-  asset: WormholeAsset! # WormholeAsset
+  asset: Bytes! # address
   asset_id: BigInt! # uint256
   amount: BigInt! # uint256
   shieldedTransfer: ShieldedTransfer! @derivedFrom(field: "withdrawals") # ShieldedTransfer
@@ -147,6 +110,26 @@ type WormholeEntry @entity(immutable: false) {
 type WormholeNullifier @entity(immutable: true) {
   id: Bytes! # nullifier
   nullifier: Bytes! # bytes32
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type BranchTreesUpdated @entity(immutable: true) {
+  id: Bytes!
+  shieldedTreeId: BigInt! # uint256
+  wormholeTreeId: BigInt! # uint256
+  branchShieldedRoot: BigInt! # uint256
+  branchWormholeRoot: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type MasterTreesUpdated @entity(immutable: true) {
+  id: Bytes!
+  masterShieldedRoot: BigInt! # uint256
+  masterWormholeRoot: BigInt! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!

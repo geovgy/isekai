@@ -1,6 +1,6 @@
 {
   "arbitrum-sepolia": {
-    "Kamui": {
+    "ShieldedPool": {
       "address": "0x0000000000000000000000000000000000000000",
       "startBlock": 0
     }

@@ -1,21 +1,15 @@
 import {
-  EIP712DomainChanged as EIP712DomainChangedEvent,
-  OwnershipTransferred as OwnershipTransferredEvent,
-  WormholeAssetCreated as WormholeAssetCreatedEvent,
-  WormholeAssetImplementationSet as WormholeAssetImplementationSetEvent,
   Ragequit as RagequitEvent,
   ShieldedTransfer as ShieldedTransferEvent,
   VerifierAdded as VerifierAddedEvent,
   WormholeApproverSet as WormholeApproverSetEvent,
   WormholeCommitment as WormholeCommitmentEvent,
   WormholeEntry as WormholeEntryEvent,
-  WormholeNullifier as WormholeNullifierEvent
-} from "../generated/Kamui/Kamui"
+  WormholeNullifier as WormholeNullifierEvent,
+  BranchTreesUpdated as BranchTreesUpdatedEvent,
+  MasterTreesUpdated as MasterTreesUpdatedEvent
+} from "../generated/ShieldedPool/ShieldedPool"
 import {
-  EIP712DomainChanged,
-  OwnershipTransferred,
-  WormholeAsset,
-  WormholeAssetImplementation,
   Ragequit,
   ShieldedTransfer,
   ShieldedTree,
@@ -26,66 +20,11 @@ import {
   WormholeCommitment,
   WormholeEntry,
   WormholeNullifier,
-  WormholeTree
+  WormholeTree,
+  BranchTreesUpdated,
+  MasterTreesUpdated
 } from "../generated/schema"
 import { BigInt, Bytes } from "@graphprotocol/graph-ts"
-
-export function handleEIP712DomainChanged(
-  event: EIP712DomainChangedEvent
-): void {
-  let entity = new EIP712DomainChanged(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
-}
-
-export function handleOwnershipTransferred(
-  event: OwnershipTransferredEvent
-): void {
-  let entity = new OwnershipTransferred(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-  entity.previousOwner = event.params.previousOwner
-  entity.newOwner = event.params.newOwner
-
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
-}
-
-export function handleWormholeAssetCreated(event: WormholeAssetCreatedEvent): void {
-  let entity = new WormholeAsset(event.params.asset)
-  entity.asset = event.params.asset
-  entity.implementation = event.params.implementation
-  entity.initData = event.params.initData
-
-  entity.createdAt = event.block.timestamp
-  entity.startBlock = event.block.number
-  entity.totalUnshielded = BigInt.zero()
-
-  entity.save()
-}
-
-export function handleWormholeAssetImplementationSet(
-  event: WormholeAssetImplementationSetEvent
-): void {
-  let entity = WormholeAssetImplementation.load(event.params.implementation)
-  if (entity == null) {
-    entity = new WormholeAssetImplementation(event.params.implementation)
-    entity.address = event.params.implementation
-    entity.createdAt = event.block.timestamp
-  }
-  entity.isApproved = event.params.isApproved
-  entity.updatedAt = event.block.timestamp
-  entity.save()
-}
 
 export function handleRagequit(event: RagequitEvent): void {
   let entity = new Ragequit(
@@ -120,7 +59,6 @@ export function handleShieldedTransfer(event: ShieldedTransferEvent): void {
   entity.nullifiers = event.params.nullifiers
   let baseId = entity.id.toHexString()
   let withdrawalIds = new Array<string>()
-  let totalUnshielded = BigInt.zero()
   for (let i = 0; i < event.params.withdrawals.length; i++) {
     let withdrawal = new Withdrawal(baseId + ":" + i.toString())
     withdrawal.to = event.params.withdrawals[i].to
@@ -129,7 +67,6 @@ export function handleShieldedTransfer(event: ShieldedTransferEvent): void {
     withdrawal.amount = event.params.withdrawals[i].amount
     withdrawal.save()
     withdrawalIds.push(withdrawal.id)
-    totalUnshielded = totalUnshielded.plus(event.params.withdrawals[i].amount)
   }
   entity.withdrawals = withdrawalIds
   
@@ -139,13 +76,7 @@ export function handleShieldedTransfer(event: ShieldedTransferEvent): void {
   
   entity.save()
 
-  if (totalUnshielded.gt(BigInt.fromI32(0))) {
-    let asset = WormholeAsset.load(event.params.withdrawals[0].asset)!
-    asset.totalUnshielded = totalUnshielded
-    asset.save()
-  }
-
-  // append to shielded tree
+  // Append to shielded tree
   let tree = _loadOrCreateShieldedTree(event.params.treeId, event.block.timestamp)
   let shieldedLeaves = tree.leaves
   for (let i = 0; i < event.params.commitments.length; i++) {
@@ -225,7 +156,7 @@ export function handleWormholeCommitment(event: WormholeCommitmentEvent): void {
   entry.submitted = true
   entry.save()
 
-  // append to wormhole tree
+  // Append to wormhole tree
   let tree = _loadOrCreateWormholeTree(event.params.treeId, event.block.timestamp)
   let commitments = tree.commitments
   commitments.push(entity.id)
@@ -258,9 +189,9 @@ export function handleWormholeEntry(event: WormholeEntryEvent): void {
     Bytes.fromI32(event.params.entryId.toI32())
   )
   entity.entryId = event.params.entryId
+  entity.token = event.params.token
   entity.from = event.params.from
   entity.to = event.params.to
-  entity.token = event.params.token
   entity.tokenId = event.params.id
   entity.amount = event.params.amount
   entity.submitted = false
@@ -275,6 +206,36 @@ export function handleWormholeEntry(event: WormholeEntryEvent): void {
 export function handleWormholeNullifier(event: WormholeNullifierEvent): void {
   let entity = new WormholeNullifier(event.params.nullifier)
   entity.nullifier = event.params.nullifier
+
+  entity.blockNumber = event.block.number
+  entity.blockTimestamp = event.block.timestamp
+  entity.transactionHash = event.transaction.hash
+
+  entity.save()
+}
+
+export function handleBranchTreesUpdated(event: BranchTreesUpdatedEvent): void {
+  let entity = new BranchTreesUpdated(
+    event.transaction.hash.concatI32(event.logIndex.toI32())
+  )
+  entity.shieldedTreeId = event.params.shieldedTreeId
+  entity.wormholeTreeId = event.params.wormholeTreeId
+  entity.branchShieldedRoot = event.params.branchShieldedRoot
+  entity.branchWormholeRoot = event.params.branchWormholeRoot
+
+  entity.blockNumber = event.block.number
+  entity.blockTimestamp = event.block.timestamp
+  entity.transactionHash = event.transaction.hash
+
+  entity.save()
+}
+
+export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
+  let entity = new MasterTreesUpdated(
+    event.transaction.hash.concatI32(event.logIndex.toI32())
+  )
+  entity.masterShieldedRoot = event.params.masterShieldedRoot
+  entity.masterWormholeRoot = event.params.masterWormholeRoot
 
   entity.blockNumber = event.block.number
   entity.blockTimestamp = event.block.timestamp
