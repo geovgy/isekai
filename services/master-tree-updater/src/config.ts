@@ -1,5 +1,6 @@
 import type { Chain } from "viem"
 import { sepolia, arbitrumSepolia } from "viem/chains"
+import { RPC_URL_SEPOLIA, RPC_URL_ARB_SEPOLIA, SUBGRAPH_URL_SEPOLIA, SUBGRAPH_URL_ARB_SEPOLIA } from "./env"
 // import { optimismSepolia, baseSepolia } from "viem/chains"
 
 export interface ChainConfig {
@@ -14,14 +15,14 @@ export const MASTER_CHAIN_ID = sepolia.id
 export const CHAINS: Record<number, ChainConfig> = {
   [sepolia.id]: {
     chain: sepolia,
-    rpcUrl: process.env.RPC_URL_SEPOLIA!,
-    subgraphUrl: process.env.SUBGRAPH_URL_SEPOLIA!,
+    rpcUrl: RPC_URL_SEPOLIA,
+    subgraphUrl: SUBGRAPH_URL_SEPOLIA,
     label: "Sepolia",
   },
   [arbitrumSepolia.id]: {
     chain: arbitrumSepolia,
-    rpcUrl: process.env.RPC_URL_ARB_SEPOLIA!,
-    subgraphUrl: process.env.SUBGRAPH_URL_ARB_SEPOLIA!,
+    rpcUrl: RPC_URL_ARB_SEPOLIA,
+    subgraphUrl: SUBGRAPH_URL_ARB_SEPOLIA,
     label: "Arbitrum Sepolia",
   },
   // Uncomment as needed:
