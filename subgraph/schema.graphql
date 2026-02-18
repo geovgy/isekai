@@ -45,8 +45,8 @@ type ShieldedTransfer @entity(immutable: true) {
 type Withdrawal @entity(immutable: true) {
   id: ID! # shieldedTransfer id:withdrawalIndex
   to: Bytes! # address
-  asset: Bytes! # address
-  asset_id: BigInt! # uint256
+  token: Bytes! # address
+  tokenId: BigInt! # uint256
   amount: BigInt! # uint256
   shieldedTransfer: ShieldedTransfer! @derivedFrom(field: "withdrawals") # ShieldedTransfer
 }

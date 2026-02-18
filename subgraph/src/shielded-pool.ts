@@ -62,8 +62,8 @@ export function handleShieldedTransfer(event: ShieldedTransferEvent): void {
   for (let i = 0; i < event.params.withdrawals.length; i++) {
     let withdrawal = new Withdrawal(baseId + ":" + i.toString())
     withdrawal.to = event.params.withdrawals[i].to
-    withdrawal.asset = event.params.withdrawals[i].asset
-    withdrawal.asset_id = event.params.withdrawals[i].id
+    withdrawal.token = event.params.withdrawals[i].asset
+    withdrawal.tokenId = event.params.withdrawals[i].id
     withdrawal.amount = event.params.withdrawals[i].amount
     withdrawal.save()
     withdrawalIds.push(withdrawal.id)
