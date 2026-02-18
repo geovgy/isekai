@@ -33,6 +33,7 @@ export interface NoteDBWormholeEntry {
   treeNumber: number
   leafIndex: number
   chainId: number
+  destinationChainId?: number
   entry: {
     to: Address
     from: Address

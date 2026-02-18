@@ -12,7 +12,7 @@ import { Button } from "@/src/components/ui/button";
 import { WrapperDialog } from "@/src/components/wrapper-dialog";
 import { TransferDialog } from "@/src/components/transfer-dialog";
 import { ArrowUpRightIcon, Wallet, Eye, EyeOff } from "lucide-react";
-import { useConnection, useReadContracts } from "wagmi";
+import { useChainId, useConnection, useReadContracts } from "wagmi";
 import { Abi, Address, erc20Abi, formatUnits, getAddress } from "viem";
 import { useMemo } from "react";
 import { useShieldedBalances } from "@/src/hooks/use-shieldedpool";
@@ -60,6 +60,7 @@ function getImplementationType(tokenType: WormholeTokenType): "WETH" | "ERC20" |
 
 export function AssetsTable() {
   const { address } = useConnection();
+  const chainId = useChainId();
 
   const tokenList = useMemo(() =>
     WORMHOLE_TOKENS.map((token, i) => ({
@@ -76,14 +77,14 @@ export function AssetsTable() {
 
   const contractCalls = useMemo(() =>
     tokenList.flatMap(t => [
-      { address: t.address, abi: erc20Abi, functionName: "name" },
-      { address: t.address, abi: erc20Abi, functionName: "symbol" },
-      { address: t.address, abi: erc20Abi, functionName: "decimals" },
+      { address: t.address, abi: erc20Abi, functionName: "name", chainId },
+      { address: t.address, abi: erc20Abi, functionName: "symbol", chainId },
+      { address: t.address, abi: erc20Abi, functionName: "decimals", chainId },
       ...(address
-        ? [{ address: t.address, abi: erc20Abi, functionName: "balanceOf", args: [address] }]
+        ? [{ address: t.address, abi: erc20Abi, functionName: "balanceOf", args: [address], chainId }]
         : []),
     ]),
-    [tokenList, address],
+    [tokenList, address, chainId],
   );
 
   const callsPerToken = address ? 4 : 3;

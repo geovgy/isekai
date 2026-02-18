@@ -99,6 +99,7 @@ export class ShieldedPool {
 
   async parseAndSaveWormholeEntry(args: {
     chainId: number,
+    destinationChainId?: number,
     receiver: Address,
     wormholeSecret: bigint,
     receipt: TransactionReceipt,
@@ -110,6 +111,7 @@ export class ShieldedPool {
       treeNumber: 0,
       leafIndex: 0,
       chainId: args.chainId,
+      destinationChainId: args.destinationChainId,
       entry: {
         to: args.receiver,
         from,

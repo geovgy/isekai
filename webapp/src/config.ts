@@ -42,22 +42,22 @@ export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
     isMaster: false,
     label: 'Arbitrum Sepolia',
   },
-  [optimismSepolia.id]: {
-    chain: optimismSepolia,
-    rpcUrl: RPC_URL_OP_SEPOLIA,
-    subgraphUrl: SUBGRAPH_URL_OP_SEPOLIA,
-    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
-    isMaster: false,
-    label: 'Optimism Sepolia',
-  },
-  [baseSepolia.id]: {
-    chain: baseSepolia,
-    rpcUrl: RPC_URL_BASE_SEPOLIA,
-    subgraphUrl: SUBGRAPH_URL_BASE_SEPOLIA,
-    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
-    isMaster: false,
-    label: 'Base Sepolia',
-  },
+  // [optimismSepolia.id]: {
+  //   chain: optimismSepolia,
+  //   rpcUrl: RPC_URL_OP_SEPOLIA,
+  //   subgraphUrl: SUBGRAPH_URL_OP_SEPOLIA,
+  //   contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+  //   isMaster: false,
+  //   label: 'Optimism Sepolia',
+  // },
+  // [baseSepolia.id]: {
+  //   chain: baseSepolia,
+  //   rpcUrl: RPC_URL_BASE_SEPOLIA,
+  //   subgraphUrl: SUBGRAPH_URL_BASE_SEPOLIA,
+  //   contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+  //   isMaster: false,
+  //   label: 'Base Sepolia',
+  // },
 }
 
 export const SUPPORTED_CHAIN_IDS = Object.keys(SUPPORTED_CHAINS).map(Number)

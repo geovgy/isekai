@@ -218,6 +218,7 @@ export function handleBranchTreesUpdated(event: BranchTreesUpdatedEvent): void {
   let entity = new BranchTreesUpdated(
     event.transaction.hash.concatI32(event.logIndex.toI32())
   )
+  entity.logIndex = event.logIndex
   entity.shieldedTreeId = event.params.shieldedTreeId
   entity.wormholeTreeId = event.params.wormholeTreeId
   entity.branchShieldedRoot = event.params.branchShieldedRoot
@@ -234,6 +235,7 @@ export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
   let entity = new MasterTreesUpdated(
     event.transaction.hash.concatI32(event.logIndex.toI32())
   )
+  entity.logIndex = event.logIndex
   entity.masterShieldedRoot = event.params.masterShieldedRoot
   entity.masterWormholeRoot = event.params.masterWormholeRoot
 

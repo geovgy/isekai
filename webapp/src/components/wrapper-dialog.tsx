@@ -4,6 +4,7 @@ import React from "react";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
   DialogTrigger,
 } from "@/src/components/ui/dialog";
 import { WrapperDialogContent } from "./tx-states/wrapper";
@@ -72,6 +73,7 @@ export function WrapperDialog({ implementationType, wormholeAsset, underlying, r
     <Dialog>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogTitle className="sr-only">Wrap / Unwrap {wormholeAsset.symbol}</DialogTitle>
         <Tabs defaultValue="deposit" className="w-full">
           <TabsList className={cn(
             "w-full rounded-xl",

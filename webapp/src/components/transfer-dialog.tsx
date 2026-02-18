@@ -1,7 +1,7 @@
 // UI to send a wormhole and shielded transfer
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,7 @@ import { useProve } from "@/src/hooks/use-zk-provers";
 import { WormholeAsset, BalanceInfo, ShieldedTxStringified } from "@/src/types";
 import { Loader2, Shield, Globe, Sparkles, Eye, EyeOff, Wallet, Network } from "lucide-react";
 import { toast } from "sonner";
-import { useConfig as useWagmiConfig } from "wagmi";
+import { useChainId, useConfig as useWagmiConfig, useConnection, useReadContract, useSwitchChain } from "wagmi";
 import { createPublicClient, erc20Abi, formatUnits, getAddress, http, isAddress, parseUnits, toHex } from "viem";
 import { waitForTransactionReceipt, writeContract } from "wagmi/actions";
 import { mainnet } from "viem/chains";
@@ -44,19 +44,39 @@ import { SUPPORTED_CHAINS, SUPPORTED_CHAIN_IDS } from "@/src/config";
 type BalanceSource = "private" | "public";
 
 export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalances }: { trigger: React.ReactNode, wormholeAsset: WormholeAsset, balances: BalanceInfo, refetchBalances: () => void }) {
-  const { publicBalance, privateBalance } = balances;
+  const { privateBalance } = balances;
   const { mutateAsync: prove } = useProve("utxo_2x2");
 
   const wagmiConfig = useWagmiConfig();
   const { data: shieldedPool } = useShieldedPool();
+  const { address } = useConnection();
+  const walletChainId = useChainId();
+  const { switchChain } = useSwitchChain();
+
+  const [sourceChainId, setSourceChainId] = useState<number>(walletChainId);
   
   const [recipientInput, setRecipientInput] = useState<string>("");
   const [amountInput, setAmountInput] = useState("");
   const [fundsSource, setFundsSource] = useState<BalanceSource>("private");
   const [fundsDestination, setFundsDestination] = useState<BalanceSource>("private");
-  const [destinationChainId, setDestinationChainId] = useState<number>(() => {
-    const client = wagmiConfig.getClient();
-    return client?.chain?.id ?? SUPPORTED_CHAIN_IDS[0];
+  const [destinationChainId, setDestinationChainId] = useState<number>(walletChainId);
+
+  useEffect(() => {
+    setSourceChainId(walletChainId);
+  }, [walletChainId]);
+
+  function handleSourceChainChange(newChainId: number) {
+    setSourceChainId(newChainId);
+    switchChain({ chainId: newChainId });
+  }
+
+  const { data: publicBalance = 0n } = useReadContract({
+    address: wormholeAsset.address,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [address!],
+    chainId: sourceChainId,
+    query: { enabled: !!address },
   });
 
   const [status, setStatus] = useState<undefined | "signing" | "executing" | "confirming" | "success" | "error">(undefined);
@@ -131,17 +151,18 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
       return "Enter an amount to send";
     }
     const recipientName = recipient.name ?? formatAddress(recipient.address);
-    const chainLabel = SUPPORTED_CHAINS[destinationChainId]?.label ?? "Unknown";
+    const sourceLabel = SUPPORTED_CHAINS[sourceChainId]?.label ?? "Unknown";
+    const destLabel = SUPPORTED_CHAINS[destinationChainId]?.label ?? "Unknown";
     if (txType === "wormhole") {
-      return `Shield ${amountInput} ${wormholeAsset.symbol} to ${recipientName} on ${chainLabel} via zk-wormhole`;
+      return `Shield ${amountInput} ${wormholeAsset.symbol} from ${sourceLabel} to ${recipientName} on ${destLabel} via zk-wormhole`;
     } else if (txType === "unshield") {
-      return `Unshield ${amountInput} ${wormholeAsset.symbol} to ${recipientName}`;
+      return `Unshield ${amountInput} ${wormholeAsset.symbol} to ${recipientName} on ${sourceLabel}`;
     } else if (txType === "public") {
-      return `Send ${amountInput} ${wormholeAsset.symbol} to ${recipientName} as public transfer`;
+      return `Send ${amountInput} ${wormholeAsset.symbol} to ${recipientName} on ${sourceLabel}`;
     } else {
-      return `Send ${amountInput} ${wormholeAsset.symbol} to ${recipientName} on ${chainLabel} via shielded transfer`;
+      return `Send ${amountInput} ${wormholeAsset.symbol} to ${recipientName} on ${destLabel} via shielded transfer`;
     }
-  }, [recipient, amountInput, txType, wormholeAsset.symbol, destinationChainId]);
+  }, [recipient, amountInput, txType, wormholeAsset.symbol, sourceChainId, destinationChainId]);
 
   async function handleTransaction() {
     switch(txType) {
@@ -186,7 +207,8 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
       if (receipt.status === "success") {
         setStatus("success");
         const entry = await shieldedPool.parseAndSaveWormholeEntry({
-          chainId: client.chain.id,
+          chainId: sourceChainId,
+          destinationChainId,
           receiver: recipient.address,
           wormholeSecret: wormholeSecret,
           receipt: receipt,
@@ -361,6 +383,29 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          {/* Source Chain Selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Network className="w-3.5 h-3.5 text-[#dc2626]" />
+              Source Chain
+            </label>
+            <Select
+              value={sourceChainId.toString()}
+              onValueChange={(v) => handleSourceChainChange(Number(v))}
+            >
+              <SelectTrigger className="h-12 rounded-xl border-2 border-border bg-background focus:border-[#dc2626] transition-all">
+                <SelectValue placeholder="Select chain" />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_CHAIN_IDS.map((id) => (
+                  <SelectItem key={id} value={id.toString()}>
+                    {SUPPORTED_CHAINS[id].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Amount Section */}
           <div >
             <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
@@ -549,6 +594,10 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
                 </span>
                 <span className="text-foreground">{txType.charAt(0).toUpperCase() + txType.slice(1)}</span>
               </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Source</span>
+              <span className="font-medium text-foreground">{SUPPORTED_CHAINS[sourceChainId]?.label}</span>
             </div>
             {showChainSelector && (
               <div className="flex items-center justify-between text-sm">

@@ -313,26 +313,68 @@ export async function queryBranchTreesUpdated(args: {
         first: 1000
       ) {
         id
+        logIndex
         shieldedTreeId
         wormholeTreeId
         branchShieldedRoot
         branchWormholeRoot
         blockNumber
         blockTimestamp
+        transactionHash
       }
     }
   `;
   return subgraphQuery<{
     branchTreesUpdateds: {
       id: string;
+      logIndex: bigint;
       shieldedTreeId: bigint;
       wormholeTreeId: bigint;
       branchShieldedRoot: bigint;
       branchWormholeRoot: bigint;
       blockNumber: bigint;
       blockTimestamp: bigint;
+      transactionHash: Hex;
     }[];
   }>(query, { blockTimestamp_gte: args.blockTimestamp_gte }, args.chainId);
+}
+
+export async function queryLatestBranchTreesUpdated(args: {
+  chainId: number;
+}) {
+  const query = `
+    query LatestBranchTreesUpdated {
+      branchTreesUpdateds(
+        orderBy: blockTimestamp
+        orderDirection: desc
+        first: 1
+      ) {
+        id
+        logIndex
+        shieldedTreeId
+        wormholeTreeId
+        branchShieldedRoot
+        branchWormholeRoot
+        blockNumber
+        blockTimestamp
+        transactionHash
+      }
+    }
+  `;
+  const data = await subgraphQuery<{
+    branchTreesUpdateds: {
+      id: string;
+      logIndex: bigint;
+      shieldedTreeId: bigint;
+      wormholeTreeId: bigint;
+      branchShieldedRoot: bigint;
+      branchWormholeRoot: bigint;
+      blockNumber: bigint;
+      blockTimestamp: bigint;
+      transactionHash: Hex;
+    }[];
+  }>(query, {}, args.chainId);
+  return data.branchTreesUpdateds[0] ?? null;
 }
 
 export async function queryMasterTreesUpdated(args?: {

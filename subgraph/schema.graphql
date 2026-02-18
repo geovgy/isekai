@@ -117,6 +117,7 @@ type WormholeNullifier @entity(immutable: true) {
 
 type BranchTreesUpdated @entity(immutable: true) {
   id: Bytes!
+	logIndex: BigInt! # uint256
   shieldedTreeId: BigInt! # uint256
   wormholeTreeId: BigInt! # uint256
   branchShieldedRoot: BigInt! # uint256
@@ -128,6 +129,7 @@ type BranchTreesUpdated @entity(immutable: true) {
 
 type MasterTreesUpdated @entity(immutable: true) {
   id: Bytes!
+  logIndex: BigInt! # uint256
   masterShieldedRoot: BigInt! # uint256
   masterWormholeRoot: BigInt! # uint256
   blockNumber: BigInt!

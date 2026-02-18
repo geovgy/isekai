@@ -156,7 +156,7 @@ export function WormholesTable() {
   const hasPending = Object.values(pendingEntriesByChain).some(ids => ids.length > 0);
 
   const { data: subgraphData, isLoading: isSubgraphLoading } = useQuery({
-    queryKey: ["wormholeEntriesByEntryIdsMultiChain", pendingEntriesByChain],
+    queryKey: ["wormholeEntriesByEntryIdsMultiChain", JSON.stringify(pendingEntriesByChain, (_, v) => typeof v === "bigint" ? v.toString() : v)],
     queryFn: async () => {
       const results = await Promise.all(
         Object.entries(pendingEntriesByChain).map(async ([chainIdStr, entryIds]) => {
@@ -237,7 +237,8 @@ export function WormholesTable() {
         <TableHeader>
           <TableRow className="border-border/50 hover:bg-transparent">
             <TableHead className="w-[80px] pl-6">ID</TableHead>
-            <TableHead>Chain</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Dest</TableHead>
             <TableHead>Asset</TableHead>
             <TableHead>From</TableHead>
             <TableHead className="text-center">
@@ -259,6 +260,11 @@ export function WormholesTable() {
               <TableCell className="font-mono text-sm pl-6">#{entry.entryId}</TableCell>
               <TableCell>
                 <ChainBadge chainId={entry.chainId} />
+              </TableCell>
+              <TableCell>
+                {entry.destinationChainId
+                  ? <ChainBadge chainId={entry.destinationChainId} />
+                  : <span className="text-xs text-muted-foreground">—</span>}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-4">
