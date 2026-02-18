@@ -33,8 +33,8 @@ export function handleRagequit(event: RagequitEvent): void {
   entity.entryId = event.params.entryId
   entity.quitter = event.params.quitter
   entity.returnedTo = event.params.returnedTo
-  entity.asset = event.params.asset
-  entity.asset_id = event.params.id
+  entity.token = event.params.asset
+  entity.tokenId = event.params.id
   entity.amount = event.params.amount
 
   entity.blockNumber = event.block.number
