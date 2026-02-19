@@ -7,7 +7,9 @@ import {
   WormholeEntry as WormholeEntryEvent,
   WormholeNullifier as WormholeNullifierEvent,
   BranchTreesUpdated as BranchTreesUpdatedEvent,
-  MasterTreesUpdated as MasterTreesUpdatedEvent
+  MasterTreesUpdated as MasterTreesUpdatedEvent,
+  MasterShieldedTreeLeaf as MasterShieldedTreeLeafEvent,
+  MasterWormholeTreeLeaf as MasterWormholeTreeLeafEvent
 } from "../generated/ShieldedPool/ShieldedPool"
 import {
   Ragequit,
@@ -22,7 +24,11 @@ import {
   WormholeNullifier,
   WormholeTree,
   BranchTreesUpdated,
-  MasterTreesUpdated
+  MasterTreesUpdated,
+  MasterShieldedTreeLeaf,
+  MasterWormholeTreeLeaf,
+  MasterShieldedTree,
+  MasterWormholeTree
 } from "../generated/schema"
 import { BigInt, Bytes } from "@graphprotocol/graph-ts"
 
@@ -244,4 +250,74 @@ export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
   entity.transactionHash = event.transaction.hash
 
   entity.save()
+}
+
+export function handleMasterShieldedTreeLeaf(event: MasterShieldedTreeLeafEvent): void {
+  let entity = new MasterShieldedTreeLeaf(
+    event.transaction.hash.concatI32(event.logIndex.toI32())
+  )
+  entity.treeId = event.params.treeId
+  entity.branchRoot = event.params.branchRoot
+  entity.branchChainId = event.params.branchChainId
+  entity.branchBlockNumber = event.params.branchBlockNumber
+  entity.branchTimestamp = event.params.branchTimestamp
+
+  entity.save()
+
+  let tree = _loadOrCreateMasterShieldedTree(event.params.treeId, event.block.timestamp)
+  let leaves = tree.leaves
+  leaves.push(event.params.branchRoot)
+  tree.leaves = leaves
+  tree.size = BigInt.fromI32(leaves.length)
+  tree.updatedAt = event.block.timestamp
+  tree.save()
+}
+
+export function handleMasterWormholeTreeLeaf(event: MasterWormholeTreeLeafEvent): void {
+  let entity = new MasterWormholeTreeLeaf(
+    event.transaction.hash.concatI32(event.logIndex.toI32())
+  )
+  entity.treeId = event.params.treeId
+  entity.branchRoot = event.params.branchRoot
+  entity.branchChainId = event.params.branchChainId
+  entity.branchBlockNumber = event.params.branchBlockNumber
+  entity.branchTimestamp = event.params.branchTimestamp
+
+  entity.save()
+
+  let tree = _loadOrCreateMasterWormholeTree(event.params.treeId, event.block.timestamp)
+  let leaves = tree.leaves
+  leaves.push(event.params.branchRoot)
+  tree.leaves = leaves
+  tree.size = BigInt.fromI32(leaves.length)
+  tree.updatedAt = event.block.timestamp
+  tree.save()
+}
+
+function _loadOrCreateMasterShieldedTree(treeId: BigInt, timestamp: BigInt): MasterShieldedTree {
+  let id = Bytes.fromI32(treeId.toI32())
+  let entity = MasterShieldedTree.load(id)
+  if (entity == null) {
+    entity = new MasterShieldedTree(id)
+    entity.treeId = treeId
+    entity.leaves = []
+    entity.size = BigInt.zero()
+    entity.createdAt = timestamp
+    entity.updatedAt = timestamp
+  }
+  return entity
+}
+
+function _loadOrCreateMasterWormholeTree(treeId: BigInt, timestamp: BigInt): MasterWormholeTree {
+  let id = Bytes.fromI32(treeId.toI32())
+  let entity = MasterWormholeTree.load(id)
+  if (entity == null) {
+    entity = new MasterWormholeTree(id)
+    entity.treeId = treeId
+    entity.leaves = []
+    entity.size = BigInt.zero()
+    entity.createdAt = timestamp
+    entity.updatedAt = timestamp
+  }
+  return entity
 }

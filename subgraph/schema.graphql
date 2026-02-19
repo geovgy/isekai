@@ -11,6 +11,42 @@ type Ragequit @entity(immutable: true) {
   transactionHash: Bytes!
 }
 
+type MasterShieldedTreeLeaf @entity(immutable: true) {
+  id: Bytes! # treeId:branchRoot:branchChainId:branchBlockNumber:branchTimestamp
+  treeId: BigInt! # uint256
+  branchRoot: BigInt! # uint256
+  branchChainId: BigInt! # uint256
+  branchBlockNumber: BigInt! # uint256
+  branchTimestamp: BigInt! # uint256
+}
+
+type MasterWormholeTreeLeaf @entity(immutable: true) {
+  id: Bytes! # treeId:branchRoot:branchChainId:branchBlockNumber:branchTimestamp
+  treeId: BigInt! # uint256
+  branchRoot: BigInt! # uint256
+  branchChainId: BigInt! # uint256
+  branchBlockNumber: BigInt! # uint256
+  branchTimestamp: BigInt! # uint256
+}
+
+type MasterShieldedTree @entity(immutable: false) {
+  id: Bytes! # treeId
+  treeId: BigInt! # uint256
+  leaves: [BigInt!]! # uint256[]
+  size: BigInt! # uint256
+  createdAt: BigInt! # uint256
+  updatedAt: BigInt! # uint256
+}
+
+type MasterWormholeTree @entity(immutable: false) {
+  id: Bytes! # treeId
+  treeId: BigInt! # uint256
+  leaves: [BigInt!]! # uint256[]
+  size: BigInt! # uint256
+  createdAt: BigInt! # uint256
+  updatedAt: BigInt! # uint256
+}
+
 type ShieldedTree @entity(immutable: false) {
   id: Bytes! # treeId
 	treeId: BigInt! # uint256

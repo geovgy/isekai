@@ -28,6 +28,10 @@ dataSources:
         - ShieldedTree
         - BranchTreesUpdated
         - MasterTreesUpdated
+        - MasterShieldedTreeLeaf
+        - MasterWormholeTreeLeaf
+        - MasterShieldedTree
+        - MasterWormholeTree
       abis:
         - name: ShieldedPool
           file: ../contracts/out/ShieldedPool.sol/ShieldedPool.json
@@ -55,4 +59,10 @@ dataSources:
           handler: handleBranchTreesUpdated
         - event: MasterTreesUpdated(indexed uint256,indexed uint256,uint256,uint256)
           handler: handleMasterTreesUpdated
+        - event: MasterShieldedTreeLeaf(indexed uint256,indexed uint256,indexed
+            uint256,uint256,uint256)
+          handler: handleMasterShieldedTreeLeaf
+        - event: MasterWormholeTreeLeaf(indexed uint256,indexed uint256,indexed
+            uint256,uint256,uint256)
+          handler: handleMasterWormholeTreeLeaf
       file: ./src/shielded-pool.ts

@@ -127,6 +127,9 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         uint256 blockTimestamp
     );
 
+    event MasterShieldedTreeLeaf(uint256 indexed treeId, uint256 indexed branchRoot, uint256 indexed branchChainId, uint256 branchBlockNumber, uint256 branchTimestamp);
+    event MasterWormholeTreeLeaf(uint256 indexed treeId, uint256 indexed branchRoot, uint256 indexed branchChainId, uint256 branchBlockNumber, uint256 branchTimestamp);
+
     event Ragequit(uint256 indexed entryId, address indexed quitter, address indexed returnedTo, address asset, uint256 id, uint256 amount);
 
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
@@ -385,26 +388,28 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     function updateMasterTrees(bytes calldata proof) external {
         if (block.chainid == MASTER_CHAIN_ID) {
-            (bytes32 branchShieldedRoot, bytes32 branchWormholeRoot) = _verifyAndExtractBranchTreeEvent(proof);
-            (uint256 masterShieldedRoot, uint256 masterWormholeRoot) = _insertMasterTrees(uint256(branchShieldedRoot), uint256(branchWormholeRoot));
+            (uint64 branchChainId, bytes32 branchShieldedRoot, bytes32 branchWormholeRoot, uint256 branchBlockNumber, uint256 timestamp) = _verifyAndExtractBranchTreeEvent(proof);
+            (uint256 masterShieldedRoot, uint256 masterWormholeRoot) = _insertMasterTrees(uint256(branchShieldedRoot), uint256(branchWormholeRoot), branchChainId, branchBlockNumber, timestamp);
             emit MasterTreesUpdated(masterShieldedRoot, masterWormholeRoot, block.number, block.timestamp);
         } else {
-            (bytes32 masterShieldedRoot, bytes32 masterWormholeRoot) = _verifyMasterTreeEvent(proof);
-            isMasterShieldedRoot[bytes32(masterShieldedRoot)] = true;
-            isMasterWormholeRoot[bytes32(masterWormholeRoot)] = true;
+            (bytes32 masterShieldedRoot, bytes32 masterWormholeRoot, uint256 blockNumber, uint256 timestamp) = _verifyMasterTreeEvent(proof);
+            isMasterShieldedRoot[masterShieldedRoot] = true;
+            isMasterWormholeRoot[masterWormholeRoot] = true;
             // TODO: emit event of received master trees
+            emit MasterTreesUpdated(uint256(masterShieldedRoot), uint256(masterWormholeRoot), blockNumber, timestamp);
         }
     }
 
     // TODO: Verify and extract branch tree event log from branch chain
-    function _verifyAndExtractBranchTreeEvent(bytes calldata proof) internal returns (bytes32 branchShieldedRoot, bytes32 branchWormholeRoot) {
+    function _verifyAndExtractBranchTreeEvent(bytes calldata proof) internal returns (uint64 chainId, bytes32 branchShieldedRoot, bytes32 branchWormholeRoot, uint256 blockNumber, uint256 timestamp) {
         // TODO: Implement
         (
-            uint32 chainId,
+            uint32 emittingChainId,
             address emittingContract,
             bytes memory topics,
             bytes memory unindexedData
         ) = crossL2Prover.validateEvent(proof);
+        chainId = uint64(emittingChainId);
         require(chainId != MASTER_CHAIN_ID && block.chainid == MASTER_CHAIN_ID, "Branch tree cannot be master chain");
         require(emittingContract == address(this), "Invalid emitting contract");
         require(topics.length == 96, "Invalid topics length");
@@ -425,15 +430,15 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
         // TODO: update this to handle rollbacks
         // Should change to conditional that handles rollback if blockNumber < _lastBlockNumbers[chainId] && blockTimestamp < _lastBlockTimestamps[chainId]
-        (,,uint256 blockNumber,) = abi.decode(unindexedData, (uint256, uint256, uint256, uint256));
+        (,,blockNumber, timestamp) = abi.decode(unindexedData, (uint256, uint256, uint256, uint256));
         require(blockNumber > _lastBlockNumbers[chainId], "Branch tree event is not new");
         _lastBlockNumbers[chainId] = blockNumber;
 
-        return (shieldedTreeRoot, wormholeTreeRoot);
+        return (chainId, shieldedTreeRoot, wormholeTreeRoot, blockNumber, timestamp);
     }
 
     // TODO: Verify and extract master tree event log from master chain
-    function _verifyMasterTreeEvent(bytes calldata proof) internal returns (bytes32 masterShieldedRoot, bytes32 masterWormholeRoot) {
+    function _verifyMasterTreeEvent(bytes calldata proof) internal returns (bytes32 masterShieldedRoot, bytes32 masterWormholeRoot, uint256 blockNumber, uint256 timestamp) {
         // TODO: Implement
         (
             uint32 chainId,
@@ -459,14 +464,14 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         masterShieldedRoot = topicsArray[1];
         masterWormholeRoot = topicsArray[2];
 
-        (uint256 blockNumber,) = abi.decode(unindexedData, (uint256, uint256));
+        (blockNumber, timestamp) = abi.decode(unindexedData, (uint256, uint256));
         require(blockNumber > _lastBlockNumbers[chainId], "Master tree event is not new");
         _lastBlockNumbers[chainId] = blockNumber;
 
-        return (masterShieldedRoot, masterWormholeRoot);
+        return (masterShieldedRoot, masterWormholeRoot, blockNumber, timestamp);
     }
 
-    function _insertMasterTrees(uint256 branchShieldedRoot, uint256 branchWormholeRoot) internal returns (uint256 masterShieldedRoot, uint256 masterWormholeRoot) {
+    function _insertMasterTrees(uint256 branchShieldedRoot, uint256 branchWormholeRoot, uint64 branchChainId, uint256 branchBlockNumber, uint256 timestamp) internal returns (uint256 masterShieldedRoot, uint256 masterWormholeRoot) {
         // Insert branch shielded root into master shielded tree (skip zero roots from inactive branch trees)
         if (branchShieldedRoot != 0 && !_masterShieldedTrees[currentMasterShieldedTreeId].has(branchShieldedRoot)) {
             if (_isMerkleTreeFull(_masterShieldedTrees[currentMasterShieldedTreeId])) {
@@ -475,6 +480,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             masterShieldedRoot = _masterShieldedTrees[currentMasterShieldedTreeId].insert(branchShieldedRoot);
             isMasterShieldedRoot[bytes32(masterShieldedRoot)] = true;
+            emit MasterShieldedTreeLeaf(currentMasterShieldedTreeId, branchShieldedRoot, branchChainId, branchBlockNumber, timestamp);
         }
 
         // Insert branch wormhole root into master wormhole tree (skip zero roots from inactive branch trees)
@@ -485,6 +491,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             masterWormholeRoot = _masterWormholeTrees[currentMasterWormholeTreeId].insert(branchWormholeRoot);
             isMasterWormholeRoot[bytes32(masterWormholeRoot)] = true;
+            emit MasterWormholeTreeLeaf(currentMasterWormholeTreeId, branchWormholeRoot, branchChainId, branchBlockNumber, timestamp);
         }
     }
 
