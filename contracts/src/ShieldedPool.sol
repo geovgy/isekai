@@ -62,10 +62,10 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     uint8 public constant ROLLBACK_TREE_DEPTH = 32;
 
-    uint64 public constant MASTER_CHAIN_ID = 1;
+    uint64 public constant MASTER_CHAIN_ID = 11155111;
 
-    bytes32 public constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount)");
-    bytes32 public constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount)");
+    bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount)");
+    bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount)");
 
     IPoseidon2 public immutable poseidon2;
     IVerifier public immutable ragequitVerifier;
@@ -463,8 +463,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     }
 
     function _insertMasterTrees(uint256 branchShieldedRoot, uint256 branchWormholeRoot) internal returns (uint256 masterShieldedRoot, uint256 masterWormholeRoot) {
-        // Insert branch shielded root into master shielded tree
-        if (!_masterShieldedTrees[currentMasterShieldedTreeId].has(branchShieldedRoot)) {
+        // Insert branch shielded root into master shielded tree (skip zero roots from inactive branch trees)
+        if (branchShieldedRoot != 0 && !_masterShieldedTrees[currentMasterShieldedTreeId].has(branchShieldedRoot)) {
             if (_isMerkleTreeFull(_masterShieldedTrees[currentMasterShieldedTreeId])) {
                 currentMasterShieldedTreeId++;
                 _initializeMerkleTree(_masterShieldedTrees[currentMasterShieldedTreeId]);
@@ -473,10 +473,10 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             isMasterShieldedRoot[bytes32(masterShieldedRoot)] = true;
         }
 
-        // Insert branch wormhole root into master wormhole tree
-        if (!_masterWormholeTrees[currentMasterWormholeTreeId].has(branchWormholeRoot)) {
+        // Insert branch wormhole root into master wormhole tree (skip zero roots from inactive branch trees)
+        if (branchWormholeRoot != 0 && !_masterWormholeTrees[currentMasterWormholeTreeId].has(branchWormholeRoot)) {
             if (_isMerkleTreeFull(_masterWormholeTrees[currentMasterWormholeTreeId])) {
-            currentMasterWormholeTreeId++;
+                currentMasterWormholeTreeId++;
                 _initializeMerkleTree(_masterWormholeTrees[currentMasterWormholeTreeId]);
             }
             masterWormholeRoot = _masterWormholeTrees[currentMasterWormholeTreeId].insert(branchWormholeRoot);

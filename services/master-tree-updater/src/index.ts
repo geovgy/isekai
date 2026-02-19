@@ -1,7 +1,8 @@
 import { parseEventLogs, type Hex, type TransactionReceipt } from "viem"
 import { CONTRACT_ADDRESS } from "./env"
 import { MASTER_CHAIN_ID, BRANCH_CHAIN_IDS, getChain } from "./config"
-import { updateMasterTreesAbi, masterTreesUpdatedEventAbi } from "./abis"
+// import { updateMasterTreesAbi, masterTreesUpdatedEventAbi } from "./abis"
+import { abi as ShieldedPoolAbi } from "../../../contracts/out/ShieldedPool.sol/ShieldedPool.json"
 import { account, getPublicClient, getWalletClient } from "./clients"
 import { queryLatestBranchTreesUpdated } from "./subgraph"
 import { getPolymerProofHex } from "./polymer"
@@ -12,7 +13,7 @@ async function sendUpdateMasterTrees(targetChainId: number, proof: Hex): Promise
 
   const hash = await wallet.writeContract({
     address: CONTRACT_ADDRESS,
-    abi: updateMasterTreesAbi,
+    abi: ShieldedPoolAbi,
     functionName: "updateMasterTrees",
     args: [proof],
   })
@@ -74,7 +75,7 @@ async function main() {
   console.log("\n=== Step 2: Sync master root to branch chains ===\n")
 
   const masterUpdatedLogs = parseEventLogs({
-    abi: masterTreesUpdatedEventAbi,
+    abi: ShieldedPoolAbi,
     eventName: "MasterTreesUpdated",
     logs: lastMasterReceipt.logs,
   })
@@ -93,8 +94,8 @@ async function main() {
   const masterLogIndex = masterLog.logIndex
 
   console.log(`MasterTreesUpdated event at block ${masterBlockNumber}, logIndex ${masterLogIndex}`)
-  console.log(`  shieldedRoot: ${masterLog.args.masterShieldedRoot}`)
-  console.log(`  wormholeRoot: ${masterLog.args.masterWormholeRoot}`)
+  // console.log(`  shieldedRoot: ${masterLog.args.masterShieldedRoot}`)
+  // console.log(`  wormholeRoot: ${masterLog.args.masterWormholeRoot}`)
   console.log()
 
   console.log("Requesting Polymer proof of MasterTreesUpdated event...")
