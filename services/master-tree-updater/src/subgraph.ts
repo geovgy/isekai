@@ -19,6 +19,8 @@ export interface BranchTreesUpdatedEvent {
   logIndex: string
   branchShieldedRoot: string
   branchWormholeRoot: string
+  branchBlockNumber: string
+  branchBlockTimestamp: string
   blockNumber: string
   blockTimestamp: string
   transactionHash: string
@@ -32,6 +34,8 @@ export async function queryLatestBranchTreesUpdated(chainId: number): Promise<Br
         logIndex
         branchShieldedRoot
         branchWormholeRoot
+        branchBlockNumber
+        branchBlockTimestamp
         blockNumber
         blockTimestamp
         transactionHash

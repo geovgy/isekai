@@ -43,8 +43,9 @@ export async function getShieldedTransferInputEntries(
   }
 ): Promise<{ wormhole: NoteDBWormholeEntry | undefined, shielded: NoteDBShieldedEntry[] }> {
   const wormholeDeposits = (await _db.getWormholeNotes()).filter(w => (
-    w.srcChainId === args.chainId
+    w.dstChainId === args.chainId
     && w.status === "approved"
+    && w.masterTreeStatus === "included"
     && !w.usedAt
     && isAddressEqual(w.entry.token, args.token)
     && BigInt(w.entry.token_id ?? "0") === BigInt(args.tokenId ?? "0")
@@ -60,8 +61,9 @@ export async function getShieldedTransferInputEntries(
   }
 
   const shieldedNotes = (await _db.getShieldedNotes()).filter(s => (
-    s.srcChainId === args.chainId
+    s.dstChainId === args.chainId
     && s.status === "available"
+    && s.masterTreeStatus === "included"
     && isAddressEqual(s.note.asset, args.token)
     && BigInt(s.note.assetId ?? "0") === BigInt(args.tokenId ?? "0")
     && isAddressEqual(s.note.account, args.sender)

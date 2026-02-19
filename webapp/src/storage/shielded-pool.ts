@@ -3,7 +3,7 @@ import { publicKeyToAddress } from "viem/accounts"
 import { NoteDB } from "@/src/storage/notes-db"
 import { InputNote, NoteDBShieldedEntry, NoteDBWormholeEntry, OutputNote, ShieldedTx, TransferType, Withdrawal, WormholeDeposit } from "@/src/types"
 import { createShieldedTransferOutputNotes, getShieldedTransferInputEntries } from "./utils"
-import { getMerkleTrees, queryTrees } from "@/src/subgraph-queries"
+import { queryLatestMasterTreesUpdatedOnChain, queryMasterTreeLeavesUpToBlock, queryBranchShieldedTreeSnapshot, queryBranchWormholeTreeSnapshot } from "@/src/subgraph-queries"
 import { getMerkleTree } from "@/src/merkle"
 import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormholeBurnAddress, getWormholeNullifier, getWormholePseudoNullifier } from "@/src/joinsplits"
 import { signTypedData, writeContract } from "wagmi/actions"
@@ -12,6 +12,7 @@ import { SHIELDED_POOL_CONTRACT_ADDRESS } from "../env"
 import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "../config"
 import { MERKLE_TREE_DEPTH } from "../constants"
 import { InputMap } from "@noir-lang/noir_js"
+import { LeanIMT } from "@zk-kit/lean-imt"
 
 const wormholeEntryEventAbi = [{
   type: "event",
@@ -307,18 +308,107 @@ export class ShieldedPool {
     const assetId = getAssetId(args.token, args.tokenId);
     const transferType = args.unshield ? TransferType.WITHDRAWAL : TransferType.TRANSFER;
     const { wormhole, shielded } = await getShieldedTransferInputEntries(this._db, { chainId: args.srcChainId, sender: this.account, receiver: args.receiver, token: args.token, tokenId: args.tokenId, amount: args.amount })
-    const { wormholeTree, shieldedTree } = await getMerkleTrees({
-      wormholeTreeId: BigInt(wormhole?.treeNumber ?? 0),
-      shieldedTreeId: BigInt(shielded[0]?.treeNumber ?? 0),
-      chainId: args.srcChainId,
-    })
+    // Get the master tree state that's known on the executing chain
+    const latestMasterUpdate = await queryLatestMasterTreesUpdatedOnChain(args.srcChainId)
+    if (!latestMasterUpdate) {
+      throw new Error(`No master tree update found on chain ${args.srcChainId}. Wait for the master tree to sync.`)
+    }
 
-    // Build master trees from branch roots
-    // TODO: Query actual master tree leaves from all chains; for now use single branch root
-    const shieldedMasterTree = getMerkleTree([shieldedTree.root])
-    const wormholeMasterTree = getMerkleTree([wormholeTree.root])
-    const masterShieldedProof = shieldedMasterTree.generateProof(0)
-    const masterWormholeProof = wormholeMasterTree.generateProof(0)
+    // Get all master tree leaves (branch roots) up to that master block number
+    const { masterShieldedTreeLeaves: shieldedLeafEntities, masterWormholeTreeLeaves: wormholeLeafEntities } =
+      await queryMasterTreeLeavesUpToBlock({ blockNumber: Number(latestMasterUpdate.masterBlockNumber) })
+
+    const masterShieldedLeaves = shieldedLeafEntities.map(l => BigInt(l.branchRoot))
+    const masterWormholeLeaves = wormholeLeafEntities.map(l => BigInt(l.branchRoot))
+    const shieldedMasterTree = getMerkleTree(masterShieldedLeaves.length > 0 ? masterShieldedLeaves : [0n])
+    const wormholeMasterTree = getMerkleTree(masterWormholeLeaves.length > 0 ? masterWormholeLeaves : [0n])
+
+    // Resolve the shielded branch tree from a snapshot whose root is in the master tree.
+    // We use the latest snapshot for the source chain and verify it contains the note's leaf.
+    let shieldedTree: LeanIMT<bigint>
+    let masterShieldedProof: ReturnType<LeanIMT<bigint>['generateProof']>
+    if (shielded.length > 0) {
+      const noteSrcChainId = shielded[0].srcChainId
+      const treeNumber = shielded[0].treeNumber
+      const maxLeafIndex = Math.max(...shielded.map(s => s.leafIndex))
+
+      const chainLeaves = shieldedLeafEntities
+        .filter(l => Number(l.branchChainId) === noteSrcChainId)
+        .sort((a, b) => Number(b.branchBlockNumber) - Number(a.branchBlockNumber))
+
+      if (chainLeaves.length === 0) {
+        throw new Error(`No master tree leaf found for shielded notes from chain ${noteSrcChainId}`)
+      }
+
+      let coveringLeaf: typeof chainLeaves[0] | undefined
+      let snapshot: { leaves: string[]; size: string } | undefined
+      for (const leaf of chainLeaves) {
+        const s = await queryBranchShieldedTreeSnapshot({ treeId: treeNumber, root: leaf.branchRoot, chainId: noteSrcChainId })
+        if (s && s.leaves.length > maxLeafIndex) {
+          coveringLeaf = leaf
+          snapshot = s
+          break
+        }
+      }
+
+      if (!coveringLeaf || !snapshot) {
+        throw new Error(`No branch shielded tree snapshot contains leaf index ${maxLeafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}. The master tree may need to sync.`)
+      }
+
+      shieldedTree = getMerkleTree(snapshot.leaves.map(l => BigInt(l)))
+      const branchRoot = BigInt(coveringLeaf.branchRoot)
+      const masterIndex = masterShieldedLeaves.findIndex(l => l === branchRoot)
+      if (masterIndex === -1) {
+        throw new Error(`Branch shielded root not found in master tree`)
+      }
+      masterShieldedProof = shieldedMasterTree.generateProof(masterIndex)
+    } else {
+      shieldedTree = getMerkleTree([0n])
+      masterShieldedProof = shieldedMasterTree.generateProof(0)
+    }
+
+    // Resolve the wormhole branch tree from a snapshot whose root is in the master tree.
+    // We use the latest snapshot for the source chain and verify it contains the note's leaf.
+    let wormholeTree: LeanIMT<bigint>
+    let masterWormholeProof: ReturnType<LeanIMT<bigint>['generateProof']>
+    if (wormhole) {
+      const noteSrcChainId = wormhole.srcChainId
+      const treeNumber = wormhole.treeNumber
+
+      const chainLeaves = wormholeLeafEntities
+        .filter(l => Number(l.branchChainId) === noteSrcChainId)
+        .sort((a, b) => Number(b.branchBlockNumber) - Number(a.branchBlockNumber))
+
+      if (chainLeaves.length === 0) {
+        throw new Error(`No master tree leaf found for wormhole notes from chain ${noteSrcChainId}`)
+      }
+
+      let coveringLeaf: typeof chainLeaves[0] | undefined
+      let snapshot: { leaves: string[]; size: string } | undefined
+      for (const leaf of chainLeaves) {
+        const s = await queryBranchWormholeTreeSnapshot({ treeId: treeNumber, root: leaf.branchRoot, chainId: noteSrcChainId })
+        if (s && s.leaves.length > wormhole.leafIndex) {
+          coveringLeaf = leaf
+          snapshot = s
+          break
+        }
+      }
+
+      if (!coveringLeaf || !snapshot) {
+        throw new Error(`No branch wormhole tree snapshot contains leaf index ${wormhole.leafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}. The master tree may need to sync.`)
+      }
+
+      wormholeTree = getMerkleTree(snapshot.leaves.map(l => BigInt(l)))
+      const branchRoot = BigInt(coveringLeaf.branchRoot)
+      const masterIndex = masterWormholeLeaves.findIndex(l => l === branchRoot)
+      if (masterIndex === -1) {
+        throw new Error(`Branch wormhole root not found in master tree`)
+      }
+      masterWormholeProof = wormholeMasterTree.generateProof(masterIndex)
+    } else {
+      wormholeTree = getMerkleTree([0n])
+      masterWormholeProof = wormholeMasterTree.generateProof(0)
+    }
 
     let wormholeDeposit: WormholeDeposit | undefined = undefined;
     let wormholePseudoSecret: bigint | undefined = undefined;

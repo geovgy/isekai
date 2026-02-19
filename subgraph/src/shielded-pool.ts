@@ -28,7 +28,9 @@ import {
   MasterShieldedTreeLeaf,
   MasterWormholeTreeLeaf,
   MasterShieldedTree,
-  MasterWormholeTree
+  MasterWormholeTree,
+  BranchWormholeTreeSnapshot,
+  BranchShieldedTreeSnapshot
 } from "../generated/schema"
 import { BigInt, Bytes } from "@graphprotocol/graph-ts"
 
@@ -230,11 +232,37 @@ export function handleBranchTreesUpdated(event: BranchTreesUpdatedEvent): void {
   entity.branchShieldedRoot = event.params.branchShieldedRoot
   entity.branchWormholeRoot = event.params.branchWormholeRoot
 
+  entity.branchBlockNumber = event.params.blockNumber
+  entity.branchBlockTimestamp = event.params.blockTimestamp
   entity.blockNumber = event.block.number
   entity.blockTimestamp = event.block.timestamp
   entity.transactionHash = event.transaction.hash
 
   entity.save()
+
+  // Get branch trees
+  let branchShieldedTree = ShieldedTree.load(Bytes.fromI32(event.params.shieldedTreeId.toI32()))
+  let branchWormholeTree = WormholeTree.load(Bytes.fromI32(event.params.wormholeTreeId.toI32()))
+
+  // Append to branch wormhole tree snapshot
+  let branchWormholeTreeSnapshot = new BranchWormholeTreeSnapshot(event.params.wormholeTreeId.toString() + ":" + event.params.branchWormholeRoot.toString())
+  branchWormholeTreeSnapshot.treeId = event.params.wormholeTreeId
+  branchWormholeTreeSnapshot.root = event.params.branchWormholeRoot
+  branchWormholeTreeSnapshot.leaves = branchWormholeTree ? branchWormholeTree.leaves : []
+  branchWormholeTreeSnapshot.size = branchWormholeTree ? branchWormholeTree.size : BigInt.zero()
+  branchWormholeTreeSnapshot.blockNumber = event.block.number
+  branchWormholeTreeSnapshot.createdAt = event.block.timestamp
+  branchWormholeTreeSnapshot.save()
+
+  // Append to branch shielded tree snapshot
+  let branchShieldedTreeSnapshot = new BranchShieldedTreeSnapshot(event.params.shieldedTreeId.toString() + ":" + event.params.branchShieldedRoot.toString())
+  branchShieldedTreeSnapshot.treeId = event.params.shieldedTreeId
+  branchShieldedTreeSnapshot.root = event.params.branchShieldedRoot
+  branchShieldedTreeSnapshot.leaves = branchShieldedTree ? branchShieldedTree.leaves : []
+  branchShieldedTreeSnapshot.size = branchShieldedTree ? branchShieldedTree.size : BigInt.zero()
+  branchShieldedTreeSnapshot.blockNumber = event.block.number
+  branchShieldedTreeSnapshot.createdAt = event.block.timestamp
+  branchShieldedTreeSnapshot.save()
 }
 
 export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {

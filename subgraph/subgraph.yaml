@@ -32,6 +32,8 @@ dataSources:
         - MasterWormholeTreeLeaf
         - MasterShieldedTree
         - MasterWormholeTree
+        - BranchShieldedTreeSnapshot
+        - BranchWormholeTreeSnapshot
       abis:
         - name: ShieldedPool
           file: ../contracts/out/ShieldedPool.sol/ShieldedPool.json

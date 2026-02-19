@@ -50,7 +50,7 @@ async function main() {
       continue
     }
 
-    console.log(`[${label}] Found at block ${event.blockNumber}, logIndex ${event.logIndex}`)
+    console.log(`[${label}] Found at block ${event.branchBlockNumber}, logIndex ${event.logIndex}`)
 
     const lastSyncedBlock = await masterPublicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -59,9 +59,7 @@ async function main() {
       args: [BigInt(branchChainId)],
     }) as bigint
 
-    console.log(`[${label}] Last synced block: ${lastSyncedBlock} (event block: ${event.blockNumber} - ${BigInt(event.blockNumber) <= lastSyncedBlock ? "true" : "false"})`)
-
-    if (BigInt(event.blockNumber) <= lastSyncedBlock) {
+    if (BigInt(event.branchBlockNumber) <= lastSyncedBlock) {
       console.log(`[${label}] Already synced (master last block: ${lastSyncedBlock}), skipping.\n`)
       continue
     }
@@ -70,7 +68,7 @@ async function main() {
 
     const proof = await getPolymerProofHex({
       sourceChainId: branchChainId,
-      blockNumber: Number(event.blockNumber),
+      blockNumber: Number(event.branchBlockNumber),
       logIndex: Number(event.logIndex),
     })
 
