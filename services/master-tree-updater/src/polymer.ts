@@ -1,6 +1,7 @@
 import { bytesToHex } from "viem"
 import { base64ToBytes } from "./base64"
 import { POLYMER_PROVER_API_URL, POLYMER_API_KEY } from "./env"
+import { mainnet, sepolia } from "viem/chains"
 
 export interface PolymerProverAPIRequestProofResult {
   jsonrpc: string
@@ -35,8 +36,12 @@ export async function getPolymerProofHex(args: {
   })
 
   const pollEvery = args.pollIntervalMs ?? 1500
-  const timeoutMs = args.timeoutMs ?? 120_000
+  const timeoutMs = args.timeoutMs ?? (args.sourceChainId === mainnet.id || args.sourceChainId === sepolia.id) ? 200_000 : 120_000
   const start = Date.now()
+
+  if (args.sourceChainId === mainnet.id || args.sourceChainId === sepolia.id) {
+    await new Promise((r) => setTimeout(r, 100_000))
+  }
 
   while (Date.now() - start < timeoutMs) {
     const res = await api.queryProof(jobId)

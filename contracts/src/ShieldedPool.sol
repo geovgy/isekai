@@ -162,6 +162,10 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         return (bytes32(_masterShieldedTrees[treeId].root()), _masterShieldedTrees[treeId].size, _masterShieldedTrees[treeId].depth);
     }
 
+    function lastBlockNumber(uint64 chainId) external view returns (uint256) {
+        return _lastBlockNumbers[chainId];
+    }
+
     function wormholeEntry(uint256 entryId) external view returns (TransferMetadata memory) {
         return _wormholeEntries[entryId];
     }

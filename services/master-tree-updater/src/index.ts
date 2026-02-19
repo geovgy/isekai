@@ -38,6 +38,8 @@ async function main() {
 
   let lastMasterReceipt: TransactionReceipt | undefined
 
+  const masterPublicClient = getPublicClient(MASTER_CHAIN_ID)
+
   for (const branchChainId of BRANCH_CHAIN_IDS) {
     const label = getChain(branchChainId).label
     console.log(`[${label}] Querying latest BranchTreesUpdated event...`)
@@ -49,6 +51,19 @@ async function main() {
     }
 
     console.log(`[${label}] Found at block ${event.blockNumber}, logIndex ${event.logIndex}`)
+
+    const lastSyncedBlock = await masterPublicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: ShieldedPoolAbi,
+      functionName: "lastBlockNumber",
+      args: [BigInt(branchChainId)],
+    }) as bigint
+
+    if (BigInt(event.blockNumber) <= lastSyncedBlock) {
+      console.log(`[${label}] Already synced (master last block: ${lastSyncedBlock}), skipping.\n`)
+      continue
+    }
+
     console.log(`[${label}] Requesting Polymer proof...`)
 
     const proof = await getPolymerProofHex({
@@ -103,6 +118,7 @@ async function main() {
     sourceChainId: MASTER_CHAIN_ID,
     blockNumber: masterBlockNumber,
     logIndex: masterLogIndex,
+    timeoutMs: 200_000
   })
   console.log(`Polymer proof received (${masterProof.length} hex chars)\n`)
 
