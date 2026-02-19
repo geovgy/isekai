@@ -1,7 +1,7 @@
 import { Address, Hex, numberToHex } from "viem";
 import { subgraphQuery, subgraphQueryAllChains, subgraphQueryMasterChain } from "./subgraph";
 import { getMerkleTree } from "./merkle";
-import { MASTER_CHAIN_ID } from "./config";
+import { MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./config";
 
 export async function getMerkleTrees({
   wormholeTreeId,
@@ -270,6 +270,7 @@ export async function queryWormholeEntriesByEntryIds(args: {
           amount
           approved
           submittedBy
+          blockNumber
           blockTimestamp
           transactionHash
         }
@@ -293,6 +294,8 @@ export async function queryWormholeEntriesByEntryIds(args: {
         amount: bigint;
         approved: boolean;
         submittedBy: Address;
+        blockNumber: bigint;
+        blockTimestamp: bigint;
       } | null;
       blockTimestamp: bigint;
       transactionHash: Hex;
@@ -391,6 +394,8 @@ export async function queryMasterTreesUpdated(args?: {
         id
         masterShieldedRoot
         masterWormholeRoot
+        masterBlockNumber
+        masterBlockTimestamp
         blockNumber
         blockTimestamp
       }
@@ -401,8 +406,88 @@ export async function queryMasterTreesUpdated(args?: {
       id: string;
       masterShieldedRoot: bigint;
       masterWormholeRoot: bigint;
+      masterBlockNumber: bigint;
+      masterBlockTimestamp: bigint;
       blockNumber: bigint;
       blockTimestamp: bigint;
     }[];
   }>(query, { blockTimestamp_gte: args?.blockTimestamp_gte });
+}
+
+export interface MasterTreeLeafResult {
+  branchChainId: string;
+  branchBlockNumber: string;
+  branchTimestamp: string;
+  blockNumber: string;
+  blockTimestamp: string;
+}
+
+export async function queryLatestMasterWormholeTreeLeaves(branchChainIds: number[]) {
+  const query = `
+    query LatestMasterWormholeTreeLeaves($branchChainIds: [BigInt!]!) {
+      masterWormholeTreeLeaves(
+        where: { branchChainId_in: $branchChainIds }
+        orderBy: branchBlockNumber
+        orderDirection: desc
+        first: 1000
+      ) {
+        branchChainId
+        branchBlockNumber
+        branchTimestamp
+        blockNumber
+        blockTimestamp
+      }
+    }
+  `;
+  return subgraphQueryMasterChain<{
+    masterWormholeTreeLeaves: MasterTreeLeafResult[];
+  }>(query, { branchChainIds: branchChainIds.map(String) });
+}
+
+export async function queryLatestMasterShieldedTreeLeaves(branchChainIds: number[]) {
+  const query = `
+    query LatestMasterShieldedTreeLeaves($branchChainIds: [BigInt!]!) {
+      masterShieldedTreeLeaves(
+        where: { branchChainId_in: $branchChainIds }
+        orderBy: branchBlockNumber
+        orderDirection: desc
+        first: 1000
+      ) {
+        branchChainId
+        branchBlockNumber
+        branchTimestamp
+        blockNumber
+        blockTimestamp
+      }
+    }
+  `;
+  return subgraphQueryMasterChain<{
+    masterShieldedTreeLeaves: MasterTreeLeafResult[];
+  }>(query, { branchChainIds: branchChainIds.map(String) });
+}
+
+export async function queryLatestMasterTreesUpdatedOnChain(chainId: number) {
+  const query = `
+    query LatestMasterTreesUpdated {
+      masterTreesUpdateds(
+        orderBy: blockTimestamp
+        orderDirection: desc
+        first: 1
+      ) {
+        masterBlockNumber
+        masterBlockTimestamp
+        blockNumber
+        blockTimestamp
+      }
+    }
+  `;
+  const data = await subgraphQuery<{
+    masterTreesUpdateds: {
+      masterBlockNumber: string;
+      masterBlockTimestamp: string;
+      blockNumber: string;
+      blockTimestamp: string;
+    }[];
+  }>(query, {}, chainId);
+  return data.masterTreesUpdateds[0] ?? null;
 }

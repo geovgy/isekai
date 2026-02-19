@@ -18,6 +18,8 @@ type MasterShieldedTreeLeaf @entity(immutable: true) {
   branchChainId: BigInt! # uint256
   branchBlockNumber: BigInt! # uint256
   branchTimestamp: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
 }
 
 type MasterWormholeTreeLeaf @entity(immutable: true) {
@@ -27,6 +29,8 @@ type MasterWormholeTreeLeaf @entity(immutable: true) {
   branchChainId: BigInt! # uint256
   branchBlockNumber: BigInt! # uint256
   branchTimestamp: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
 }
 
 type MasterShieldedTree @entity(immutable: false) {
@@ -168,6 +172,8 @@ type MasterTreesUpdated @entity(immutable: true) {
   logIndex: BigInt! # uint256
   masterShieldedRoot: BigInt! # uint256
   masterWormholeRoot: BigInt! # uint256
+	masterBlockNumber: BigInt! # uint256
+	masterBlockTimestamp: BigInt! # uint256
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!

@@ -35,12 +35,12 @@ export async function getPolymerProofHex(args: {
     logIndex: args.logIndex
   })
 
-  const pollEvery = args.pollIntervalMs ?? 1500
-  const timeoutMs = args.timeoutMs ?? (args.sourceChainId === mainnet.id || args.sourceChainId === sepolia.id) ? 200_000 : 120_000
+  const pollEvery = args.pollIntervalMs ?? 1000
+  const timeoutMs = args.timeoutMs ?? (args.sourceChainId === mainnet.id || args.sourceChainId === sepolia.id) ? 240_000 : 120_000
   const start = Date.now()
 
   if (args.sourceChainId === mainnet.id || args.sourceChainId === sepolia.id) {
-    await new Promise((r) => setTimeout(r, 100_000))
+    await new Promise((r) => setTimeout(r, 120_000))
   }
 
   while (Date.now() - start < timeoutMs) {

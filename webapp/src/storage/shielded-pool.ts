@@ -190,7 +190,7 @@ export class ShieldedPool {
     leafIndex: number,
     status: NoteDBWormholeEntry["status"],
   }) {
-    const id = `${chainId}-${entryId}`
+    const id = `${chainId}:${entryId}`
     const entry = await this._db.getNote("wormhole_note", id) as NoteDBWormholeEntry | undefined
     if (!entry) {
       throw new Error(`Wormhole entry with id ${id} not found in DB`)

@@ -59,6 +59,8 @@ async function main() {
       args: [BigInt(branchChainId)],
     }) as bigint
 
+    console.log(`[${label}] Last synced block: ${lastSyncedBlock} (event block: ${event.blockNumber} - ${BigInt(event.blockNumber) <= lastSyncedBlock ? "true" : "false"})`)
+
     if (BigInt(event.blockNumber) <= lastSyncedBlock) {
       console.log(`[${label}] Already synced (master last block: ${lastSyncedBlock}), skipping.\n`)
       continue
@@ -118,7 +120,6 @@ async function main() {
     sourceChainId: MASTER_CHAIN_ID,
     blockNumber: masterBlockNumber,
     logIndex: masterLogIndex,
-    timeoutMs: 200_000
   })
   console.log(`Polymer proof received (${masterProof.length} hex chars)\n`)
 

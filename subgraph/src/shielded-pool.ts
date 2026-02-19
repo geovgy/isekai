@@ -244,7 +244,8 @@ export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
   entity.logIndex = event.logIndex
   entity.masterShieldedRoot = event.params.masterShieldedRoot
   entity.masterWormholeRoot = event.params.masterWormholeRoot
-
+  entity.masterBlockNumber = event.params.blockNumber
+  entity.masterBlockTimestamp = event.params.blockTimestamp
   entity.blockNumber = event.block.number
   entity.blockTimestamp = event.block.timestamp
   entity.transactionHash = event.transaction.hash
@@ -261,6 +262,8 @@ export function handleMasterShieldedTreeLeaf(event: MasterShieldedTreeLeafEvent)
   entity.branchChainId = event.params.branchChainId
   entity.branchBlockNumber = event.params.branchBlockNumber
   entity.branchTimestamp = event.params.branchTimestamp
+  entity.blockNumber = event.block.number
+  entity.blockTimestamp = event.block.timestamp
 
   entity.save()
 
@@ -282,6 +285,8 @@ export function handleMasterWormholeTreeLeaf(event: MasterWormholeTreeLeafEvent)
   entity.branchChainId = event.params.branchChainId
   entity.branchBlockNumber = event.params.branchBlockNumber
   entity.branchTimestamp = event.params.branchTimestamp
+  entity.blockNumber = event.block.number
+  entity.blockTimestamp = event.block.timestamp
 
   entity.save()
 
