@@ -632,27 +632,27 @@ export async function queryMasterWormholeTreeSnapshot(args: {
 
 export async function queryMasterShieldedTreeLeavesForBranchChain(args: {
   branchChainId: number;
-  branchBlockNumber_gte?: number;
+  branchTimestamp_gte?: number;
 }): Promise<{
   branchRoot: string;
-  branchBlockNumber: string;
-  blockNumber: string;
+  branchTimestamp: string;
+  blockTimestamp: string;
   treeId: string;
 }[]> {
-  const whereClause = args.branchBlockNumber_gte !== undefined
-    ? `{ branchChainId: $branchChainId, branchBlockNumber_gte: $branchBlockNumber_gte }`
+  const whereClause = args.branchTimestamp_gte !== undefined
+    ? `{ branchChainId: $branchChainId, branchTimestamp_gte: $branchTimestamp_gte }`
     : `{ branchChainId: $branchChainId }`;
   const query = `
-    query MasterShieldedTreeLeavesForBranchChain($branchChainId: BigInt!, $branchBlockNumber_gte: BigInt) {
+    query MasterShieldedTreeLeavesForBranchChain($branchChainId: BigInt!, $branchTimestamp_gte: BigInt) {
       masterShieldedTreeLeaves(
         where: ${whereClause}
-        orderBy: branchBlockNumber
+        orderBy: branchTimestamp
         orderDirection: desc
         first: 100
       ) {
         branchRoot
-        branchBlockNumber
-        blockNumber
+        branchTimestamp
+        blockTimestamp
         treeId
       }
     }
@@ -660,40 +660,40 @@ export async function queryMasterShieldedTreeLeavesForBranchChain(args: {
   const data = await subgraphQueryMasterChain<{
     masterShieldedTreeLeaves: {
       branchRoot: string;
-      branchBlockNumber: string;
-      blockNumber: string;
+      branchTimestamp: string;
+      blockTimestamp: string;
       treeId: string;
     }[];
   }>(query, {
     branchChainId: args.branchChainId.toString(),
-    branchBlockNumber_gte: args.branchBlockNumber_gte?.toString(),
+    branchTimestamp_gte: args.branchTimestamp_gte?.toString(),
   });
   return data.masterShieldedTreeLeaves;
 }
 
 export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
   branchChainId: number;
-  branchBlockNumber_gte?: number;
+  branchTimestamp_gte?: number;
 }): Promise<{
   branchRoot: string;
-  branchBlockNumber: string;
-  blockNumber: string;
+  branchTimestamp: string;
+  blockTimestamp: string;
   treeId: string;
 }[]> {
-  const whereClause = args.branchBlockNumber_gte !== undefined
-    ? `{ branchChainId: $branchChainId, branchBlockNumber_gte: $branchBlockNumber_gte }`
+  const whereClause = args.branchTimestamp_gte !== undefined
+    ? `{ branchChainId: $branchChainId, branchTimestamp_gte: $branchTimestamp_gte }`
     : `{ branchChainId: $branchChainId }`;
   const query = `
-    query MasterWormholeTreeLeavesForBranchChain($branchChainId: BigInt!, $branchBlockNumber_gte: BigInt) {
+    query MasterWormholeTreeLeavesForBranchChain($branchChainId: BigInt!, $branchTimestamp_gte: BigInt) {
       masterWormholeTreeLeaves(
         where: ${whereClause}
-        orderBy: branchBlockNumber
+        orderBy: branchTimestamp
         orderDirection: desc
         first: 100
       ) {
         branchRoot
-        branchBlockNumber
-        blockNumber
+        branchTimestamp
+        blockTimestamp
         treeId
       }
     }
@@ -701,33 +701,33 @@ export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
   const data = await subgraphQueryMasterChain<{
     masterWormholeTreeLeaves: {
       branchRoot: string;
-      branchBlockNumber: string;
-      blockNumber: string;
+      branchTimestamp: string;
+      blockTimestamp: string;
       treeId: string;
     }[];
   }>(query, {
     branchChainId: args.branchChainId.toString(),
-    branchBlockNumber_gte: args.branchBlockNumber_gte?.toString(),
+    branchTimestamp_gte: args.branchTimestamp_gte?.toString(),
   });
   return data.masterWormholeTreeLeaves;
 }
 
-export async function queryMasterTreesUpdatedWithinBlockRange(args: {
-  blockNumber_gte: number;
-  blockNumber_lte: number;
+export async function queryMasterTreesUpdatedWithinTimestampRange(args: {
+  blockTimestamp_gte: number;
+  blockTimestamp_lte: number;
 }): Promise<{
   masterShieldedTreeId: string;
   masterWormholeTreeId: string;
   masterShieldedRoot: string;
   masterWormholeRoot: string;
-  masterBlockNumber: string;
-  blockNumber: string;
+  masterBlockTimestamp: string;
+  blockTimestamp: string;
 }[]> {
   const query = `
-    query MasterTreesUpdatedWithinBlockRange($blockNumber_gte: BigInt!, $blockNumber_lte: BigInt!) {
+    query MasterTreesUpdatedWithinTimestampRange($blockTimestamp_gte: BigInt!, $blockTimestamp_lte: BigInt!) {
       masterTreesUpdateds(
-        where: { blockNumber_gte: $blockNumber_gte, blockNumber_lte: $blockNumber_lte }
-        orderBy: blockNumber
+        where: { blockTimestamp_gte: $blockTimestamp_gte, blockTimestamp_lte: $blockTimestamp_lte }
+        orderBy: blockTimestamp
         orderDirection: asc
         first: 10
       ) {
@@ -735,8 +735,8 @@ export async function queryMasterTreesUpdatedWithinBlockRange(args: {
         masterWormholeTreeId
         masterShieldedRoot
         masterWormholeRoot
-        masterBlockNumber
-        blockNumber
+        masterBlockTimestamp
+        blockTimestamp
       }
     }
   `;
@@ -746,12 +746,12 @@ export async function queryMasterTreesUpdatedWithinBlockRange(args: {
       masterWormholeTreeId: string;
       masterShieldedRoot: string;
       masterWormholeRoot: string;
-      masterBlockNumber: string;
-      blockNumber: string;
+      masterBlockTimestamp: string;
+      blockTimestamp: string;
     }[];
   }>(query, {
-    blockNumber_gte: args.blockNumber_gte.toString(),
-    blockNumber_lte: args.blockNumber_lte.toString(),
+    blockTimestamp_gte: args.blockTimestamp_gte.toString(),
+    blockTimestamp_lte: args.blockTimestamp_lte.toString(),
   });
   return data.masterTreesUpdateds;
 }
