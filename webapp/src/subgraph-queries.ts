@@ -570,7 +570,7 @@ export async function queryLatestMasterTreesUpdatedOnChain(chainId: number) {
   const query = `
     query LatestMasterTreesUpdated {
       masterTreesUpdateds(
-        orderBy: blockTimestamp
+        orderBy: masterBlockTimestamp
         orderDirection: desc
         first: 1
       ) {

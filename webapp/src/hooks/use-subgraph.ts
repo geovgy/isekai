@@ -61,14 +61,14 @@ function groupBy<T>(items: T[], keyFn: (item: T) => number): Record<number, T[]>
 function findCoveringLeaf(
   leaves: MasterTreeLeafResult[],
   srcChainId: number,
-  blockNumber: number,
+  noteTimestamp: number,
 ): MasterTreeLeafResult | undefined {
   const candidates = leaves.filter(
-    l => Number(l.branchChainId) === srcChainId && Number(l.branchBlockNumber) >= blockNumber
+    l => Number(l.branchChainId) === srcChainId && Number(l.branchTimestamp) >= noteTimestamp
   );
   if (candidates.length === 0) return undefined;
   return candidates.reduce((oldest, l) =>
-    Number(l.blockNumber) < Number(oldest.blockNumber) ? l : oldest
+    Number(l.blockTimestamp) < Number(oldest.blockTimestamp) ? l : oldest
   );
 }
 
@@ -127,7 +127,7 @@ export function useMasterTreeInclusionSync() {
 
   // --- Step 2: Master tree inclusion for wormhole entries ---
   const pendingMasterWormhole = allNotes?.wormhole.filter(
-    n => n.masterTreeStatus === "pending" && n.blockNumber != null
+    n => n.masterTreeStatus === "pending" && n.blockTimestamp != null
   ) ?? [];
   const wormholeSrcChainIds = [...new Set(pendingMasterWormhole.map(n => n.srcChainId))];
 
@@ -143,7 +143,7 @@ export function useMasterTreeInclusionSync() {
 
   // --- Step 3: Master tree inclusion for shielded notes ---
   const pendingMasterShielded = allNotes?.shielded.filter(
-    n => n.masterTreeStatus === "pending" && n.blockNumber != null
+    n => n.masterTreeStatus === "pending" && n.blockTimestamp != null
   ) ?? [];
   const shieldedSrcChainIds = [...new Set(pendingMasterShielded.map(n => n.srcChainId))];
 
@@ -211,8 +211,8 @@ export function useMasterTreeInclusionSync() {
       }
 
       // B: Master tree inclusion for wormhole entries
-      // Condition: note.blockNumber <= leaf.branchBlockNumber (same srcChainId)
-      //   AND latestMasterTreesUpdated(dstChainId).masterBlockNumber >= leaf.blockNumber
+      // Condition: note.blockTimestamp <= leaf.branchTimestamp (same srcChainId)
+      //   AND latestMasterTreesUpdated(dstChainId).masterBlockTimestamp >= leaf.blockTimestamp
       if (masterWormholeLeaves?.length) {
         for (const note of pendingMasterWormhole) {
           let shouldInclude = false;
@@ -220,14 +220,14 @@ export function useMasterTreeInclusionSync() {
           if (note.srcChainId === MASTER_CHAIN_ID) {
             shouldInclude = true;
           } else {
-            const leaf = findCoveringLeaf(masterWormholeLeaves, note.srcChainId, note.blockNumber ?? 0);
+            const leaf = findCoveringLeaf(masterWormholeLeaves ?? [], note.srcChainId, note.blockTimestamp ?? 0);
             if (!leaf) continue;
 
             if (note.dstChainId === MASTER_CHAIN_ID) {
               shouldInclude = true;
             } else if (branchMasterUpdates) {
               const branchUpdate = branchMasterUpdates[note.dstChainId];
-              if (branchUpdate && Number(branchUpdate.masterBlockNumber) >= Number(leaf.blockNumber)) {
+              if (branchUpdate && Number(branchUpdate.masterBlockTimestamp) >= Number(leaf.blockTimestamp)) {
                 shouldInclude = true;
               }
             }
@@ -254,14 +254,14 @@ export function useMasterTreeInclusionSync() {
           if (note.srcChainId === MASTER_CHAIN_ID) {
             shouldInclude = true;
           } else {
-            const leaf = findCoveringLeaf(masterShieldedLeaves, note.srcChainId, note.blockNumber ?? 0);
+            const leaf = findCoveringLeaf(masterShieldedLeaves ?? [], note.srcChainId, note.blockTimestamp ?? 0);
             if (!leaf) continue;
 
             if (note.dstChainId === MASTER_CHAIN_ID) {
               shouldInclude = true;
             } else if (branchMasterUpdates) {
               const branchUpdate = branchMasterUpdates[note.dstChainId];
-              if (branchUpdate && Number(branchUpdate.masterBlockNumber) >= Number(leaf.blockNumber)) {
+              if (branchUpdate && Number(branchUpdate.masterBlockTimestamp) >= Number(leaf.blockTimestamp)) {
                 shouldInclude = true;
               }
             }
