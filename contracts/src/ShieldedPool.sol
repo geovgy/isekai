@@ -506,7 +506,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         // Public inputs ordering: pub params first, then return values
         // Pub params: chain_id, shielded_root, wormhole_root
         // Return values: hashed_message_hi, hashed_message_lo, wormhole_nullifier, nullifiers[], commitments[]
-        uint256 offset = 5 + shieldedTx.nullifiers.length;
+        uint256 offset = 6 + shieldedTx.nullifiers.length;
         inputs = new bytes32[](offset + shieldedTx.commitments.length + shieldedTx.withdrawals.length);
         inputs[0] = bytes32(block.chainid);
         inputs[1] = shieldedTx.shieldedRoot;

@@ -1,5 +1,5 @@
 import { SHIELDED_POOL_CONTRACT_ADDRESS } from "@/src/env";
-import { SUPPORTED_CHAINS } from "@/src/config";
+import { SUPPORTED_CHAINS } from "@/src/chains";
 import { ShieldedTx, ShieldedTxStringified } from "@/src/types";
 import { NextRequest, NextResponse } from "next/server";
 import { Abi, createWalletClient, getAddress, http, parseAbi } from "viem";
@@ -62,20 +62,21 @@ function getRelayerRpcUrl(chainId: number): string {
   if (!chainConfig) {
     throw new Error(`Unsupported chain ID: ${chainId}`);
   }
-  // Use per-chain relayer RPC URLs if available, fallback to the chain's public RPC
-  const envKey = `RELAYER_RPC_URL_${chainId}`;
-  return process.env[envKey] ?? process.env.RELAYER_RPC_URL ?? chainConfig.rpcUrl;
+  return chainConfig.rpcUrl;
 }
 
 export async function POST(request: NextRequest) {
+  console.log("Received shielded transfer request");
   try {
-    const { shieldedTx: shieldedTxStringified, proof, chainId } = await request.json() as {
+    const body = await request.json();
+    console.log("Received shielded transfer request", body);
+    const { shieldedTx: shieldedTxStringified, proof, chainId } = body as {
       shieldedTx: ShieldedTxStringified;
       proof: `0x${string}`;
-      chainId?: number;
+      chainId?: number | string;
     };
 
-    console.log("Received shielded transfer request");
+    console.log("Received shielded transfer request", { chainId, shieldedTxChainId: shieldedTxStringified?.chainId });
 
     const shieldedTx: ShieldedTx = {
       ...shieldedTxStringified,
@@ -89,13 +90,17 @@ export async function POST(request: NextRequest) {
       })),
     };
 
-    const targetChainId = chainId ?? Number(shieldedTx.chainId);
+    const targetChainId = Number(chainId ?? shieldedTx.chainId);
     const chainConfig = SUPPORTED_CHAINS[targetChainId];
     if (!chainConfig) {
       return NextResponse.json({ error: `Unsupported chain ID: ${targetChainId}` }, { status: 400 });
     }
 
-    const relayer = privateKeyToAccount(process.env.RELAYER_PRIVATE_KEY! as `0x${string}`)
+    const privateKey = process.env.RELAYER_PRIVATE_KEY;
+    if (!privateKey) {
+      return NextResponse.json({ error: "RELAYER_PRIVATE_KEY not configured" }, { status: 500 });
+    }
+    const relayer = privateKeyToAccount(privateKey as `0x${string}`)
     const rpcUrl = getRelayerRpcUrl(targetChainId);
 
     console.log(`Creating wallet client for chain ${chainConfig.label}`);
