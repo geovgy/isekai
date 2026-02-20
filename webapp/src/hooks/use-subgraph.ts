@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   queryWormholeEntriesByAddress,
   queryWormholeEntriesByEntryIds,
@@ -63,8 +63,12 @@ function findCoveringLeaf(
   srcChainId: number,
   blockNumber: number,
 ): MasterTreeLeafResult | undefined {
-  return leaves.find(
+  const candidates = leaves.filter(
     l => Number(l.branchChainId) === srcChainId && Number(l.branchBlockNumber) >= blockNumber
+  );
+  if (candidates.length === 0) return undefined;
+  return candidates.reduce((oldest, l) =>
+    Number(l.blockNumber) < Number(oldest.blockNumber) ? l : oldest
   );
 }
 
@@ -80,6 +84,7 @@ function findCoveringLeaf(
  */
 export function useMasterTreeInclusionSync() {
   const { data: shieldedPool } = useShieldedPool();
+  const queryClient = useQueryClient();
 
   const { data: allNotes } = useQuery({
     queryKey: ["syncNotes", shieldedPool?.account],
@@ -92,7 +97,7 @@ export function useMasterTreeInclusionSync() {
       return { shielded, wormhole };
     },
     enabled: !!shieldedPool,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
 
   // --- Step 1: Wormhole approval status ---
@@ -117,7 +122,7 @@ export function useMasterTreeInclusionSync() {
       return results;
     },
     enabled: pendingApproval.length > 0,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
 
   // --- Step 2: Master tree inclusion for wormhole entries ---
@@ -133,7 +138,7 @@ export function useMasterTreeInclusionSync() {
       return data.masterWormholeTreeLeaves;
     },
     enabled: wormholeSrcChainIds.length > 0,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
 
   // --- Step 3: Master tree inclusion for shielded notes ---
@@ -149,7 +154,7 @@ export function useMasterTreeInclusionSync() {
       return data.masterShieldedTreeLeaves;
     },
     enabled: shieldedSrcChainIds.length > 0,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
 
   // --- Step 4: For non-master destinations, query branch MasterTreesUpdated ---
@@ -170,7 +175,7 @@ export function useMasterTreeInclusionSync() {
       return results;
     },
     enabled: allBranchDstChainIds.length > 0,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
 
   // --- Process all sync ---
@@ -178,7 +183,7 @@ export function useMasterTreeInclusionSync() {
     if (!shieldedPool || !allNotes) return;
 
     async function sync() {
-      // A: Update wormhole approval statuses (re-read from DB to avoid overwriting other fields)
+      // A: Update wormhole approval statuses (atomic patch to avoid clobbering masterTreeStatus)
       if (approvalData) {
         for (const { chainId, entries } of approvalData) {
           for (const entry of entries) {
@@ -188,15 +193,15 @@ export function useMasterTreeInclusionSync() {
             );
             if (!cachedNote) continue;
             try {
-              const fresh = (await shieldedPool!.getWormholeNotes()).find(n => n.id === cachedNote.id);
-              if (!fresh || fresh.status !== "pending") continue;
-              await shieldedPool!.updateNote("wormhole_note", {
-                ...fresh,
-                treeNumber: Number(entry.commitment.treeId),
-                leafIndex: Number(entry.commitment.leafIndex),
-                status: entry.commitment.approved ? "approved" as const : "rejected" as const,
-                blockNumber: Number(entry.commitment.blockNumber),
-                blockTimestamp: Number(entry.commitment.blockTimestamp),
+              await shieldedPool!.patchNote<NoteDBWormholeEntry>("wormhole_note", cachedNote.id, (current) => {
+                if (current.status !== "pending") return null;
+                return {
+                  treeNumber: Number(entry.commitment!.treeId),
+                  leafIndex: Number(entry.commitment!.leafIndex),
+                  status: entry.commitment!.approved ? "approved" as const : "rejected" as const,
+                  blockNumber: Number(entry.commitment!.blockNumber),
+                  blockTimestamp: Number(entry.commitment!.blockTimestamp),
+                };
               });
             } catch (e) {
               console.error(`Failed to update approval status for ${cachedNote.id}:`, e);
@@ -276,6 +281,11 @@ export function useMasterTreeInclusionSync() {
       }
     }
 
-    sync();
-  }, [shieldedPool, allNotes, approvalData, masterWormholeLeaves, masterShieldedLeaves, branchMasterUpdates]);
+    sync().then(() => {
+      queryClient.invalidateQueries({ queryKey: ["syncNotes"] });
+      queryClient.invalidateQueries({ queryKey: ["wormholeNotes"] });
+      queryClient.invalidateQueries({ queryKey: ["shieldedBalance"] });
+      queryClient.invalidateQueries({ queryKey: ["shieldedBalances"] });
+    });
+  }, [shieldedPool, allNotes, approvalData, masterWormholeLeaves, masterShieldedLeaves, branchMasterUpdates, queryClient]);
 }
