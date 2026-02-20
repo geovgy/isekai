@@ -554,7 +554,7 @@ contract ShieldedPoolTest is Test {
         _setupBranchEventProof(42, address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, true);
 
         vm.expectEmit(true, true, false, true, address(shieldedPool));
-        emit ShieldedPool.MasterTreesUpdated(branchShieldedRoot, branchWormholeRoot, block.number, block.timestamp);
+        emit ShieldedPool.MasterTreesUpdated(0, 0, branchShieldedRoot, branchWormholeRoot, block.number, block.timestamp);
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
     }
 
@@ -978,7 +978,7 @@ contract ShieldedPoolTest is Test {
         uint256 expectedBranchShieldedRoot = poseidon2.hash_2(commitments[0], commitments[1]);
 
         vm.expectEmit(true, true, false, true, address(shieldedPool));
-        emit ShieldedPool.MasterTreesUpdated(expectedBranchShieldedRoot, uint256(wormholeRoot), block.number, block.timestamp);
+        emit ShieldedPool.MasterTreesUpdated(0, 0, expectedBranchShieldedRoot, uint256(wormholeRoot), block.number, block.timestamp);
         shieldedPool.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
     }
 }

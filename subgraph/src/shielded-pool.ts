@@ -30,7 +30,9 @@ import {
   MasterShieldedTree,
   MasterWormholeTree,
   BranchWormholeTreeSnapshot,
-  BranchShieldedTreeSnapshot
+  BranchShieldedTreeSnapshot,
+  MasterShieldedTreeSnapshot,
+  MasterWormholeTreeSnapshot
 } from "../generated/schema"
 import { BigInt, Bytes } from "@graphprotocol/graph-ts"
 
@@ -244,25 +246,36 @@ export function handleBranchTreesUpdated(event: BranchTreesUpdatedEvent): void {
   let branchShieldedTree = ShieldedTree.load(Bytes.fromI32(event.params.shieldedTreeId.toI32()))
   let branchWormholeTree = WormholeTree.load(Bytes.fromI32(event.params.wormholeTreeId.toI32()))
 
-  // Append to branch wormhole tree snapshot
-  let branchWormholeTreeSnapshot = new BranchWormholeTreeSnapshot(event.params.wormholeTreeId.toString() + ":" + event.params.branchWormholeRoot.toString())
-  branchWormholeTreeSnapshot.treeId = event.params.wormholeTreeId
-  branchWormholeTreeSnapshot.root = event.params.branchWormholeRoot
-  branchWormholeTreeSnapshot.leaves = branchWormholeTree ? branchWormholeTree.leaves : []
-  branchWormholeTreeSnapshot.size = branchWormholeTree ? branchWormholeTree.size : BigInt.zero()
-  branchWormholeTreeSnapshot.blockNumber = event.block.number
-  branchWormholeTreeSnapshot.createdAt = event.block.timestamp
-  branchWormholeTreeSnapshot.save()
+  // Create branch wormhole tree snapshot only if it doesn't exist.
+  // The same root can be emitted in multiple BranchTreesUpdated events (e.g. when only
+  // the shielded tree changes). Creating a duplicate immutable entity causes "Failed to
+  // transact block operations".
+  let wormholeSnapshotId = event.params.wormholeTreeId.toString() + ":" + event.params.branchWormholeRoot.toString()
+  let branchWormholeTreeSnapshot = BranchWormholeTreeSnapshot.load(wormholeSnapshotId)
+  if (branchWormholeTreeSnapshot == null) {
+    branchWormholeTreeSnapshot = new BranchWormholeTreeSnapshot(wormholeSnapshotId)
+    branchWormholeTreeSnapshot.treeId = event.params.wormholeTreeId
+    branchWormholeTreeSnapshot.root = event.params.branchWormholeRoot
+    branchWormholeTreeSnapshot.leaves = branchWormholeTree ? branchWormholeTree.leaves : []
+    branchWormholeTreeSnapshot.size = branchWormholeTree ? branchWormholeTree.size : BigInt.zero()
+    branchWormholeTreeSnapshot.blockNumber = event.block.number
+    branchWormholeTreeSnapshot.createdAt = event.block.timestamp
+    branchWormholeTreeSnapshot.save()
+  }
 
-  // Append to branch shielded tree snapshot
-  let branchShieldedTreeSnapshot = new BranchShieldedTreeSnapshot(event.params.shieldedTreeId.toString() + ":" + event.params.branchShieldedRoot.toString())
-  branchShieldedTreeSnapshot.treeId = event.params.shieldedTreeId
-  branchShieldedTreeSnapshot.root = event.params.branchShieldedRoot
-  branchShieldedTreeSnapshot.leaves = branchShieldedTree ? branchShieldedTree.leaves : []
-  branchShieldedTreeSnapshot.size = branchShieldedTree ? branchShieldedTree.size : BigInt.zero()
-  branchShieldedTreeSnapshot.blockNumber = event.block.number
-  branchShieldedTreeSnapshot.createdAt = event.block.timestamp
-  branchShieldedTreeSnapshot.save()
+  // Create branch shielded tree snapshot only if it doesn't exist.
+  let shieldedSnapshotId = event.params.shieldedTreeId.toString() + ":" + event.params.branchShieldedRoot.toString()
+  let branchShieldedTreeSnapshot = BranchShieldedTreeSnapshot.load(shieldedSnapshotId)
+  if (branchShieldedTreeSnapshot == null) {
+    branchShieldedTreeSnapshot = new BranchShieldedTreeSnapshot(shieldedSnapshotId)
+    branchShieldedTreeSnapshot.treeId = event.params.shieldedTreeId
+    branchShieldedTreeSnapshot.root = event.params.branchShieldedRoot
+    branchShieldedTreeSnapshot.leaves = branchShieldedTree ? branchShieldedTree.leaves : []
+    branchShieldedTreeSnapshot.size = branchShieldedTree ? branchShieldedTree.size : BigInt.zero()
+    branchShieldedTreeSnapshot.blockNumber = event.block.number
+    branchShieldedTreeSnapshot.createdAt = event.block.timestamp
+    branchShieldedTreeSnapshot.save()
+  }
 }
 
 export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
@@ -270,6 +283,8 @@ export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
     event.transaction.hash.concatI32(event.logIndex.toI32())
   )
   entity.logIndex = event.logIndex
+  entity.masterShieldedTreeId = event.params.shieldedTreeId
+  entity.masterWormholeTreeId = event.params.wormholeTreeId
   entity.masterShieldedRoot = event.params.masterShieldedRoot
   entity.masterWormholeRoot = event.params.masterWormholeRoot
   entity.masterBlockNumber = event.params.blockNumber
@@ -279,6 +294,37 @@ export function handleMasterTreesUpdated(event: MasterTreesUpdatedEvent): void {
   entity.transactionHash = event.transaction.hash
 
   entity.save()
+
+  let masterShieldedTree = MasterShieldedTree.load(Bytes.fromI32(event.params.shieldedTreeId.toI32()))
+  let masterWormholeTree = MasterWormholeTree.load(Bytes.fromI32(event.params.wormholeTreeId.toI32()))
+
+  // Create master shielded tree snapshot
+  let masterShieldedTreeSnapshotId = event.params.shieldedTreeId.toString() + ":" + event.params.masterShieldedRoot.toString()
+  let masterShieldedTreeSnapshot = MasterShieldedTreeSnapshot.load(masterShieldedTreeSnapshotId)
+  if (masterShieldedTreeSnapshot == null) {
+    masterShieldedTreeSnapshot = new MasterShieldedTreeSnapshot(masterShieldedTreeSnapshotId)
+    masterShieldedTreeSnapshot.treeId = event.params.shieldedTreeId
+    masterShieldedTreeSnapshot.root = event.params.masterShieldedRoot
+    masterShieldedTreeSnapshot.leaves = masterShieldedTree ? masterShieldedTree.leaves : []
+    masterShieldedTreeSnapshot.size = masterShieldedTree ? masterShieldedTree.size : BigInt.zero()
+    masterShieldedTreeSnapshot.blockNumber = event.block.number
+    masterShieldedTreeSnapshot.createdAt = event.block.timestamp
+    masterShieldedTreeSnapshot.save()
+  }
+
+  // Create master wormhole tree snapshot
+  let masterWormholeTreeSnapshotId = event.params.wormholeTreeId.toString() + ":" + event.params.masterWormholeRoot.toString()
+  let masterWormholeTreeSnapshot = MasterWormholeTreeSnapshot.load(masterWormholeTreeSnapshotId)
+  if (masterWormholeTreeSnapshot == null) {
+    masterWormholeTreeSnapshot = new MasterWormholeTreeSnapshot(masterWormholeTreeSnapshotId)
+    masterWormholeTreeSnapshot.treeId = event.params.wormholeTreeId
+    masterWormholeTreeSnapshot.root = event.params.masterWormholeRoot
+    masterWormholeTreeSnapshot.leaves = masterWormholeTree ? masterWormholeTree.leaves : []
+    masterWormholeTreeSnapshot.size = masterWormholeTree ? masterWormholeTree.size : BigInt.zero()
+    masterWormholeTreeSnapshot.blockNumber = event.block.number
+    masterWormholeTreeSnapshot.createdAt = event.block.timestamp
+    masterWormholeTreeSnapshot.save()
+  }
 }
 
 export function handleMasterShieldedTreeLeaf(event: MasterShieldedTreeLeafEvent): void {

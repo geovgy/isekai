@@ -71,6 +71,26 @@ type BranchWormholeTreeSnapshot @entity(immutable: true) {
   createdAt: BigInt! # uint256
 }
 
+type MasterShieldedTreeSnapshot @entity(immutable: true) {
+  id: ID! # treeId:root
+  treeId: BigInt! # uint256
+  root: BigInt! # uint256
+	leaves: [BigInt!]! # uint256[]
+  size: BigInt! # uint256
+  blockNumber: BigInt!
+  createdAt: BigInt! # uint256
+}
+
+type MasterWormholeTreeSnapshot @entity(immutable: true) {
+  id: ID! # treeId:root
+  treeId: BigInt! # uint256
+  root: BigInt! # uint256
+	leaves: [BigInt!]! # uint256[]
+  size: BigInt! # uint256
+  blockNumber: BigInt!
+  createdAt: BigInt! # uint256
+}
+
 type ShieldedTree @entity(immutable: false) {
   id: Bytes! # treeId
 	treeId: BigInt! # uint256
@@ -192,6 +212,8 @@ type BranchTreesUpdated @entity(immutable: true) {
 type MasterTreesUpdated @entity(immutable: true) {
   id: Bytes!
   logIndex: BigInt! # uint256
+	masterShieldedTreeId: BigInt! # uint256
+	masterWormholeTreeId: BigInt! # uint256
   masterShieldedRoot: BigInt! # uint256
   masterWormholeRoot: BigInt! # uint256
 	masterBlockNumber: BigInt! # uint256
