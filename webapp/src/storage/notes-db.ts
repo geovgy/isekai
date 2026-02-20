@@ -80,6 +80,40 @@ export class NoteDB {
     });
   }
 
+  /**
+   * Atomically read-modify-write a note in a single IndexedDB transaction.
+   * The patchFn receives the current record and returns the fields to merge,
+   * or null to skip the update. This prevents race conditions between
+   * concurrent read-modify-write sequences.
+   */
+  async patchNote<T extends NoteDBShieldedEntry | NoteDBWormholeEntry>(
+    objectStoreName: NoteStore,
+    id: string,
+    patchFn: (current: T) => Partial<T> | null,
+  ): Promise<T | null> {
+    await this.open();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(objectStoreName, 'readwrite');
+      const store = transaction.objectStore(objectStoreName);
+      const getReq = store.index("id").get(id);
+      let result: T | null = null;
+
+      getReq.onsuccess = () => {
+        const current = getReq.result as T | undefined;
+        if (!current) return;
+
+        const patch = patchFn(current);
+        if (!patch) return;
+
+        result = { ...current, ...patch } as T;
+        store.put(result);
+      };
+
+      transaction.oncomplete = () => resolve(result);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
   async getAllNotes(objectStoreName: NoteStore): Promise<NoteDBShieldedEntry[] | NoteDBWormholeEntry[]> {
     await this.open();
     return new Promise((resolve, reject) => {

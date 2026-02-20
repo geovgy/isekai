@@ -50,7 +50,7 @@ async function main() {
       continue
     }
 
-    console.log(`[${label}] Found at block ${event.branchBlockNumber}, logIndex ${event.logIndex}`)
+    console.log(`[${label}] Found at block ${event.blockNumber} (branch block: ${event.branchBlockNumber}), logIndex ${event.logIndex}`)
 
     const lastSyncedBlock = await masterPublicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -68,7 +68,7 @@ async function main() {
 
     const proof = await getPolymerProofHex({
       sourceChainId: branchChainId,
-      blockNumber: Number(event.branchBlockNumber),
+      blockNumber: Number(event.blockNumber),
       logIndex: Number(event.logIndex),
     })
 

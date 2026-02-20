@@ -178,63 +178,61 @@ export function useMasterTreeInclusionSync() {
     if (!shieldedPool || !allNotes) return;
 
     async function sync() {
-      // A: Update wormhole approval statuses
+      // A: Update wormhole approval statuses (re-read from DB to avoid overwriting other fields)
       if (approvalData) {
         for (const { chainId, entries } of approvalData) {
           for (const entry of entries) {
             if (!entry.submitted || !entry.commitment) continue;
-            const dbNote = pendingApproval.find(
+            const cachedNote = pendingApproval.find(
               n => n.entryId === entry.entryId.toString() && n.srcChainId === chainId
             );
-            if (!dbNote) continue;
+            if (!cachedNote) continue;
             try {
+              const fresh = (await shieldedPool!.getWormholeNotes()).find(n => n.id === cachedNote.id);
+              if (!fresh || fresh.status !== "pending") continue;
               await shieldedPool!.updateNote("wormhole_note", {
-                ...dbNote,
+                ...fresh,
+                treeNumber: Number(entry.commitment.treeId),
+                leafIndex: Number(entry.commitment.leafIndex),
                 status: entry.commitment.approved ? "approved" as const : "rejected" as const,
                 blockNumber: Number(entry.commitment.blockNumber),
                 blockTimestamp: Number(entry.commitment.blockTimestamp),
               });
             } catch (e) {
-              console.error(`Failed to update approval status for ${dbNote.id}:`, e);
+              console.error(`Failed to update approval status for ${cachedNote.id}:`, e);
             }
           }
         }
       }
 
       // B: Master tree inclusion for wormhole entries
+      // Condition: note.blockNumber <= leaf.branchBlockNumber (same srcChainId)
+      //   AND latestMasterTreesUpdated(dstChainId).masterBlockNumber >= leaf.blockNumber
       if (masterWormholeLeaves?.length) {
         for (const note of pendingMasterWormhole) {
+          let shouldInclude = false;
+
           if (note.srcChainId === MASTER_CHAIN_ID) {
-            // Master chain entries are included immediately upon commitment
-            try {
-              await shieldedPool!.updateNote("wormhole_note", {
-                ...note,
-                masterTreeStatus: "included" as const,
-              });
-            } catch (e) {
-              console.error(`Failed to update master tree status for ${note.id}:`, e);
-            }
-            continue;
-          }
+            shouldInclude = true;
+          } else {
+            const leaf = findCoveringLeaf(masterWormholeLeaves, note.srcChainId, note.blockNumber ?? 0);
+            if (!leaf) continue;
 
-          const leaf = findCoveringLeaf(masterWormholeLeaves, note.srcChainId, note.blockNumber ?? 0);
-          if (!leaf) continue;
-
-          let included = false;
-          if (note.dstChainId === MASTER_CHAIN_ID) {
-            included = true;
-          } else if (branchMasterUpdates) {
-            const branchUpdate = branchMasterUpdates[note.dstChainId];
-            if (branchUpdate && Number(branchUpdate.masterBlockNumber) >= Number(leaf.blockNumber)) {
-              included = true;
+            if (note.dstChainId === MASTER_CHAIN_ID) {
+              shouldInclude = true;
+            } else if (branchMasterUpdates) {
+              const branchUpdate = branchMasterUpdates[note.dstChainId];
+              if (branchUpdate && Number(branchUpdate.masterBlockNumber) >= Number(leaf.blockNumber)) {
+                shouldInclude = true;
+              }
             }
           }
 
-          if (included) {
+          if (shouldInclude) {
             try {
-              await shieldedPool!.updateNote("wormhole_note", {
-                ...note,
-                masterTreeStatus: "included" as const,
+              await shieldedPool!.patchNote<NoteDBWormholeEntry>("wormhole_note", note.id, (current) => {
+                if (current.masterTreeStatus !== "pending") return null;
+                return { masterTreeStatus: "included" as const };
               });
             } catch (e) {
               console.error(`Failed to update master tree status for ${note.id}:`, e);
@@ -246,36 +244,29 @@ export function useMasterTreeInclusionSync() {
       // C: Master tree inclusion for shielded notes
       if (masterShieldedLeaves?.length) {
         for (const note of pendingMasterShielded) {
+          let shouldInclude = false;
+
           if (note.srcChainId === MASTER_CHAIN_ID) {
-            try {
-              await shieldedPool!.updateNote("shielded_note", {
-                ...note,
-                masterTreeStatus: "included" as const,
-              });
-            } catch (e) {
-              console.error(`Failed to update master tree status for ${note.id}:`, e);
-            }
-            continue;
-          }
+            shouldInclude = true;
+          } else {
+            const leaf = findCoveringLeaf(masterShieldedLeaves, note.srcChainId, note.blockNumber ?? 0);
+            if (!leaf) continue;
 
-          const leaf = findCoveringLeaf(masterShieldedLeaves, note.srcChainId, note.blockNumber ?? 0);
-          if (!leaf) continue;
-
-          let included = false;
-          if (note.dstChainId === MASTER_CHAIN_ID) {
-            included = true;
-          } else if (branchMasterUpdates) {
-            const branchUpdate = branchMasterUpdates[note.dstChainId];
-            if (branchUpdate && Number(branchUpdate.masterBlockNumber) >= Number(leaf.blockNumber)) {
-              included = true;
+            if (note.dstChainId === MASTER_CHAIN_ID) {
+              shouldInclude = true;
+            } else if (branchMasterUpdates) {
+              const branchUpdate = branchMasterUpdates[note.dstChainId];
+              if (branchUpdate && Number(branchUpdate.masterBlockNumber) >= Number(leaf.blockNumber)) {
+                shouldInclude = true;
+              }
             }
           }
 
-          if (included) {
+          if (shouldInclude) {
             try {
-              await shieldedPool!.updateNote("shielded_note", {
-                ...note,
-                masterTreeStatus: "included" as const,
+              await shieldedPool!.patchNote<NoteDBShieldedEntry>("shielded_note", note.id, (current) => {
+                if (current.masterTreeStatus !== "pending") return null;
+                return { masterTreeStatus: "included" as const };
               });
             } catch (e) {
               console.error(`Failed to update master tree status for ${note.id}:`, e);

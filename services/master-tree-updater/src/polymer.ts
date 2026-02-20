@@ -46,7 +46,7 @@ export async function getPolymerProofHex(args: {
   while (Date.now() - start < timeoutMs) {
     const res = await api.queryProof(jobId)
     const status = res.result.status
-    if (status === "error") throw new Error("Polymer proof error")
+    if (status === "error") throw new Error(`Polymer proof error: ${JSON.stringify(res)}`)
     if (status === "complete") {
       const bytes = base64ToBytes(res.result.proof)
       return bytesToHex(bytes)
