@@ -37,14 +37,15 @@ export function getWormholeBurnAddress(chainId: bigint, recipient: Address, worm
 export function getWormholeBurnCommitment(args: WormholeNote & {
   approved: boolean;
 }): bigint {
-  const burnAddress = getWormholeBurnAddress(args.chain_id, args.recipient, args.wormhole_secret);
-  // Must match contract ordering: poseidon2(entry_id, approved, sender, burn_address, assetId, amount)
-  return poseidon2Hash([args.entry_id, BigInt(args.approved), BigInt(args.sender), BigInt(burnAddress), args.asset_id, args.amount]);
+  const burnAddress = getWormholeBurnAddress(args.dst_chain_id, args.recipient, args.wormhole_secret);
+  const idHash = poseidon2Hash([args.src_chain_id, args.entry_id]);
+  return poseidon2Hash([idHash, BigInt(args.approved), BigInt(args.sender), BigInt(burnAddress), args.asset_id, args.amount]);
 }
 
 export function getWormholeNullifier(args: WormholeNote): bigint {
+  const idHash = poseidon2Hash([args.dst_chain_id, args.entry_id]);
   const secretCommitment = poseidon2Hash([BigInt(args.recipient), args.asset_id, BigInt(args.sender), args.amount]);
-  return poseidon2Hash([1n, args.entry_id, args.wormhole_secret, secretCommitment]);
+  return poseidon2Hash([1n, idHash, args.wormhole_secret, secretCommitment]);
 }
 
 export function getWormholePseudoNullifier(chainId: bigint, address: Address, assetId: bigint, secret: bigint): bigint {

@@ -61,7 +61,7 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
         // Verify wormhole note (if provided - add to totalAmountIn)
         if self.wormhole_note.is_some() {
             let wormhole_note = self.wormhole_note.unwrap();
-            assert(wormhole_note.chain_id == self.chain_id, "Wormhole note chain id must match chain id");
+            assert(wormhole_note.dst_chain_id == self.chain_id, "Wormhole note chain id must match chain id");
             assert(wormhole_note.asset_id == self.asset_id, "Wormhole note asset id must match asset id");
             assert(wormhole_note.is_approved, "Wormhole note must be approved");
             let wormhole_leaf = wormhole_note.to_burn_commitment();

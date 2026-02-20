@@ -62,7 +62,8 @@ pub impl OutputNote {
 
 // Used for depositing from wormhole into shielded pool
 pub struct WormholeNote<let M: u32> {
-    pub chain_id: Field, // destination chain id
+    pub dst_chain_id: Field, // destination chain id
+    pub src_chain_id: Field, // source chain id
     pub entry_id: Field, // unique ID of wormhole entry in contract (hash of entry id + source chain id?)
     pub recipient: Field,
     pub wormhole_secret: Field,
@@ -83,13 +84,13 @@ pub fn get_wormhole_pseudo_nullifier(chain_id: Field, address: Field, asset_id: 
 }
 
 pub impl <let M: u32> WormholeNote<M> {
-    fn from(chain_id: Field, entry_id: Field, recipient: Field, wormhole_secret: Field, asset_id: Field, sender: Field, amount: Field, branch_index: Field, branch_siblings: [Field; M], branch_root: Field, master_index: Field, master_siblings: [Field; M], is_approved: bool) -> Self {
-        Self { chain_id, entry_id, recipient, wormhole_secret, asset_id, sender, amount, branch_index, branch_siblings, branch_root, master_index, master_siblings, is_approved }
+    fn from(dst_chain_id: Field, src_chain_id: Field, entry_id: Field, recipient: Field, wormhole_secret: Field, asset_id: Field, sender: Field, amount: Field, branch_index: Field, branch_siblings: [Field; M], branch_root: Field, master_index: Field, master_siblings: [Field; M], is_approved: bool) -> Self {
+        Self { dst_chain_id, src_chain_id, entry_id, recipient, wormhole_secret, asset_id, sender, amount, branch_index, branch_siblings, branch_root, master_index, master_siblings, is_approved }
     }
 
     pub fn get_burn_address(self) -> Field {
         let zk_wormhole = Field::from_be_bytes("ZKWORMHOLE".as_bytes());
-        let hash = hash([self.chain_id, self.recipient, self.wormhole_secret, zk_wormhole]);
+        let hash = hash([self.dst_chain_id, self.recipient, self.wormhole_secret, zk_wormhole]);
         let hash_bytes: [u8; 32] = hash.to_be_bytes();
         let mut address_bytes: [u8; 20] = [0; 20];
         for i in 0..20 {
@@ -100,13 +101,13 @@ pub impl <let M: u32> WormholeNote<M> {
 
     pub fn to_burn_commitment(self) -> Field {
         let burn_address = self.get_burn_address();
-        let id_hash = hash([self.chain_id, self.entry_id]);
+        let id_hash = hash([self.src_chain_id, self.entry_id]);
         // Must match contract ordering: poseidon2(approved, sender, burn_address, assetId, amount)
         hash([id_hash, self.is_approved as Field, self.sender, burn_address, self.asset_id, self.amount])
     }
 
     pub fn get_nullifier(self) -> Field {
-        let id_hash = hash([self.chain_id, self.entry_id]);
+        let id_hash = hash([self.src_chain_id, self.entry_id]);
         let secret_commitment = hash([self.recipient, self.asset_id, self.sender, self.amount]);
         hash([1, id_hash, self.wormhole_secret, secret_commitment])
     }

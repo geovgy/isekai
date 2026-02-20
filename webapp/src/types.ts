@@ -97,7 +97,8 @@ export interface OutputNote {
 }
 
 export interface WormholeNote {
-  chain_id: bigint;
+  dst_chain_id: bigint;
+  src_chain_id: bigint;
   entry_id: bigint;
   recipient: Address;
   wormhole_secret: bigint;

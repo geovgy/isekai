@@ -26,7 +26,8 @@ describe("ragequit", () => {
   it("should get ragequit proof", async () => {
     const wormholeSecret = 42069n
     const wormholeNote: WormholeNote = {
-      chain_id: 1n,
+      dst_chain_id: 1n,
+      src_chain_id: 1n,
       entry_id: 1n,
       recipient,
       wormhole_secret: wormholeSecret,
@@ -49,7 +50,8 @@ describe("ragequit", () => {
     const circuitInputs = {
       wormhole_master_root: wormholeTree.root.toString(),
       wormhole_note: { 
-        chain_id: wormholeNote.chain_id.toString(),
+        dst_chain_id: wormholeNote.dst_chain_id.toString(),
+        src_chain_id: wormholeNote.src_chain_id.toString(),
         entry_id: wormholeNote.entry_id.toString(),
         recipient: wormholeNote.recipient.toString(), 
         wormhole_secret: wormholeNote.wormhole_secret.toString(), 

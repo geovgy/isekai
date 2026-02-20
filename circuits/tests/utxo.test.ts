@@ -179,7 +179,8 @@ describe("utxo", () => {
       wormhole_note: { 
         _is_some: false, 
         _value: { 
-          chain_id: "0",
+          dst_chain_id: "0",
+          src_chain_id: "0",
           entry_id: "0",
           recipient: "0", 
           wormhole_secret: "0", 
@@ -245,7 +246,8 @@ describe("utxo", () => {
 
     const wormholeSecret = 42069n
     const burnCommitment = getWormholeBurnCommitment({
-      chain_id: 1n,
+      dst_chain_id: 1n,
+      src_chain_id: 1n,
       entry_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
@@ -288,7 +290,8 @@ describe("utxo", () => {
     const wormholeProof = wormholeBranchTree.generateProof(0)
     const masterWormholeProof = wormholeMasterTree.generateProof(0)
     const wormholeNote: WormholeNote = {
-      chain_id: 1n,
+      dst_chain_id: 1n,
+      src_chain_id: 1n,
       entry_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
@@ -336,7 +339,8 @@ describe("utxo", () => {
       wormhole_note: { 
         _is_some: true, 
         _value: { 
-          chain_id: "1",
+          dst_chain_id: "1",
+          src_chain_id: "1",
           entry_id: "1",
           recipient: account.address.toString(), 
           wormhole_secret: wormholeSecret.toString(), 
