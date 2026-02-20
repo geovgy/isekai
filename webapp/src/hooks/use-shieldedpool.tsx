@@ -33,7 +33,7 @@ export function useWormholeNotes(params?: {
   });
 }
 
-export function useShieldedBalance(args: { token: Address, tokenId?: bigint, excludeWormholes?: boolean }) {
+export function useShieldedBalance(args: { chainId: number, token: Address, tokenId?: bigint, excludeWormholes?: boolean }) {
   const { data: shieldedPool } = useShieldedPool();
   return useQuery({
     queryKey: ["shieldedBalance", shieldedPool?.account, args],
@@ -45,7 +45,7 @@ export function useShieldedBalance(args: { token: Address, tokenId?: bigint, exc
   });
 }
 
-export function useShieldedBalances(args: { tokens: Address[] | { token: Address, tokenId?: bigint }[], excludeWormholes?: boolean }) {
+export function useShieldedBalances(args: { chainId: number, tokens: Address[] | { token: Address, tokenId?: bigint }[], excludeWormholes?: boolean }) {
   const { data: shieldedPool } = useShieldedPool();
   return useQuery({
     queryKey: ["shieldedBalances", shieldedPool?.account, args],
@@ -53,9 +53,9 @@ export function useShieldedBalances(args: { tokens: Address[] | { token: Address
       if (!shieldedPool) return [];
       return await Promise.all(args.tokens.map(token => {
         if (typeof token === "string") {
-          return shieldedPool.getShieldedBalance({ token, excludeWormholes: args.excludeWormholes });
+          return shieldedPool.getShieldedBalance({ chainId: args.chainId, token, excludeWormholes: args.excludeWormholes });
         }
-        return shieldedPool.getShieldedBalance({ token: token.token, tokenId: token.tokenId, excludeWormholes: args.excludeWormholes });
+        return shieldedPool.getShieldedBalance({ chainId: args.chainId, token: token.token, tokenId: token.tokenId, excludeWormholes: args.excludeWormholes });
       }));
     },
     enabled: !!shieldedPool,

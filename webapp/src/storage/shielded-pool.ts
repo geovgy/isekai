@@ -177,12 +177,14 @@ export class ShieldedPool {
   }
 
   async getShieldedBalance(args: {
+    chainId: number,
     token: Address,
     tokenId?: bigint,
     excludeWormholes?: boolean
   }) {
     const shieldedNotes = (await this.getShieldedNotes()).filter(note => (
       note.status === "available" 
+      && note.dstChainId === args.chainId
       && isAddressEqual(note.note.account, this.account)
       && isAddressEqual(note.note.asset, args.token)
       && (args.tokenId ? BigInt(note.note.assetId ?? "0") === args.tokenId : true)
@@ -193,6 +195,7 @@ export class ShieldedPool {
     }
     const wormholeNotes = (await this.getWormholeNotes()).filter(note => (
       note.status === "approved" && !note.usedAt
+      && note.dstChainId === args.chainId
       && isAddressEqual(note.entry.to, this.account)
       && isAddressEqual(note.entry.token, args.token)
       && (args.tokenId ? BigInt(note.entry.token_id ?? "0") === args.tokenId : true)

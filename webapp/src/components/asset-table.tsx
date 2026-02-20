@@ -71,6 +71,7 @@ export function AssetsTable() {
   );
 
   const { data: shieldedBalances, refetch: refetchShieldedBalances } = useShieldedBalances({
+    chainId,
     tokens: tokenList.map(t => t.address),
     excludeWormholes: false,
   });

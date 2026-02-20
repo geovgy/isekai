@@ -60,7 +60,9 @@ export async function getShieldedTransferInputEntries(
     }
   }
 
-  const shieldedNotes = (await _db.getShieldedNotes()).filter(s => (
+  const allShieldedNotes = await _db.getShieldedNotes();
+
+  const shieldedNotes = allShieldedNotes.filter(s => (
     s.dstChainId === args.chainId
     && s.status === "available"
     && s.masterTreeStatus === "included"
@@ -68,6 +70,10 @@ export async function getShieldedTransferInputEntries(
     && BigInt(s.note.assetId ?? "0") === BigInt(args.tokenId ?? "0")
     && isAddressEqual(s.note.account, args.sender)
   ))
+
+  console.log("All shielded notes", allShieldedNotes);
+  console.log("Shielded notes", shieldedNotes);
+  console.log("Wormhole deposits", wormholeDeposits);
 
   const shieldedBalance = shieldedNotes.reduce((total, input) => total + BigInt(input.note.amount ?? "0"), BigInt(0))
   if (shieldedBalance < args.amount) {
