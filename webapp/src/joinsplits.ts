@@ -43,7 +43,7 @@ export function getWormholeBurnCommitment(args: WormholeNote & {
 }
 
 export function getWormholeNullifier(args: WormholeNote): bigint {
-  const idHash = poseidon2Hash([args.dst_chain_id, args.entry_id]);
+  const idHash = poseidon2Hash([args.src_chain_id, args.entry_id]);
   const secretCommitment = poseidon2Hash([BigInt(args.recipient), args.asset_id, BigInt(args.sender), args.amount]);
   return poseidon2Hash([1n, idHash, args.wormhole_secret, secretCommitment]);
 }
