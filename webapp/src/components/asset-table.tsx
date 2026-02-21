@@ -40,12 +40,12 @@ function BalanceDisplay({ amount, decimals, symbol }: { amount: bigint; decimals
 function getTypeBadgeStyle(tokenType: WormholeTokenType) {
   switch (tokenType) {
     case "WETH":
-      return "bg-[#f97316]/10 text-[#f97316]";
+      return "bg-[#0891b2]/10 text-[#0891b2]";
     case "ERC4626":
     case "wERC4626":
-      return "bg-[#1a1a1a]/10 text-[#1a1a1a]";
+      return "bg-[#64748b]/10 text-[#64748b]";
     default:
-      return "bg-[#dc2626]/10 text-[#dc2626]";
+      return "bg-[#0d9488]/10 text-[#0d9488]";
   }
 }
 

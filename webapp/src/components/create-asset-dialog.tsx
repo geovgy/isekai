@@ -129,8 +129,8 @@ export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
                 className={cn(
                   "flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium border-2 transition-all",
                   implementationType === "ERC20"
-                    ? "bg-[#dc2626] text-white border-[#dc2626]"
-                    : "bg-background text-foreground border-border hover:border-[#dc2626]/50"
+                    ? "bg-[#0d9488] text-white border-[#0d9488]"
+                    : "bg-background text-foreground border-border hover:border-[#0d9488]/50"
                 )}
               >
                 <RadioGroupItem id="erc20-radio" value="ERC20" className="sr-only" />
@@ -141,8 +141,8 @@ export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
                 className={cn(
                   "flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium border-2 transition-all",
                   implementationType === "ERC4626"
-                    ? "bg-[#dc2626] text-white border-[#dc2626]"
-                    : "bg-background text-foreground border-border hover:border-[#dc2626]/50"
+                    ? "bg-[#0d9488] text-white border-[#0d9488]"
+                    : "bg-background text-foreground border-border hover:border-[#0d9488]/50"
                 )}
               >
                 <RadioGroupItem id="erc4626-radio" value="ERC4626" className="sr-only" />
@@ -161,7 +161,7 @@ export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
               placeholder="0x..."
               value={tokenAddress}
               onChange={(e) => setTokenAddress(e.target.value as `0x${string}`)}
-              className="border-2 border-border focus:border-[#dc2626] focus-visible:ring-[#dc2626]/20"
+              className="border-2 border-border focus:border-[#0d9488] focus-visible:ring-[#0d9488]/20"
             />
           </div>
 
@@ -174,7 +174,7 @@ export function CreateAssetDialog({ trigger }: { trigger: React.ReactNode }) {
                 placeholder="0x..."
                 value={vaultAddress}
                 onChange={(e) => setVaultAddress(e.target.value as `0x${string}`)}
-                className="border-2 border-border focus:border-[#dc2626] focus-visible:ring-[#dc2626]/20"
+                className="border-2 border-border focus:border-[#0d9488] focus-visible:ring-[#0d9488]/20"
               />
             </div>
           )}

@@ -29,31 +29,31 @@ const statusConfig: Record<string, {
   description: string;
 }> = {
   pending: {
-    style: "bg-[#f97316]/10 text-[#f97316] border-[#f97316]/30",
+    style: "bg-[#0891b2]/10 text-[#0891b2] border-[#0891b2]/30",
     icon: <Clock className="size-4" />,
     label: "Pending",
     description: "Waiting for confirmation",
   },
   approved: {
-    style: "bg-[#dc2626]/10 text-[#dc2626] border-[#dc2626]/30",
+    style: "bg-[#0d9488]/10 text-[#0d9488] border-[#0d9488]/30",
     icon: <CheckCircle className="size-4" />,
     label: "Approved",
     description: "Transfer approved",
   },
   rejected: {
-    style: "bg-[#1a1a1a]/10 text-[#1a1a1a] border-[#1a1a1a]/30",
+    style: "bg-[#64748b]/10 text-[#64748b] border-[#64748b]/30",
     icon: <XCircle className="size-4" />,
     label: "Rejected",
     description: "Transfer rejected",
   },
   completed: {
-    style: "bg-[#b91c1c]/10 text-[#b91c1c] border-[#b91c1c]/30",
+    style: "bg-[#0f766e]/10 text-[#0f766e] border-[#0f766e]/30",
     icon: <CircleDot className="size-4" />,
     label: "Completed",
     description: "Transfer completed",
   },
   ragequitted: {
-    style: "bg-[#ea580c]/10 text-[#ea580c] border-[#ea580c]/30",
+    style: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/30",
     icon: <AlertTriangle className="size-4" />,
     label: "Ragequit",
     description: "Emergency exit",
@@ -248,7 +248,6 @@ export function WormholesTable() {
             <TableHead className="text-right">Amount</TableHead>
             <TableHead className="text-center">Status</TableHead>
             <TableHead className="text-center">Master Tree</TableHead>
-            <TableHead className="text-right pr-6">Position</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -306,13 +305,6 @@ export function WormholesTable() {
               </TableCell>
               <TableCell className="text-center">
                 <MasterTreeBadge masterTreeStatus={entry.masterTreeStatus} />
-              </TableCell>
-              <TableCell className="text-right pr-6">
-                <span className="font-mono text-sm text-muted-foreground">
-                  {entry.status !== "pending"
-                    ? `${entry.treeNumber} / ${entry.leafIndex}`
-                    : "-"}
-                </span>
               </TableCell>
             </TableRow>
           ))}

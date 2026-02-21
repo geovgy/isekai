@@ -46,120 +46,120 @@
   --radius-4xl: calc(var(--radius) + 16px);
   
   /* Isekai Theme Colors */
-  --color-isekai-red: var(--isekai-red);
-  --color-isekai-orange: var(--isekai-orange);
-  --color-isekai-black: var(--isekai-black);
-  --color-isekai-crimson: var(--isekai-crimson);
+  --color-isekai-teal: var(--isekai-teal);
+  --color-isekai-cyan: var(--isekai-cyan);
+  --color-isekai-dark: var(--isekai-dark);
+  --color-isekai-deep: var(--isekai-deep);
 }
 
 :root {
   --radius: 0.75rem;
   
-  /* Light Theme - Red/Orange/Black Isekai Style */
-  --background: #faf9f7;
+  /* Light Theme - Teal/Cyan Isekai Style */
+  --background: #f7fafa;
   --foreground: #1a1a1a;
   --card: #ffffff;
   --card-foreground: #1a1a1a;
   --popover: #ffffff;
   --popover-foreground: #1a1a1a;
   
-  /* Primary - Crimson Red (Sharingan color) */
-  --primary: #dc2626;
+  /* Primary - Teal */
+  --primary: #0d9488;
   --primary-foreground: #ffffff;
   
-  /* Secondary - Warm gray */
-  --secondary: #f5f2ef;
+  /* Secondary - Cool gray */
+  --secondary: #f0f5f4;
   --secondary-foreground: #1a1a1a;
-  --muted: #f5f2ef;
-  --muted-foreground: #6b6b6b;
+  --muted: #f0f5f4;
+  --muted-foreground: #64748b;
   
   /* Accent */
-  --accent: #fff7ed;
+  --accent: #ecfdf5;
   --accent-foreground: #1a1a1a;
   
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #e7e5e4;
-  --input: #e7e5e4;
-  --ring: #dc2626;
+  --border: #d1e0dd;
+  --input: #d1e0dd;
+  --ring: #0d9488;
   
-  /* Chart colors - Red/Orange spectrum */
-  --chart-1: #dc2626;
-  --chart-2: #ea580c;
-  --chart-3: #f97316;
-  --chart-4: #f59e0b;
-  --chart-5: #fbbf24;
+  /* Chart colors - Teal/Cyan spectrum */
+  --chart-1: #0d9488;
+  --chart-2: #0891b2;
+  --chart-3: #06b6d4;
+  --chart-4: #22d3ee;
+  --chart-5: #67e8f9;
   
   /* Sidebar */
-  --sidebar: #faf9f7;
+  --sidebar: #f7fafa;
   --sidebar-foreground: #1a1a1a;
-  --sidebar-primary: #dc2626;
+  --sidebar-primary: #0d9488;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f5f2ef;
+  --sidebar-accent: #f0f5f4;
   --sidebar-accent-foreground: #1a1a1a;
-  --sidebar-border: #e7e5e4;
-  --sidebar-ring: #dc2626;
+  --sidebar-border: #d1e0dd;
+  --sidebar-ring: #0d9488;
   
   /* Isekai Theme Variables */
-  --isekai-red: #dc2626;
-  --isekai-orange: #f97316;
-  --isekai-black: #1a1a1a;
-  --isekai-crimson: #b91c1c;
+  --isekai-teal: #0d9488;
+  --isekai-cyan: #06b6d4;
+  --isekai-dark: #1a1a1a;
+  --isekai-deep: #0f766e;
 }
 
 .dark {
   --radius: 0.75rem;
   
-  /* Dark Theme - Red/Orange/Black Isekai Style */
-  --background: #0a0a0a;
-  --foreground: #faf9f7;
-  --card: #141414;
-  --card-foreground: #faf9f7;
-  --popover: #141414;
-  --popover-foreground: #faf9f7;
+  /* Dark Theme - Teal/Cyan Isekai Style */
+  --background: #0a0f0f;
+  --foreground: #f0fdfa;
+  --card: #0f1716;
+  --card-foreground: #f0fdfa;
+  --popover: #0f1716;
+  --popover-foreground: #f0fdfa;
   
-  /* Primary - Bright Crimson */
-  --primary: #ef4444;
-  --primary-foreground: #0a0a0a;
+  /* Primary - Bright Teal */
+  --primary: #2dd4bf;
+  --primary-foreground: #042f2e;
   
-  /* Secondary - Dark warm gray */
-  --secondary: #262626;
-  --secondary-foreground: #faf9f7;
-  --muted: #262626;
-  --muted-foreground: #a3a3a3;
+  /* Secondary - Dark cool gray */
+  --secondary: #1c2625;
+  --secondary-foreground: #f0fdfa;
+  --muted: #1c2625;
+  --muted-foreground: #94a3b8;
   
-  /* Accent - Dark orange accent */
-  --accent: #262626;
-  --accent-foreground: #faf9f7;
+  /* Accent - Dark teal accent */
+  --accent: #1c2625;
+  --accent-foreground: #f0fdfa;
   
   --destructive: #f87171;
   --destructive-foreground: #0a0a0a;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: #ef4444;
+  --ring: #2dd4bf;
   
   /* Chart colors */
-  --chart-1: #ef4444;
-  --chart-2: #f97316;
-  --chart-3: #fbbf24;
-  --chart-4: #f59e0b;
-  --chart-5: #ea580c;
+  --chart-1: #2dd4bf;
+  --chart-2: #22d3ee;
+  --chart-3: #67e8f9;
+  --chart-4: #06b6d4;
+  --chart-5: #0891b2;
   
   /* Sidebar */
-  --sidebar: #141414;
-  --sidebar-foreground: #faf9f7;
-  --sidebar-primary: #ef4444;
-  --sidebar-primary-foreground: #0a0a0a;
-  --sidebar-accent: #262626;
-  --sidebar-accent-foreground: #faf9f7;
+  --sidebar: #0f1716;
+  --sidebar-foreground: #f0fdfa;
+  --sidebar-primary: #2dd4bf;
+  --sidebar-primary-foreground: #042f2e;
+  --sidebar-accent: #1c2625;
+  --sidebar-accent-foreground: #f0fdfa;
   --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #ef4444;
+  --sidebar-ring: #2dd4bf;
   
   /* Isekai Theme Variables */
-  --isekai-red: #ef4444;
-  --isekai-orange: #f97316;
-  --isekai-black: #0a0a0a;
-  --isekai-crimson: #dc2626;
+  --isekai-teal: #2dd4bf;
+  --isekai-cyan: #22d3ee;
+  --isekai-dark: #0a0f0f;
+  --isekai-deep: #14b8a6;
 }
 
 @layer base {
@@ -193,10 +193,9 @@
   
   .card-hover:hover {
     transform: translateY(-2px);
-    box-shadow: 0 20px 40px -15px rgba(220, 38, 38, 0.15);
+    box-shadow: 0 20px 40px -15px rgba(13, 148, 136, 0.15);
   }
   
-  /* Button Glow - subtle red glow */
   .btn-glow {
     position: relative;
     overflow: hidden;
@@ -206,7 +205,7 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: var(--isekai-red);
+    background: var(--isekai-teal);
     opacity: 0;
     transition: opacity 0.3s ease;
     z-index: -1;
@@ -239,7 +238,7 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar - Red accent */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -255,11 +254,10 @@ html {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--isekai-red);
+  background: var(--isekai-teal);
 }
 
-/* Selection color - Red */
 ::selection {
-  background: var(--isekai-red);
+  background: var(--isekai-teal);
   color: white;
 }

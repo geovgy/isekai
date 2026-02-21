@@ -358,10 +358,10 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
 
   const getTxTypeColor = () => {
     switch(txType) {
-      case "wormhole": return "bg-[#dc2626]";
-      case "shielded": return "bg-[#f97316]";
-      case "unshield": return "bg-[#b91c1c]";
-      case "public": return "bg-[#1a1a1a]";
+      case "wormhole": return "bg-[#0d9488]";
+      case "shielded": return "bg-[#0891b2]";
+      case "unshield": return "bg-[#0f766e]";
+      case "public": return "bg-[#64748b]";
     }
   };
 
@@ -382,73 +382,7 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
           </div>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
-          {/* Source Chain Selector */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Network className="w-3.5 h-3.5 text-[#dc2626]" />
-              Source Chain
-            </label>
-            <Select
-              value={sourceChainId.toString()}
-              onValueChange={(v) => handleSourceChainChange(Number(v))}
-            >
-              <SelectTrigger className="h-12 rounded-xl border-2 border-border bg-background focus:border-[#dc2626] transition-all">
-                <SelectValue placeholder="Select chain" />
-              </SelectTrigger>
-              <SelectContent>
-                {SUPPORTED_CHAIN_IDS.map((id) => (
-                  <SelectItem key={id} value={id.toString()}>
-                    {SUPPORTED_CHAINS[id].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Amount Section */}
-          <div >
-            <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
-              <Wallet className="w-4 h-4 text-[#dc2626]" />
-              Amount
-            </label>
-            <div className="relative">
-              <InputGroup className="h-16 rounded-2xl bg-background border-2 border-border focus-within:border-[#dc2626] transition-all">
-                <InputGroupInput
-                  type="text"
-                  placeholder="0.00"
-                  value={amountInput}
-                  onChange={(e) => {
-                    setAmountInput(e.target.value.replace(/[^0-9.]/g, ""));
-                  }}
-                  className="text-right text-3xl font-bold focus:text-foreground placeholder:text-muted-foreground/50"
-                />
-                <InputGroupAddon
-                  align="inline-end"
-                  className="pr-5 w-24 text-left justify-start"
-                >
-                  <span className="font-bold text-foreground text-lg">{wormholeAsset.symbol}</span>
-                </InputGroupAddon>
-              </InputGroup>
-            </div>
-            <div className="flex justify-between items-center px-2">
-              <span className="text-xs text-muted-foreground">
-                Balance: {formatBalance(fundsSource === "public" ? publicBalance : privateBalance, wormholeAsset.decimals)} {wormholeAsset.symbol}
-              </span>
-              <Button 
-                variant="ghost" 
-                size="xs" 
-                onClick={() => {
-                  const balance = fundsSource === "public" ? publicBalance : privateBalance;
-                  setAmountInput(formatUnits(balance, wormholeAsset.decimals));
-                }}
-                className="text-xs font-semibold text-[#dc2626] hover:text-[#b91c1c]"
-              >
-                Max
-              </Button>
-            </div>
-          </div>
-
+        <div className="flex flex-col gap-4">
           {/* Recipient Section */}
           <div className="space-y-3">
             <label className="text-sm font-semibold text-foreground">Recipient</label>
@@ -456,121 +390,76 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
               placeholder="0x... or ENS name"
               value={recipientInput}
               onChange={(e) => setRecipientInput(e.target.value)}
-              className="h-14 rounded-xl border-2 border-border bg-background focus:border-[#dc2626] transition-all"
+              className="h-14 rounded-xl border-2 border-border bg-background focus:border-[#0d9488] transition-all"
             />
             {recipient?.resolved && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#dc2626]/10 text-[#dc2626] text-sm border border-[#dc2626]/20">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0d9488]/10 text-[#0d9488] text-sm border border-[#0d9488]/20">
                 <Sparkles className="w-4 h-4" />
                 <span>{recipient.name || formatAddress(recipient.address!)}</span>
               </div>
             )}
           </div>
 
-          {/* Transfer Direction */}
-          <div className="space-y-3">
-            {/* Source */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">From</label>
-              <RadioGroup value={fundsSource} onValueChange={(v) => setFundsSource(v as BalanceSource)} className="grid grid-cols-2 gap-2">
-                <label
-                  htmlFor="source-private"
-                  className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
-                    fundsSource === "private"
-                      ? "border-[#dc2626] bg-[#fef2f2]"
-                      : "border-border bg-background hover:border-muted-foreground/30"
-                  )}
-                >
-                  <RadioGroupItem value="private" id="source-private" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <EyeOff className="w-3.5 h-3.5 text-[#dc2626]" />
-                      <span className="font-semibold text-sm text-foreground">Private</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {formatBalance(privateBalance, wormholeAsset.decimals)} {wormholeAsset.symbol}
-                    </p>
-                  </div>
-                </label>
-                <label
-                  htmlFor="source-public"
-                  className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
-                    fundsSource === "public"
-                      ? "border-[#f97316] bg-[#fff7ed]"
-                      : "border-border bg-background hover:border-muted-foreground/30"
-                  )}
-                >
-                  <RadioGroupItem value="public" id="source-public" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5 text-[#f97316]" />
-                      <span className="font-semibold text-sm text-foreground">Public</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {formatBalance(publicBalance, wormholeAsset.decimals)} {wormholeAsset.symbol}
-                    </p>
-                  </div>
-                </label>
-              </RadioGroup>
-            </div>
+          {/* From Section */}
+          <div className="space-y-3 p-4 rounded-2xl border-2 border-border bg-secondary/50">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-[#0d9488]" />
+              From
+            </h3>
 
-            {/* Destination */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">To</label>
-              <RadioGroup value={fundsDestination} onValueChange={(v) => setFundsDestination(v as BalanceSource)} className="grid grid-cols-2 gap-2">
-                <label
-                  htmlFor="dest-private"
-                  className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
-                    fundsDestination === "private"
-                      ? "border-[#dc2626] bg-[#fef2f2]"
-                      : "border-border bg-background hover:border-muted-foreground/30"
-                  )}
-                >
-                  <RadioGroupItem value="private" id="dest-private" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <EyeOff className="w-3.5 h-3.5 text-[#dc2626]" />
-                      <span className="font-semibold text-sm text-foreground">Private</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Shielded</p>
+            <RadioGroup value={fundsSource} onValueChange={(v) => setFundsSource(v as BalanceSource)} className="grid grid-cols-2 gap-2">
+              <label
+                htmlFor="source-private"
+                className={cn(
+                  "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
+                  fundsSource === "private"
+                    ? "border-[#0d9488] bg-[#ecfdf5]"
+                    : "border-border bg-background hover:border-muted-foreground/30"
+                )}
+              >
+                <RadioGroupItem value="private" id="source-private" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-[#0d9488]" />
+                    <span className="font-semibold text-sm text-foreground">Private</span>
                   </div>
-                </label>
-                <label
-                  htmlFor="dest-public"
-                  className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
-                    fundsDestination === "public"
-                      ? "border-[#f97316] bg-[#fff7ed]"
-                      : "border-border bg-background hover:border-muted-foreground/30"
-                  )}
-                >
-                  <RadioGroupItem value="public" id="dest-public" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5 text-[#f97316]" />
-                      <span className="font-semibold text-sm text-foreground">Public</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Standard</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {formatBalance(privateBalance, wormholeAsset.decimals)} {wormholeAsset.symbol}
+                  </p>
+                </div>
+              </label>
+              <label
+                htmlFor="source-public"
+                className={cn(
+                  "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
+                  fundsSource === "public"
+                    ? "border-[#0891b2] bg-[#ecfeff]"
+                    : "border-border bg-background hover:border-muted-foreground/30"
+                )}
+              >
+                <RadioGroupItem value="public" id="source-public" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-[#0891b2]" />
+                    <span className="font-semibold text-sm text-foreground">Public</span>
                   </div>
-                </label>
-              </RadioGroup>
-            </div>
-          </div>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {formatBalance(publicBalance, wormholeAsset.decimals)} {wormholeAsset.symbol}
+                  </p>
+                </div>
+              </label>
+            </RadioGroup>
 
-          {/* Destination Chain Selector (only for wormhole and shielded) */}
-          {showChainSelector && (
             <div className="space-y-2">
               <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <Network className="w-3.5 h-3.5 text-[#dc2626]" />
-                Destination Chain
+                <Network className="w-3.5 h-3.5 text-[#0d9488]" />
+                Chain
               </label>
               <Select
-                value={destinationChainId.toString()}
-                onValueChange={(v) => setDestinationChainId(Number(v))}
+                value={sourceChainId.toString()}
+                onValueChange={(v) => handleSourceChainChange(Number(v))}
               >
-                <SelectTrigger className="h-12 rounded-xl border-2 border-border bg-background focus:border-[#dc2626] transition-all">
+                <SelectTrigger className="h-12 rounded-xl border-2 border-border bg-background focus:border-[#0d9488] transition-all">
                   <SelectValue placeholder="Select chain" />
                 </SelectTrigger>
                 <SelectContent>
@@ -582,7 +471,117 @@ export function TransferDialog({ trigger, wormholeAsset, balances, refetchBalanc
                 </SelectContent>
               </Select>
             </div>
-          )}
+
+            <div>
+              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">Amount</label>
+              <div className="relative">
+                <InputGroup className="h-16 rounded-2xl bg-background border-2 border-border focus-within:border-[#0d9488] transition-all">
+                  <InputGroupInput
+                    type="text"
+                    placeholder="0.00"
+                    value={amountInput}
+                    onChange={(e) => {
+                      setAmountInput(e.target.value.replace(/[^0-9.]/g, ""));
+                    }}
+                    className="text-right text-3xl font-bold focus:text-foreground placeholder:text-muted-foreground/50"
+                  />
+                  <InputGroupAddon
+                    align="inline-end"
+                    className="pr-5 w-24 text-left justify-start"
+                  >
+                    <span className="font-bold text-foreground text-lg">{wormholeAsset.symbol}</span>
+                  </InputGroupAddon>
+                </InputGroup>
+              </div>
+              <div className="flex justify-between items-center px-2">
+                <span className="text-xs text-muted-foreground">
+                  Balance: {formatBalance(fundsSource === "public" ? publicBalance : privateBalance, wormholeAsset.decimals)} {wormholeAsset.symbol}
+                </span>
+                <Button 
+                  variant="ghost" 
+                  size="xs" 
+                  onClick={() => {
+                    const balance = fundsSource === "public" ? publicBalance : privateBalance;
+                    setAmountInput(formatUnits(balance, wormholeAsset.decimals));
+                  }}
+                  className="text-xs font-semibold text-[#0d9488] hover:text-[#0f766e]"
+                >
+                  Max
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* To Section */}
+          <div className="space-y-3 p-4 rounded-2xl border-2 border-border bg-secondary/50">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#0d9488]" />
+              To
+            </h3>
+
+            <RadioGroup value={fundsDestination} onValueChange={(v) => setFundsDestination(v as BalanceSource)} className="grid grid-cols-2 gap-2">
+              <label
+                htmlFor="dest-private"
+                className={cn(
+                  "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
+                  fundsDestination === "private"
+                    ? "border-[#0d9488] bg-[#ecfdf5]"
+                    : "border-border bg-background hover:border-muted-foreground/30"
+                )}
+              >
+                <RadioGroupItem value="private" id="dest-private" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-[#0d9488]" />
+                    <span className="font-semibold text-sm text-foreground">Private</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Shielded</p>
+                </div>
+              </label>
+              <label
+                htmlFor="dest-public"
+                className={cn(
+                  "flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200",
+                  fundsDestination === "public"
+                    ? "border-[#0891b2] bg-[#ecfeff]"
+                    : "border-border bg-background hover:border-muted-foreground/30"
+                )}
+              >
+                <RadioGroupItem value="public" id="dest-public" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-[#0891b2]" />
+                    <span className="font-semibold text-sm text-foreground">Public</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Standard</p>
+                </div>
+              </label>
+            </RadioGroup>
+
+            {showChainSelector && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Network className="w-3.5 h-3.5 text-[#0d9488]" />
+                  Destination Chain
+                </label>
+                <Select
+                  value={destinationChainId.toString()}
+                  onValueChange={(v) => setDestinationChainId(Number(v))}
+                >
+                  <SelectTrigger className="h-12 rounded-xl border-2 border-border bg-background focus:border-[#0d9488] transition-all">
+                    <SelectValue placeholder="Select chain" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUPPORTED_CHAIN_IDS.map((id) => (
+                      <SelectItem key={id} value={id.toString()}>
+                        {SUPPORTED_CHAINS[id].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
 
           {/* Summary */}
           <div className="p-4 rounded-xl bg-secondary border-2 border-border space-y-2">

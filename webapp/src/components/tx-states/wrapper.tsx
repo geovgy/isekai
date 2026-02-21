@@ -142,7 +142,7 @@ export function WrapperDialogContent({ transactionType, implementationType, worm
       {/* Input amount field */}
       <div className="space-y-2">
         <label className="text-sm font-semibold text-foreground">From</label>
-        <InputGroup className="h-14 rounded-xl border-2 border-border bg-background focus-within:border-[#dc2626] transition-all">
+        <InputGroup className="h-14 rounded-xl border-2 border-border bg-background focus-within:border-[#0d9488] transition-all">
           <InputGroupInput
             type="text"
             placeholder="0"
@@ -166,7 +166,7 @@ export function WrapperDialogContent({ transactionType, implementationType, worm
             onClick={() => {
               setInputAmount(formatUnits(inputAsset.balance, inputAsset.decimals));
             }}
-            className="text-xs font-semibold text-[#dc2626] hover:text-[#b91c1c]"
+            className="text-xs font-semibold text-[#0d9488] hover:text-[#0f766e]"
           >
             Max
           </Button>
@@ -176,7 +176,7 @@ export function WrapperDialogContent({ transactionType, implementationType, worm
       {/* Arrow */}
       <div className="flex justify-center -my-2 relative z-10">
         <div className="w-10 h-10 rounded-full bg-secondary border-2 border-border flex items-center justify-center">
-          <ArrowDown className="w-5 h-5 text-[#dc2626]" />
+          <ArrowDown className="w-5 h-5 text-[#0d9488]" />
         </div>
       </div>
 

@@ -11,7 +11,6 @@ export default function WormholesPage() {
             <h2 className="text-lg font-semibold">My Wormhole Transfers</h2>
             <p className="text-sm text-muted-foreground">View and track the status of your wormhole transfers</p>
           </div>
-          <SyncMasterTree />
         </div>
         <WormholesTable />
       </div>

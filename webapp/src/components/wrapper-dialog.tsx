@@ -81,13 +81,13 @@ export function WrapperDialog({ implementationType, wormholeAsset, underlying, r
           )}>
             <TabsTrigger 
               value="deposit"
-              className="rounded-lg data-[state=active]:bg-[#dc2626] data-[state=active]:text-white data-[state=active]:font-semibold transition-all"
+              className="rounded-lg data-[state=active]:bg-[#0d9488] data-[state=active]:text-white data-[state=active]:font-semibold transition-all"
             >
               Deposit
             </TabsTrigger>
             <TabsTrigger 
               value="withdraw"
-              className="rounded-lg data-[state=active]:bg-[#dc2626] data-[state=active]:text-white data-[state=active]:font-semibold transition-all"
+              className="rounded-lg data-[state=active]:bg-[#0d9488] data-[state=active]:text-white data-[state=active]:font-semibold transition-all"
             >
               Withdraw
             </TabsTrigger>

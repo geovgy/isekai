@@ -32,7 +32,7 @@ export function Header() {
               height={50}
             />
             <div className="flex flex-col">
-              <span className="text-lg font-bold text-[#dc2626]">Isekai</span>
+              <span className="text-lg font-bold text-[#0d9488]">Isekai</span>
             </div>
           </Link>
 
@@ -50,7 +50,7 @@ export function Header() {
                 )}
               >
                 {pathname === item.href && (
-                  <span className="absolute inset-0 rounded-full bg-[#dc2626]" />
+                  <span className="absolute inset-0 rounded-full bg-[#0d9488]" />
                 )}
                 <span className="relative z-10">{item.label}</span>
               </Link>
