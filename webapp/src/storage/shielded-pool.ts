@@ -13,6 +13,7 @@ import {
   queryMasterWormholeTreeLeavesForBranchChain,
   queryMasterTreesUpdatedWithinTimestampRange,
   queryLatestMasterWormholeTreeSnapshot,
+  queryMasterWormholeTreeLeavesForBranchChainWithinTimestampRange,
 } from "@/src/subgraph-queries"
 import { getMerkleTree } from "@/src/merkle"
 import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormholeBurnAddress, getWormholeNullifier, getWormholePseudoNullifier, getWormholeBurnCommitment } from "@/src/joinsplits"
@@ -533,160 +534,33 @@ export class ShieldedPool {
       const treeNumber = wormhole.treeNumber
       const leafIndex = wormhole.leafIndex
 
-      if (noteSrcChainId === MASTER_CHAIN_ID) {
-        const coveringRoots = await queryMasterWormholeTreeLeavesForBranchChain({
-          branchChainId: MASTER_CHAIN_ID,
-        })
-        let selectedBranchRoot: { branchRoot: string; treeId: string; blockTimestamp: string } | null = null
-        let selectedBranchSnapshot: { leaves: string[]; size: string } | null = null
-        for (const root of coveringRoots) {
-          const snapshot = await queryBranchWormholeTreeSnapshot({
-            treeId: treeNumber,
-            root: root.branchRoot,
-            chainId: MASTER_CHAIN_ID
-          })
-          if (snapshot && snapshot.leaves.length > leafIndex) {
-            selectedBranchRoot = root
-            selectedBranchSnapshot = snapshot
-            break
-          }
-        }
-        if (!selectedBranchRoot || !selectedBranchSnapshot) {
-          throw new Error(`No branch wormhole tree snapshot contains leaf index ${leafIndex} for tree ${treeNumber} on master chain`)
-        }
-        wormholeTree = getMerkleTree(selectedBranchSnapshot.leaves.map(l => BigInt(l)))
-        
-        const expectedWormholeCommitment = getWormholeBurnCommitment({
-          dst_chain_id: BigInt(wormhole.dstChainId),
-          src_chain_id: BigInt(wormhole.srcChainId),
-          entry_id: BigInt(wormhole.entryId),
-          recipient: wormhole.entry.to,
-          wormhole_secret: BigInt(wormhole.entry.wormhole_secret),
-          asset_id: assetId,
-          sender: wormhole.entry.from,
-          amount: BigInt(wormhole.entry.amount),
-          approved: wormhole.status === "approved",
-        })
-        const actualWormholeLeaf = BigInt(selectedBranchSnapshot.leaves[leafIndex])
-        if (actualWormholeLeaf !== expectedWormholeCommitment) {
-          console.error(`Wormhole commitment mismatch at leaf index ${leafIndex}:`, {
-            expected: expectedWormholeCommitment.toString(),
-            actual: actualWormholeLeaf.toString(),
-            wormhole,
-          })
-          throw new Error(`Wormhole commitment mismatch at leaf index ${leafIndex}. Expected ${expectedWormholeCommitment}, got ${actualWormholeLeaf}`)
-        }
-        
-        const branchRoot = BigInt(selectedBranchRoot.branchRoot)
-
-        const masterUpdates = await queryMasterTreesUpdatedWithinTimestampRange({
-          blockTimestamp_gte: Number(selectedBranchRoot.blockTimestamp),
-          blockTimestamp_lte: masterBlockTimestamp
-        })
-        
-        let selectedMasterSnapshot: { leaves: string[]; size: string } | null = null
-        let selectedMasterUpdate: typeof masterUpdates[0] | null = null
-        for (const update of masterUpdates) {
-          const snapshot = await queryMasterWormholeTreeSnapshot({
-            treeId: Number(update.masterWormholeTreeId),
-            root: update.masterWormholeRoot
-          })
-          if (snapshot && snapshot.leaves.some(l => BigInt(l) === branchRoot)) {
-            selectedMasterSnapshot = snapshot
-            selectedMasterUpdate = update
-            break
-          }
-        }
-        if (!selectedMasterSnapshot || !selectedMasterUpdate) {
-          throw new Error(`No master tree snapshot found containing branch root ${branchRoot}`)
-        }
-        wormholeMasterTree = getMerkleTree(selectedMasterSnapshot.leaves.map(l => BigInt(l)))
-        const masterIndex = selectedMasterSnapshot.leaves.findIndex(l => BigInt(l) === branchRoot)
-        if (masterIndex === -1) {
-          throw new Error(`Branch wormhole root not found in master tree`)
-        }
-        masterWormholeProof = wormholeMasterTree.generateProof(masterIndex)
-      } else {
-        const masterLeaves = await queryMasterWormholeTreeLeavesForBranchChain({
-          branchChainId: noteSrcChainId,
-        })
-        let leafWithinMasterTimestamp: typeof masterLeaves[0] | undefined
-        for (const l of masterLeaves) {
-          if (Number(l.blockTimestamp) > masterBlockTimestamp) continue
-          const branchSnap = await queryBranchWormholeTreeSnapshot({
-            treeId: treeNumber,
-            root: l.branchRoot,
-            chainId: noteSrcChainId
-          })
-          if (branchSnap && branchSnap.leaves.length > leafIndex) {
-            leafWithinMasterTimestamp = l
-            break
-          }
-        }
-        if (!leafWithinMasterTimestamp) {
-          throw new Error(`No master tree leaf found for wormhole notes from chain ${noteSrcChainId} with timestamp <= ${masterBlockTimestamp}`)
-        }
-        const branchSnapshot = await queryBranchWormholeTreeSnapshot({
-          treeId: treeNumber,
-          root: leafWithinMasterTimestamp.branchRoot,
-          chainId: noteSrcChainId
-        })
-        if (!branchSnapshot || branchSnapshot.leaves.length <= leafIndex) {
-          throw new Error(`No branch wormhole tree snapshot contains leaf index ${leafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
-        }
-        wormholeTree = getMerkleTree(branchSnapshot.leaves.map(l => BigInt(l)))
-        
-        const expectedWormholeCommitment = getWormholeBurnCommitment({
-          dst_chain_id: BigInt(wormhole.dstChainId),
-          src_chain_id: BigInt(wormhole.srcChainId),
-          entry_id: BigInt(wormhole.entryId),
-          recipient: wormhole.entry.to,
-          wormhole_secret: BigInt(wormhole.entry.wormhole_secret),
-          asset_id: assetId,
-          sender: wormhole.entry.from,
-          amount: BigInt(wormhole.entry.amount),
-          approved: wormhole.status === "approved",
-        })
-        const actualWormholeLeaf = BigInt(branchSnapshot.leaves[leafIndex])
-        if (actualWormholeLeaf !== expectedWormholeCommitment) {
-          console.error(`Wormhole commitment mismatch at leaf index ${leafIndex}:`, {
-            expected: expectedWormholeCommitment.toString(),
-            actual: actualWormholeLeaf.toString(),
-            wormhole,
-          })
-          throw new Error(`Wormhole commitment mismatch at leaf index ${leafIndex}. Expected ${expectedWormholeCommitment}, got ${actualWormholeLeaf}`)
-        }
-        
-        const branchRoot = BigInt(leafWithinMasterTimestamp.branchRoot)
-
-        const masterUpdates = await queryMasterTreesUpdatedWithinTimestampRange({
-          blockTimestamp_gte: Number(leafWithinMasterTimestamp.blockTimestamp),
-          blockTimestamp_lte: masterBlockTimestamp
-        })
-        
-        let selectedMasterSnapshot: { leaves: string[]; size: string } | null = null
-        let selectedMasterUpdate: typeof masterUpdates[0] | null = null
-        for (const update of masterUpdates) {
-          const snapshot = await queryMasterWormholeTreeSnapshot({
-            treeId: Number(update.masterWormholeTreeId),
-            root: update.masterWormholeRoot
-          })
-          if (snapshot && snapshot.leaves.some(l => BigInt(l) === branchRoot)) {
-            selectedMasterSnapshot = snapshot
-            selectedMasterUpdate = update
-            break
-          }
-        }
-        if (!selectedMasterSnapshot || !selectedMasterUpdate) {
-          throw new Error(`No master tree snapshot found containing branch root ${branchRoot}`)
-        }
-        wormholeMasterTree = getMerkleTree(selectedMasterSnapshot.leaves.map(l => BigInt(l)))
-        const masterIndex = selectedMasterSnapshot.leaves.findIndex(l => BigInt(l) === branchRoot)
-        if (masterIndex === -1) {
-          throw new Error(`Branch wormhole root not found in master tree`)
-        }
-        masterWormholeProof = wormholeMasterTree.generateProof(masterIndex)
+      const latestMasterWormholeTreeSnapshot = await queryLatestMasterWormholeTreeSnapshot(args.srcChainId)
+      if (!latestMasterWormholeTreeSnapshot) {
+        throw new Error(`No latest master wormhole tree snapshot found for chain ${args.srcChainId}`)
       }
+      if (Number(latestMasterWormholeTreeSnapshot.createdAt) <= Number(wormhole.blockTimestamp)) {
+        throw new Error(`Latest master wormhole tree snapshot is older than wormhole block timestamp`)
+      }
+      // Get master wormhole tree leaf from master chain with timestamp in between wormhole.blockTimestamp and latestMasterWormholeTreeSnapshot.createdAt
+      const masterWormholeLeaves = await queryMasterWormholeTreeLeavesForBranchChainWithinTimestampRange({
+        branchChainId: MASTER_CHAIN_ID,
+        blockTimestamp_gte: Number(wormhole.blockTimestamp),
+        blockTimestamp_lte: Number(latestMasterWormholeTreeSnapshot.createdAt),
+      })
+      if (!masterWormholeLeaves.length) {
+        throw new Error(`No master wormhole tree leaf found for wormhole notes from chain ${noteSrcChainId} with timestamp in between ${wormhole.blockTimestamp} and ${latestMasterWormholeTreeSnapshot.createdAt}`)
+      }
+      const branchWormholeTreeSnapshot = await queryBranchWormholeTreeSnapshot({
+        treeId: treeNumber,
+        root: masterWormholeLeaves[0].branchRoot,
+        chainId: MASTER_CHAIN_ID
+      })
+      if (!branchWormholeTreeSnapshot) {
+        throw new Error(`No branch wormhole tree snapshot found for tree ${treeNumber} on chain ${MASTER_CHAIN_ID}`)
+      }
+      wormholeTree = getMerkleTree(branchWormholeTreeSnapshot.leaves.map(l => BigInt(l)))
+      wormholeMasterTree = getMerkleTree(latestMasterWormholeTreeSnapshot.leaves.map(l => BigInt(l)))
+      masterWormholeProof = wormholeMasterTree.generateProof(latestMasterWormholeTreeSnapshot.leaves.findIndex(l => BigInt(l) === BigInt(masterWormholeLeaves[0].branchRoot)))
     } else {
       const tree = await queryLatestMasterWormholeTreeSnapshot(args.srcChainId)
       if (tree) {

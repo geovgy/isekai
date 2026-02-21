@@ -646,7 +646,7 @@ export async function queryMasterShieldedTreeSnapshot(args: {
   return data.masterShieldedTreeSnapshot;
 }
 
-export async function queryLatestMasterWormholeTreeSnapshot(chainId: number): Promise<{ treeId: string; root: string; leaves: string[]; size: string } | null> {
+export async function queryLatestMasterWormholeTreeSnapshot(chainId: number): Promise<{ treeId: string; root: string; leaves: string[]; size: string; createdAt: string } | null> {
   const query = `
     query LatestMasterWormholeTreeSnapshot {
       masterWormholeTreeSnapshots(
@@ -658,11 +658,12 @@ export async function queryLatestMasterWormholeTreeSnapshot(chainId: number): Pr
         root
         leaves
         size
+        createdAt
       }
     }
   `;
   const data = await subgraphQuery<{
-    masterWormholeTreeSnapshots: { treeId: string; root: string; leaves: string[]; size: string }[];
+    masterWormholeTreeSnapshots: { treeId: string; root: string; leaves: string[]; size: string; createdAt: string }[];
   }>(query, {}, chainId);
   return data.masterWormholeTreeSnapshots[0] ?? null;
 }
@@ -789,6 +790,43 @@ export async function queryAllMasterShieldedTreeLeaves(args: {
   return data.masterShieldedTreeLeaves;
 }
 
+export async function queryMasterWormholeTreeLeavesForBranchChainWithinTimestampRange(args: {
+  branchChainId: number;
+  blockTimestamp_gte: number;
+  blockTimestamp_lte: number;
+}): Promise<{
+  branchRoot: string;
+  blockTimestamp: string;
+  treeId: string;
+}[]> {
+  const query = `
+    query MasterWormholeTreeLeavesForBranchChainWithinTimestampRange($branchChainId: BigInt!, $blockTimestamp_gte: BigInt!, $blockTimestamp_lte: BigInt!) {
+      masterWormholeTreeLeaves(
+        where: { branchChainId: $branchChainId, blockTimestamp_gte: $blockTimestamp_gte, blockTimestamp_lte: $blockTimestamp_lte }
+        orderBy: blockTimestamp
+        orderDirection: asc
+        first: 100
+      ) {
+        branchRoot
+        blockTimestamp
+        treeId
+      }
+    }
+  `;
+  const data = await subgraphQueryMasterChain<{
+    masterWormholeTreeLeaves: {
+      branchRoot: string;
+      blockTimestamp: string;
+      treeId: string;
+    }[];
+  }>(query, {
+    branchChainId: args.branchChainId.toString(),
+    blockTimestamp_gte: args.blockTimestamp_gte.toString(),
+    blockTimestamp_lte: args.blockTimestamp_lte.toString(),
+  });
+  return data.masterWormholeTreeLeaves;
+}
+
 export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
   branchChainId: number;
   branchTimestamp_gte?: number;
@@ -828,6 +866,44 @@ export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
     branchTimestamp_gte: args.branchTimestamp_gte?.toString(),
   });
   return data.masterWormholeTreeLeaves;
+}
+
+export async function queryMasterTreesUpdatedOnChain(chainId: number, args?: { first?: number }): Promise<{
+  masterShieldedTreeId: string;
+  masterWormholeTreeId: string;
+  masterShieldedRoot: string;
+  masterWormholeRoot: string;
+  masterBlockTimestamp: string;
+  blockTimestamp: string;
+}[]> {
+  const first = args?.first ?? 50
+  const query = `
+    query MasterTreesUpdatedOnChain($first: Int!) {
+      masterTreesUpdateds(
+        orderBy: blockTimestamp
+        orderDirection: desc
+        first: $first
+      ) {
+        masterShieldedTreeId
+        masterWormholeTreeId
+        masterShieldedRoot
+        masterWormholeRoot
+        masterBlockTimestamp
+        blockTimestamp
+      }
+    }
+  `
+  const data = await subgraphQuery<{
+    masterTreesUpdateds: {
+      masterShieldedTreeId: string;
+      masterWormholeTreeId: string;
+      masterShieldedRoot: string;
+      masterWormholeRoot: string;
+      masterBlockTimestamp: string;
+      blockTimestamp: string;
+    }[];
+  }>(query, { first }, chainId)
+  return data.masterTreesUpdateds
 }
 
 export async function queryMasterTreesUpdatedWithinTimestampRange(args: {
