@@ -248,7 +248,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             uint256 newMasterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(root);
             isMasterWormholeRoot[bytes32(newMasterWormholeRoot)] = true;
-            emit MasterWormholeTreeLeaf(currentWormholeTreeId, newMasterWormholeRoot, MASTER_CHAIN_ID, block.number, block.timestamp);
+            emit MasterWormholeTreeLeaf(currentWormholeTreeId, root, MASTER_CHAIN_ID, block.number, block.timestamp);
             emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _masterShieldedTrees[currentMasterShieldedTreeId].root(), newMasterWormholeRoot, block.number, block.timestamp);
         }
     }
@@ -298,7 +298,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             uint256 newMasterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(root);
             isMasterWormholeRoot[bytes32(newMasterWormholeRoot)] = true;
-            emit MasterWormholeTreeLeaf(currentWormholeTreeId, newMasterWormholeRoot, MASTER_CHAIN_ID, block.number, block.timestamp);
+            emit MasterWormholeTreeLeaf(currentWormholeTreeId, root, MASTER_CHAIN_ID, block.number, block.timestamp);
             emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _masterShieldedTrees[currentMasterShieldedTreeId].root(), newMasterWormholeRoot, block.number, block.timestamp);
         }
     }
@@ -359,7 +359,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             uint256 newMasterShieldedRoot = _masterShieldedTrees[currentMasterShieldedTreeId].insert(root);
             isMasterShieldedRoot[bytes32(newMasterShieldedRoot)] = true;
-            emit MasterShieldedTreeLeaf(currentMasterShieldedTreeId, newMasterShieldedRoot, MASTER_CHAIN_ID, block.number, block.timestamp);
+            emit MasterShieldedTreeLeaf(currentMasterShieldedTreeId, root, MASTER_CHAIN_ID, block.number, block.timestamp);
             emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, newMasterShieldedRoot, _masterWormholeTrees[currentMasterWormholeTreeId].root(), block.number, block.timestamp);
         }
     }
