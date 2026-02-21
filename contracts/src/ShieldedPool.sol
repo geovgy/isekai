@@ -236,7 +236,9 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         unchecked {
             totalWormholeCommitments++;
         }
+        
         emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _branchWormholeTrees[currentWormholeTreeId].size - 1, assetId, entry.from, entry.to, entry.amount, approved);
+        emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
 
         if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch wormhole root into master wormhole tree
@@ -246,9 +248,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             uint256 newMasterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(root);
             isMasterWormholeRoot[bytes32(newMasterWormholeRoot)] = true;
-            emit MasterTreesUpdated(currentWormholeTreeId, currentShieldedTreeId, newMasterWormholeRoot, _masterShieldedTrees[currentMasterShieldedTreeId].root(), block.number, block.timestamp);
-        } else {
-            emit BranchTreesUpdated(currentWormholeTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
+            emit MasterWormholeTreeLeaf(currentWormholeTreeId, newMasterWormholeRoot, MASTER_CHAIN_ID, block.number, block.timestamp);
+            emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _masterShieldedTrees[currentMasterShieldedTreeId].root(), newMasterWormholeRoot, block.number, block.timestamp);
         }
     }
 
@@ -286,6 +287,9 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         unchecked {
             totalWormholeCommitments += nodes.length;
         }
+        
+        emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
+        
         if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch wormhole root into master wormhole tree
             if (_isMerkleTreeFull(_masterWormholeTrees[currentWormholeTreeId])) {
@@ -294,9 +298,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             uint256 newMasterWormholeRoot = _masterWormholeTrees[currentWormholeTreeId].insert(root);
             isMasterWormholeRoot[bytes32(newMasterWormholeRoot)] = true;
-            emit MasterTreesUpdated(currentWormholeTreeId, currentShieldedTreeId, newMasterWormholeRoot, _masterShieldedTrees[currentMasterShieldedTreeId].root(), block.number, block.timestamp);
-        } else {
-            emit BranchTreesUpdated(currentWormholeTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
+            emit MasterWormholeTreeLeaf(currentWormholeTreeId, newMasterWormholeRoot, MASTER_CHAIN_ID, block.number, block.timestamp);
+            emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _masterShieldedTrees[currentMasterShieldedTreeId].root(), newMasterWormholeRoot, block.number, block.timestamp);
         }
     }
 
@@ -346,6 +349,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit WormholeNullifier(shieldedTx.wormholeNullifier);
         emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
 
+        emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+
         if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch shielded root into master shielded tree
             if (_isMerkleTreeFull(_masterShieldedTrees[currentMasterShieldedTreeId])) {
@@ -354,9 +359,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             }
             uint256 newMasterShieldedRoot = _masterShieldedTrees[currentMasterShieldedTreeId].insert(root);
             isMasterShieldedRoot[bytes32(newMasterShieldedRoot)] = true;
+            emit MasterShieldedTreeLeaf(currentMasterShieldedTreeId, newMasterShieldedRoot, MASTER_CHAIN_ID, block.number, block.timestamp);
             emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, newMasterShieldedRoot, _masterWormholeTrees[currentMasterWormholeTreeId].root(), block.number, block.timestamp);
-        } else {
-            emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
         }
     }
 
@@ -392,6 +396,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         if (block.chainid == MASTER_CHAIN_ID) {
             (uint64 branchChainId, bytes32 branchShieldedRoot, bytes32 branchWormholeRoot, uint256 branchBlockNumber, uint256 timestamp) = _verifyAndExtractBranchTreeEvent(proof);
             (uint256 masterShieldedRoot, uint256 masterWormholeRoot) = _insertMasterTrees(uint256(branchShieldedRoot), uint256(branchWormholeRoot), branchChainId, branchBlockNumber, timestamp);
+            emit MasterShieldedTreeLeaf(currentMasterShieldedTreeId, uint256(branchShieldedRoot), branchChainId, branchBlockNumber, timestamp);
+            emit MasterWormholeTreeLeaf(currentMasterWormholeTreeId, uint256(branchWormholeRoot), branchChainId, branchBlockNumber, timestamp);
             emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, masterShieldedRoot, masterWormholeRoot, block.number, block.timestamp);
         } else {
             (uint256 shieldedTreeId, uint256 wormholeTreeId, bytes32 masterShieldedRoot, bytes32 masterWormholeRoot, uint256 blockNumber, uint256 timestamp) = _verifyMasterTreeEvent(proof);
