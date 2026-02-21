@@ -12,16 +12,40 @@ import {
   queryMasterShieldedTreeLeavesForBranchChain,
   queryMasterWormholeTreeLeavesForBranchChain,
   queryMasterTreesUpdatedWithinTimestampRange,
+  queryLatestMasterWormholeTreeSnapshot,
 } from "@/src/subgraph-queries"
 import { getMerkleTree } from "@/src/merkle"
 import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormholeBurnAddress, getWormholeNullifier, getWormholePseudoNullifier, getWormholeBurnCommitment } from "@/src/joinsplits"
-import { signTypedData, writeContract } from "wagmi/actions"
+import { readContract, signTypedData, writeContract } from "wagmi/actions"
 import { Config } from "wagmi"
 import { SHIELDED_POOL_CONTRACT_ADDRESS } from "../env"
 import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "../config"
 import { MERKLE_TREE_DEPTH } from "../constants"
 import { InputMap } from "@noir-lang/noir_js"
 import { LeanIMT } from "@zk-kit/lean-imt"
+
+const masterTreeViewAbi = [
+  { type: "function", name: "currentMasterWormholeTreeId", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "currentMasterShieldedTreeId", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "masterWormholeTree", inputs: [{ name: "treeId", type: "uint256" }], outputs: [{ name: "root", type: "bytes32" }, { name: "size", type: "uint256" }, { name: "depth", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "masterShieldedTree", inputs: [{ name: "treeId", type: "uint256" }], outputs: [{ name: "root", type: "bytes32" }, { name: "size", type: "uint256" }, { name: "depth", type: "uint256" }], stateMutability: "view" },
+] as const
+
+async function readCurrentMasterRoots(config: Config, chainId: number) {
+  const contractAddress = getAddress(getChainConfig(chainId).contractAddress)
+  const [wormholeTreeId, shieldedTreeId] = await Promise.all([
+    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "currentMasterWormholeTreeId", chainId }),
+    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "currentMasterShieldedTreeId", chainId }),
+  ])
+  const [wormholeTree, shieldedTree] = await Promise.all([
+    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "masterWormholeTree", args: [wormholeTreeId], chainId }),
+    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "masterShieldedTree", args: [shieldedTreeId], chainId }),
+  ])
+  return {
+    masterWormholeRoot: BigInt(wormholeTree[0]),
+    masterShieldedRoot: BigInt(shieldedTree[0]),
+  }
+}
 
 const wormholeEntryEventAbi = [{
   type: "event",
@@ -342,13 +366,11 @@ export class ShieldedPool {
     if (shielded.length > 0) {
       const noteSrcChainId = shielded[0].srcChainId
       const treeNumber = shielded[0].treeNumber
-      const noteBlockTimestamp = shielded[0].blockTimestamp ?? 0
       const maxLeafIndex = Math.max(...shielded.map(s => s.leafIndex))
 
       if (noteSrcChainId === MASTER_CHAIN_ID) {
         const coveringRoots = await queryMasterShieldedTreeLeavesForBranchChain({
           branchChainId: MASTER_CHAIN_ID,
-          branchTimestamp_gte: noteBlockTimestamp
         })
         let selectedBranchRoot: { branchRoot: string; treeId: string; blockTimestamp: string } | null = null
         let selectedBranchSnapshot: { leaves: string[]; size: string } | null = null
@@ -420,9 +442,20 @@ export class ShieldedPool {
       } else {
         const masterLeaves = await queryMasterShieldedTreeLeavesForBranchChain({
           branchChainId: noteSrcChainId,
-          branchTimestamp_gte: noteBlockTimestamp
         })
-        const leafWithinMasterTimestamp = masterLeaves.find(l => Number(l.blockTimestamp) <= masterBlockTimestamp)
+        let leafWithinMasterTimestamp: typeof masterLeaves[0] | undefined
+        for (const l of masterLeaves) {
+          if (Number(l.blockTimestamp) > masterBlockTimestamp) continue
+          const branchSnap = await queryBranchShieldedTreeSnapshot({
+            treeId: treeNumber,
+            root: l.branchRoot,
+            chainId: noteSrcChainId
+          })
+          if (branchSnap && branchSnap.leaves.length > maxLeafIndex) {
+            leafWithinMasterTimestamp = l
+            break
+          }
+        }
         if (!leafWithinMasterTimestamp) {
           throw new Error(`No master tree leaf found for shielded notes from chain ${noteSrcChainId} with timestamp <= ${masterBlockTimestamp}`)
         }
@@ -498,13 +531,11 @@ export class ShieldedPool {
     if (wormhole) {
       const noteSrcChainId = wormhole.srcChainId
       const treeNumber = wormhole.treeNumber
-      const noteBlockTimestamp = wormhole.blockTimestamp ?? 0
       const leafIndex = wormhole.leafIndex
 
       if (noteSrcChainId === MASTER_CHAIN_ID) {
         const coveringRoots = await queryMasterWormholeTreeLeavesForBranchChain({
           branchChainId: MASTER_CHAIN_ID,
-          branchTimestamp_gte: noteBlockTimestamp
         })
         let selectedBranchRoot: { branchRoot: string; treeId: string; blockTimestamp: string } | null = null
         let selectedBranchSnapshot: { leaves: string[]; size: string } | null = null
@@ -578,9 +609,20 @@ export class ShieldedPool {
       } else {
         const masterLeaves = await queryMasterWormholeTreeLeavesForBranchChain({
           branchChainId: noteSrcChainId,
-          branchTimestamp_gte: noteBlockTimestamp
         })
-        const leafWithinMasterTimestamp = masterLeaves.find(l => Number(l.blockTimestamp) <= masterBlockTimestamp)
+        let leafWithinMasterTimestamp: typeof masterLeaves[0] | undefined
+        for (const l of masterLeaves) {
+          if (Number(l.blockTimestamp) > masterBlockTimestamp) continue
+          const branchSnap = await queryBranchWormholeTreeSnapshot({
+            treeId: treeNumber,
+            root: l.branchRoot,
+            chainId: noteSrcChainId
+          })
+          if (branchSnap && branchSnap.leaves.length > leafIndex) {
+            leafWithinMasterTimestamp = l
+            break
+          }
+        }
         if (!leafWithinMasterTimestamp) {
           throw new Error(`No master tree leaf found for wormhole notes from chain ${noteSrcChainId} with timestamp <= ${masterBlockTimestamp}`)
         }
@@ -646,9 +688,16 @@ export class ShieldedPool {
         masterWormholeProof = wormholeMasterTree.generateProof(masterIndex)
       }
     } else {
-      wormholeTree = getMerkleTree([0n])
-      wormholeMasterTree = getMerkleTree([0n])
-      masterWormholeProof = wormholeMasterTree.generateProof(0)
+      const tree = await queryLatestMasterWormholeTreeSnapshot(args.srcChainId)
+      if (tree) {
+        wormholeTree = getMerkleTree([])
+        wormholeMasterTree = getMerkleTree(tree.leaves.map(l => BigInt(l)))
+        masterWormholeProof = wormholeMasterTree.generateProof(0)
+      } else {
+        wormholeTree = getMerkleTree([])
+        wormholeMasterTree = getMerkleTree([wormholeTree.root])
+        masterWormholeProof = wormholeMasterTree.generateProof(0)
+      }
     }
 
     let wormholeDeposit: WormholeDeposit | undefined = undefined;
@@ -699,7 +748,8 @@ export class ShieldedPool {
       master_siblings: masterShieldedProof.siblings,
     })));
     const outputNotes = createShieldedTransferOutputNotes({
-      chainId: BigInt(args.dstChainId),
+      dstChainId: BigInt(args.dstChainId),
+      srcChainId: BigInt(args.srcChainId),
       sender: this.account, 
       receiver: args.receiver, 
       amount: args.amount, 

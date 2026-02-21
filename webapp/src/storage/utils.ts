@@ -5,7 +5,8 @@ import { randomBytes } from "@aztec/bb.js";
 import { getRandomBlinding } from "../joinsplits";
 
 export function createShieldedTransferOutputNotes(args: {
-  chainId: bigint,
+  dstChainId: bigint,
+  srcChainId: bigint,
   sender: Address,
   receiver: Address,
   amount: bigint,
@@ -15,7 +16,7 @@ export function createShieldedTransferOutputNotes(args: {
     shielded?: NoteDBShieldedEntry[],
   },
 }): OutputNote[] {
-  const { chainId, sender, receiver, amount, transferType, notes } = args
+  const { dstChainId, srcChainId, sender, receiver, amount, transferType, notes } = args
 
   const totalAmountIn = 
     (notes.shielded?.reduce((total, note) => total + BigInt(note.note.amount), BigInt(0)) ?? 0n)
@@ -26,8 +27,8 @@ export function createShieldedTransferOutputNotes(args: {
   }
 
   return [
-    { chain_id: chainId, recipient: sender, blinding: getRandomBlinding(), amount: totalAmountIn - amount, transfer_type: TransferType.TRANSFER },
-    { chain_id: chainId, recipient: receiver, blinding: getRandomBlinding(), amount, transfer_type: transferType },
+    { chain_id: srcChainId, recipient: sender, blinding: getRandomBlinding(), amount: totalAmountIn - amount, transfer_type: TransferType.TRANSFER },
+    { chain_id: dstChainId, recipient: receiver, blinding: getRandomBlinding(), amount, transfer_type: transferType },
   ]
 }
 
