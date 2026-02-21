@@ -11,9 +11,6 @@ import {
   queryMasterWormholeTreeSnapshot,
   queryMasterShieldedTreeLeavesForBranchChain,
   queryMasterWormholeTreeLeavesForBranchChain,
-  queryMasterTreesUpdatedWithinTimestampRange,
-  queryLatestMasterWormholeTreeSnapshot,
-  queryMasterWormholeTreeLeavesForBranchChainWithinTimestampRange,
 } from "@/src/subgraph-queries"
 import { getMerkleTree } from "@/src/merkle"
 import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormholeBurnAddress, getWormholeNullifier, getWormholePseudoNullifier, getWormholeBurnCommitment } from "@/src/joinsplits"
@@ -30,23 +27,8 @@ const masterTreeViewAbi = [
   { type: "function", name: "currentMasterShieldedTreeId", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "masterWormholeTree", inputs: [{ name: "treeId", type: "uint256" }], outputs: [{ name: "root", type: "bytes32" }, { name: "size", type: "uint256" }, { name: "depth", type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "masterShieldedTree", inputs: [{ name: "treeId", type: "uint256" }], outputs: [{ name: "root", type: "bytes32" }, { name: "size", type: "uint256" }, { name: "depth", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "isMasterWormholeRoot", inputs: [{ name: "root", type: "bytes32" }], outputs: [{ type: "bool" }], stateMutability: "view" },
 ] as const
-
-async function readCurrentMasterRoots(config: Config, chainId: number) {
-  const contractAddress = getAddress(getChainConfig(chainId).contractAddress)
-  const [wormholeTreeId, shieldedTreeId] = await Promise.all([
-    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "currentMasterWormholeTreeId", chainId }),
-    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "currentMasterShieldedTreeId", chainId }),
-  ])
-  const [wormholeTree, shieldedTree] = await Promise.all([
-    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "masterWormholeTree", args: [wormholeTreeId], chainId }),
-    readContract(config, { address: contractAddress, abi: masterTreeViewAbi, functionName: "masterShieldedTree", args: [shieldedTreeId], chainId }),
-  ])
-  return {
-    masterWormholeRoot: BigInt(wormholeTree[0]),
-    masterShieldedRoot: BigInt(shieldedTree[0]),
-  }
-}
 
 const wormholeEntryEventAbi = [{
   type: "event",
@@ -360,218 +342,142 @@ export class ShieldedPool {
     }
     const masterBlockTimestamp = Number(latestMasterUpdate.masterBlockTimestamp)
 
+    const [masterShieldedSnapshot, masterWormholeSnapshot] = await Promise.all([
+      queryMasterShieldedTreeSnapshot({
+        treeId: Number(latestMasterUpdate.masterShieldedTreeId),
+        root: latestMasterUpdate.masterShieldedRoot,
+      }),
+      queryMasterWormholeTreeSnapshot({
+        treeId: Number(latestMasterUpdate.masterWormholeTreeId),
+        root: latestMasterUpdate.masterWormholeRoot,
+      }),
+    ])
+
     let shieldedTree: LeanIMT<bigint>
     let masterShieldedProof: ReturnType<LeanIMT<bigint>['generateProof']>
     let shieldedMasterTree: LeanIMT<bigint>
 
     if (shielded.length > 0) {
+      if (!masterShieldedSnapshot) {
+        throw new Error(`Master shielded tree snapshot not found for treeId ${latestMasterUpdate.masterShieldedTreeId}, root ${latestMasterUpdate.masterShieldedRoot}`)
+      }
       const noteSrcChainId = shielded[0].srcChainId
       const treeNumber = shielded[0].treeNumber
       const maxLeafIndex = Math.max(...shielded.map(s => s.leafIndex))
 
-      if (noteSrcChainId === MASTER_CHAIN_ID) {
-        const coveringRoots = await queryMasterShieldedTreeLeavesForBranchChain({
-          branchChainId: MASTER_CHAIN_ID,
-        })
-        let selectedBranchRoot: { branchRoot: string; treeId: string; blockTimestamp: string } | null = null
-        let selectedBranchSnapshot: { leaves: string[]; size: string } | null = null
-        for (const root of coveringRoots) {
-          const snapshot = await queryBranchShieldedTreeSnapshot({
-            treeId: treeNumber,
-            root: root.branchRoot,
-            chainId: MASTER_CHAIN_ID
-          })
-          if (snapshot && snapshot.leaves.length > maxLeafIndex) {
-            selectedBranchRoot = root
-            selectedBranchSnapshot = snapshot
-            break
-          }
-        }
-        if (!selectedBranchRoot || !selectedBranchSnapshot) {
-          throw new Error(`No branch shielded tree snapshot contains leaf index ${maxLeafIndex} for tree ${treeNumber} on master chain`)
-        }
-        shieldedTree = getMerkleTree(selectedBranchSnapshot.leaves.map(l => BigInt(l)))
-        
-        for (const input of shielded) {
-          const expectedCommitment = getCommitment(assetId, {
-            chain_id: BigInt(input.dstChainId),
-            recipient: input.note.account,
-            blinding: BigInt(input.note.blinding),
-            amount: BigInt(input.note.amount),
-            transfer_type: input.note.transferType,
-          })
-          const actualLeaf = BigInt(selectedBranchSnapshot.leaves[input.leafIndex])
-          if (actualLeaf !== expectedCommitment) {
-            console.error(`Commitment mismatch at leaf index ${input.leafIndex}:`, {
-              expected: expectedCommitment.toString(),
-              actual: actualLeaf.toString(),
-              note: input,
-            })
-            throw new Error(`Commitment mismatch at leaf index ${input.leafIndex}. Expected ${expectedCommitment}, got ${actualLeaf}`)
-          }
-        }
-        
-        const branchRoot = BigInt(selectedBranchRoot.branchRoot)
-
-        const masterUpdates = await queryMasterTreesUpdatedWithinTimestampRange({
-          blockTimestamp_gte: Number(selectedBranchRoot.blockTimestamp),
-          blockTimestamp_lte: masterBlockTimestamp
-        })
-        
-        let selectedMasterSnapshot: { leaves: string[]; size: string } | null = null
-        let selectedMasterUpdate: typeof masterUpdates[0] | null = null
-        for (const update of masterUpdates) {
-          const snapshot = await queryMasterShieldedTreeSnapshot({
-            treeId: Number(update.masterShieldedTreeId),
-            root: update.masterShieldedRoot
-          })
-          if (snapshot && snapshot.leaves.some(l => BigInt(l) === branchRoot)) {
-            selectedMasterSnapshot = snapshot
-            selectedMasterUpdate = update
-            break
-          }
-        }
-        if (!selectedMasterSnapshot || !selectedMasterUpdate) {
-          throw new Error(`No master tree snapshot found containing branch root ${branchRoot}`)
-        }
-        shieldedMasterTree = getMerkleTree(selectedMasterSnapshot.leaves.map(l => BigInt(l)))
-        const masterIndex = selectedMasterSnapshot.leaves.findIndex(l => BigInt(l) === branchRoot)
-        if (masterIndex === -1) {
-          throw new Error(`Branch shielded root not found in master tree`)
-        }
-        masterShieldedProof = shieldedMasterTree.generateProof(masterIndex)
-      } else {
-        const masterLeaves = await queryMasterShieldedTreeLeavesForBranchChain({
-          branchChainId: noteSrcChainId,
-        })
-        let leafWithinMasterTimestamp: typeof masterLeaves[0] | undefined
-        for (const l of masterLeaves) {
-          if (Number(l.blockTimestamp) > masterBlockTimestamp) continue
-          const branchSnap = await queryBranchShieldedTreeSnapshot({
-            treeId: treeNumber,
-            root: l.branchRoot,
-            chainId: noteSrcChainId
-          })
-          if (branchSnap && branchSnap.leaves.length > maxLeafIndex) {
-            leafWithinMasterTimestamp = l
-            break
-          }
-        }
-        if (!leafWithinMasterTimestamp) {
-          throw new Error(`No master tree leaf found for shielded notes from chain ${noteSrcChainId} with timestamp <= ${masterBlockTimestamp}`)
-        }
-        const branchSnapshot = await queryBranchShieldedTreeSnapshot({
+      const masterShieldedLeaves = await queryMasterShieldedTreeLeavesForBranchChain({
+        branchChainId: noteSrcChainId,
+      })
+      let selectedLeaf: typeof masterShieldedLeaves[0] | undefined
+      for (const leaf of masterShieldedLeaves) {
+        if (Number(leaf.blockTimestamp) > masterBlockTimestamp) continue
+        const branchSnap = await queryBranchShieldedTreeSnapshot({
           treeId: treeNumber,
-          root: leafWithinMasterTimestamp.branchRoot,
-          chainId: noteSrcChainId
+          root: leaf.branchRoot,
+          chainId: noteSrcChainId,
         })
-        if (!branchSnapshot || branchSnapshot.leaves.length <= maxLeafIndex) {
-          throw new Error(`No branch shielded tree snapshot contains leaf index ${maxLeafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
+        if (branchSnap && branchSnap.leaves.length > maxLeafIndex) {
+          selectedLeaf = leaf
+          break
         }
-        shieldedTree = getMerkleTree(branchSnapshot.leaves.map(l => BigInt(l)))
-        
-        for (const input of shielded) {
-          const expectedCommitment = getCommitment(assetId, {
-            chain_id: BigInt(input.dstChainId),
-            recipient: input.note.account,
-            blinding: BigInt(input.note.blinding),
-            amount: BigInt(input.note.amount),
-            transfer_type: input.note.transferType,
-          })
-          const actualLeaf = BigInt(branchSnapshot.leaves[input.leafIndex])
-          if (actualLeaf !== expectedCommitment) {
-            console.error(`Commitment mismatch at leaf index ${input.leafIndex}:`, {
-              expected: expectedCommitment.toString(),
-              actual: actualLeaf.toString(),
-              note: input,
-            })
-            throw new Error(`Commitment mismatch at leaf index ${input.leafIndex}. Expected ${expectedCommitment}, got ${actualLeaf}`)
-          }
-        }
-        
-        const branchRoot = BigInt(leafWithinMasterTimestamp.branchRoot)
-
-        const masterUpdates = await queryMasterTreesUpdatedWithinTimestampRange({
-          blockTimestamp_gte: Number(leafWithinMasterTimestamp.blockTimestamp),
-          blockTimestamp_lte: masterBlockTimestamp
-        })
-        
-        let selectedMasterSnapshot: { leaves: string[]; size: string } | null = null
-        let selectedMasterUpdate: typeof masterUpdates[0] | null = null
-        for (const update of masterUpdates) {
-          const snapshot = await queryMasterShieldedTreeSnapshot({
-            treeId: Number(update.masterShieldedTreeId),
-            root: update.masterShieldedRoot
-          })
-          if (snapshot && snapshot.leaves.some(l => BigInt(l) === branchRoot)) {
-            selectedMasterSnapshot = snapshot
-            selectedMasterUpdate = update
-            break
-          }
-        }
-        if (!selectedMasterSnapshot || !selectedMasterUpdate) {
-          throw new Error(`No master tree snapshot found containing branch root ${branchRoot}`)
-        }
-        shieldedMasterTree = getMerkleTree(selectedMasterSnapshot.leaves.map(l => BigInt(l)))
-        const masterIndex = selectedMasterSnapshot.leaves.findIndex(l => BigInt(l) === branchRoot)
-        if (masterIndex === -1) {
-          throw new Error(`Branch shielded root not found in master tree`)
-        }
-        masterShieldedProof = shieldedMasterTree.generateProof(masterIndex)
       }
+      if (!selectedLeaf) {
+        throw new Error(`No master shielded tree leaf found for notes from chain ${noteSrcChainId} with timestamp <= ${masterBlockTimestamp}`)
+      }
+      const branchSnapshot = await queryBranchShieldedTreeSnapshot({
+        treeId: treeNumber,
+        root: selectedLeaf.branchRoot,
+        chainId: noteSrcChainId,
+      })
+      if (!branchSnapshot || branchSnapshot.leaves.length <= maxLeafIndex) {
+        throw new Error(`No branch shielded tree snapshot contains leaf index ${maxLeafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
+      }
+      shieldedTree = getMerkleTree(branchSnapshot.leaves.map(l => BigInt(l)))
+
+      for (const input of shielded) {
+        const expectedCommitment = getCommitment(assetId, {
+          chain_id: BigInt(input.dstChainId),
+          recipient: input.note.account,
+          blinding: BigInt(input.note.blinding),
+          amount: BigInt(input.note.amount),
+          transfer_type: input.note.transferType,
+        })
+        const actualLeaf = BigInt(branchSnapshot.leaves[input.leafIndex])
+        if (actualLeaf !== expectedCommitment) {
+          console.error(`Commitment mismatch at leaf index ${input.leafIndex}:`, {
+            expected: expectedCommitment.toString(),
+            actual: actualLeaf.toString(),
+            note: input,
+          })
+          throw new Error(`Commitment mismatch at leaf index ${input.leafIndex}. Expected ${expectedCommitment}, got ${actualLeaf}`)
+        }
+      }
+
+      const branchRoot = BigInt(selectedLeaf.branchRoot)
+      const uniqueShieldedMasterLeaves = deduplicateLeaves(masterShieldedSnapshot.leaves)
+      const masterIndex = uniqueShieldedMasterLeaves.findIndex(l => l === branchRoot)
+      if (masterIndex === -1) {
+        throw new Error(`Branch shielded root ${branchRoot} not found in master shielded tree snapshot`)
+      }
+      shieldedMasterTree = getMerkleTree(uniqueShieldedMasterLeaves)
+      masterShieldedProof = shieldedMasterTree.generateProof(masterIndex)
     } else {
       shieldedTree = getMerkleTree([0n])
       shieldedMasterTree = getMerkleTree([0n])
       masterShieldedProof = shieldedMasterTree.generateProof(0)
     }
 
-    let wormholeTree: LeanIMT<bigint>
-    let masterWormholeProof: ReturnType<LeanIMT<bigint>['generateProof']>
-    let wormholeMasterTree: LeanIMT<bigint>
+    let wormholeTree: LeanIMT<bigint> = getMerkleTree([])
+    let wormholeMasterTree: LeanIMT<bigint> = getMerkleTree([0n])
+    let masterWormholeProof: ReturnType<LeanIMT<bigint>['generateProof']> = wormholeMasterTree.generateProof(0)
+    let selectedMasterWormholeRoot: bigint = BigInt(latestMasterUpdate.masterWormholeRoot)
 
     if (wormhole) {
+      if (!masterWormholeSnapshot) {
+        throw new Error(`Master wormhole tree snapshot not found for treeId ${latestMasterUpdate.masterWormholeTreeId}, root ${latestMasterUpdate.masterWormholeRoot}`)
+      }
       const noteSrcChainId = wormhole.srcChainId
       const treeNumber = wormhole.treeNumber
       const leafIndex = wormhole.leafIndex
 
-      const latestMasterWormholeTreeSnapshot = await queryLatestMasterWormholeTreeSnapshot(args.srcChainId)
-      if (!latestMasterWormholeTreeSnapshot) {
-        throw new Error(`No latest master wormhole tree snapshot found for chain ${args.srcChainId}`)
-      }
-      if (Number(latestMasterWormholeTreeSnapshot.createdAt) <= Number(wormhole.blockTimestamp)) {
-        throw new Error(`Latest master wormhole tree snapshot is older than wormhole block timestamp`)
-      }
-      // Get master wormhole tree leaf from master chain with timestamp in between wormhole.blockTimestamp and latestMasterWormholeTreeSnapshot.createdAt
-      const masterWormholeLeaves = await queryMasterWormholeTreeLeavesForBranchChainWithinTimestampRange({
-        branchChainId: MASTER_CHAIN_ID,
-        blockTimestamp_gte: Number(wormhole.blockTimestamp),
-        blockTimestamp_lte: Number(latestMasterWormholeTreeSnapshot.createdAt),
+      const masterWormholeLeaves = await queryMasterWormholeTreeLeavesForBranchChain({
+        branchChainId: noteSrcChainId,
       })
-      if (!masterWormholeLeaves.length) {
-        throw new Error(`No master wormhole tree leaf found for wormhole notes from chain ${noteSrcChainId} with timestamp in between ${wormhole.blockTimestamp} and ${latestMasterWormholeTreeSnapshot.createdAt}`)
+      let selectedLeaf: typeof masterWormholeLeaves[0] | undefined
+      for (const leaf of masterWormholeLeaves) {
+        if (Number(leaf.blockTimestamp) > masterBlockTimestamp) continue
+        const branchSnap = await queryBranchWormholeTreeSnapshot({
+          treeId: treeNumber,
+          root: leaf.branchRoot,
+          chainId: noteSrcChainId,
+        })
+        if (branchSnap && branchSnap.leaves.length > leafIndex) {
+          selectedLeaf = leaf
+          break
+        }
       }
-      const branchWormholeTreeSnapshot = await queryBranchWormholeTreeSnapshot({
+      if (!selectedLeaf) {
+        throw new Error(`No master wormhole tree leaf covers leafIndex ${leafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
+      }
+      const branchSnapshot = await queryBranchWormholeTreeSnapshot({
         treeId: treeNumber,
-        root: masterWormholeLeaves[0].branchRoot,
-        chainId: MASTER_CHAIN_ID
+        root: selectedLeaf.branchRoot,
+        chainId: noteSrcChainId,
       })
-      if (!branchWormholeTreeSnapshot) {
-        throw new Error(`No branch wormhole tree snapshot found for tree ${treeNumber} on chain ${MASTER_CHAIN_ID}`)
+      if (!branchSnapshot) {
+        throw new Error(`Branch wormhole tree snapshot not found for tree ${treeNumber} root ${selectedLeaf.branchRoot} on chain ${noteSrcChainId}`)
       }
-      wormholeTree = getMerkleTree(branchWormholeTreeSnapshot.leaves.map(l => BigInt(l)))
-      wormholeMasterTree = getMerkleTree(latestMasterWormholeTreeSnapshot.leaves.map(l => BigInt(l)))
-      masterWormholeProof = wormholeMasterTree.generateProof(latestMasterWormholeTreeSnapshot.leaves.findIndex(l => BigInt(l) === BigInt(masterWormholeLeaves[0].branchRoot)))
-    } else {
-      const tree = await queryLatestMasterWormholeTreeSnapshot(args.srcChainId)
-      if (tree) {
-        wormholeTree = getMerkleTree([])
-        wormholeMasterTree = getMerkleTree(tree.leaves.map(l => BigInt(l)))
-        masterWormholeProof = wormholeMasterTree.generateProof(0)
-      } else {
-        wormholeTree = getMerkleTree([])
-        wormholeMasterTree = getMerkleTree([wormholeTree.root])
-        masterWormholeProof = wormholeMasterTree.generateProof(0)
+      wormholeTree = getMerkleTree(branchSnapshot.leaves.map(l => BigInt(l)))
+
+      const branchRoot = BigInt(selectedLeaf.branchRoot)
+      const uniqueWormholeMasterLeaves = deduplicateLeaves(masterWormholeSnapshot.leaves)
+      const masterIndex = uniqueWormholeMasterLeaves.findIndex(l => l === branchRoot)
+      if (masterIndex === -1) {
+        throw new Error(`Branch wormhole root ${branchRoot} not found in master wormhole tree snapshot`)
       }
+      wormholeMasterTree = getMerkleTree(uniqueWormholeMasterLeaves)
+      masterWormholeProof = wormholeMasterTree.generateProof(masterIndex)
+      selectedMasterWormholeRoot = wormholeMasterTree.root
     }
 
     let wormholeDeposit: WormholeDeposit | undefined = undefined;
@@ -587,7 +493,7 @@ export class ShieldedPool {
         asset_id: assetId,
         sender: wormhole.entry.from,
         amount: BigInt(wormhole.entry.amount),
-        master_root: wormholeMasterTree.root,
+        master_root: selectedMasterWormholeRoot,
         branch_root: wormholeTree.root,
         branch_index: BigInt(wormholeProof.index),
         branch_siblings: wormholeProof.siblings,
@@ -613,7 +519,7 @@ export class ShieldedPool {
       }
     }).concat(Array.from({ length: 2 - shielded.length }).map(() => ({
       chain_id: BigInt(args.srcChainId),
-      blinding: 0n,
+      blinding: getRandomBlinding(),
       amount: 0n,
       branch_index: 0n,
       branch_siblings: Array(MERKLE_TREE_DEPTH).fill(0n),
@@ -637,7 +543,7 @@ export class ShieldedPool {
       token: args.token,
       tokenId: args.tokenId,
       shieldedRoot: shieldedMasterTree.root ?? 0n,
-      wormholeRoot: wormholeMasterTree.root ?? 0n,
+      wormholeRoot: selectedMasterWormholeRoot,
       wormholeDeposit,
       wormholePseudoSecret,
       inputs: inputNotes,
@@ -696,7 +602,7 @@ export class ShieldedPool {
       hashed_message: [...hexToBytes(messageHash)],
       chain_id: args.srcChainId.toString(),
       shielded_root: (shieldedMasterTree.root ?? 0n).toString(),
-      wormhole_root: (wormholeMasterTree.root ?? 0n).toString(),
+      wormhole_root: selectedMasterWormholeRoot.toString(),
       asset_id: assetId.toString(),
       owner_address: this.account,
       input_notes: inputNotes.map(note => ({
@@ -760,6 +666,18 @@ export class ShieldedPool {
   }
 }
 
+function deduplicateLeaves(leaves: string[]): bigint[] {
+  const unique: bigint[] = []
+  const seen = new Set<bigint>()
+  for (const l of leaves) {
+    const val = BigInt(l)
+    if (!seen.has(val)) {
+      seen.add(val)
+      unique.push(val)
+    }
+  }
+  return unique
+}
 
 export function toShieldedTxStruct(args: {
   chainId: bigint,
