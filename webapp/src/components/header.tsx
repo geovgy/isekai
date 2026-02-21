@@ -11,7 +11,7 @@ export function Header() {
   const pathname = usePathname()
   
   const navItems = [
-    { href: "/", label: "Assets" },
+    { href: "/assets", label: "Assets" },
     { href: "/wormholes", label: "Wormholes" },
   ]
 
