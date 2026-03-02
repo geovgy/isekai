@@ -68,7 +68,8 @@ pub struct WormholeNote<let M: u32> {
     pub recipient: Field,
     pub wormhole_secret: Field,
     pub asset_id: Field,
-    pub sender: Field,
+    pub to: Field,
+    pub from: Field,
     pub amount: Field,
     pub branch_index: Field,
     pub branch_siblings: [Field; M],
@@ -76,6 +77,7 @@ pub struct WormholeNote<let M: u32> {
     pub master_index: Field,
     pub master_siblings: [Field; M],
     pub is_approved: bool,
+    pub confidential_type: u8, // 0: None, 1: Partial, 2: Full
 }
 
 pub fn get_wormhole_pseudo_nullifier(chain_id: Field, address: Field, asset_id: Field, secret: Field) -> Field {
@@ -84,31 +86,51 @@ pub fn get_wormhole_pseudo_nullifier(chain_id: Field, address: Field, asset_id: 
 }
 
 pub impl <let M: u32> WormholeNote<M> {
-    fn from(dst_chain_id: Field, src_chain_id: Field, entry_id: Field, recipient: Field, wormhole_secret: Field, asset_id: Field, sender: Field, amount: Field, branch_index: Field, branch_siblings: [Field; M], branch_root: Field, master_index: Field, master_siblings: [Field; M], is_approved: bool) -> Self {
-        Self { dst_chain_id, src_chain_id, entry_id, recipient, wormhole_secret, asset_id, sender, amount, branch_index, branch_siblings, branch_root, master_index, master_siblings, is_approved }
+    fn from(dst_chain_id: Field, src_chain_id: Field, entry_id: Field, recipient: Field, wormhole_secret: Field, asset_id: Field, from: Field, to: Field, amount: Field, branch_index: Field, branch_siblings: [Field; M], branch_root: Field, master_index: Field, master_siblings: [Field; M], is_approved: bool, confidential_type: u8) -> Self {
+        Self { dst_chain_id, src_chain_id, entry_id, recipient, wormhole_secret, asset_id, from, to, amount, branch_index, branch_siblings, branch_root, master_index, master_siblings, is_approved, confidential_type }
     }
 
     pub fn get_burn_address(self) -> Field {
-        let zk_wormhole = Field::from_be_bytes("ZKWORMHOLE".as_bytes());
-        let hash = hash([self.dst_chain_id, self.recipient, self.wormhole_secret, zk_wormhole]);
-        let hash_bytes: [u8; 32] = hash.to_be_bytes();
-        let mut address_bytes: [u8; 20] = [0; 20];
-        for i in 0..20 {
-            address_bytes[i] = hash_bytes[12 + i];
+        if (self.confidential_type == 0) {
+            let zk_wormhole = Field::from_be_bytes("ZKWORMHOLE".as_bytes());
+            let hash = hash([self.dst_chain_id, self.recipient, self.wormhole_secret, zk_wormhole]);
+            let hash_bytes: [u8; 32] = hash.to_be_bytes();
+            let mut address_bytes: [u8; 20] = [0; 20];
+            for i in 0..20 {
+                address_bytes[i] = hash_bytes[12 + i];
+            }
+            Field::from_be_bytes(address_bytes)
+        } else {
+            self.to
         }
-        Field::from_be_bytes(address_bytes)
+    }
+
+    pub fn get_confidential_context(self) -> Field {
+        if (self.confidential_type == 0) {
+            0
+        } else if (self.confidential_type == 1) {
+            let blinded_recipient = hash([self.recipient, self.wormhole_secret]);
+            hash([blinded_recipient, 0x01]) // 0x01 represents 'true' for it's a wormhole deposit
+        } else {
+            let mut blinded_recipient = hash([self.recipient, self.wormhole_secret]);
+            blinded_recipient = hash([blinded_recipient, 0x01]); // 0x01 represents 'true' for it's a wormhole withdrawal
+            hash([blinded_recipient, self.from, self.asset_id, self.amount])
+        }
     }
 
     pub fn to_burn_commitment(self) -> Field {
         let burn_address = self.get_burn_address();
+        let confidential_context = self.get_confidential_context();
         let id_hash = hash([self.src_chain_id, self.entry_id]);
+        let asset_id = if (self.confidential_type == 2) { 0 } else { self.asset_id };
+        let amount = if (self.confidential_type == 2) { 0 } else { self.amount };
         // Must match contract ordering: poseidon2(approved, sender, burn_address, assetId, amount)
-        hash([id_hash, self.is_approved as Field, self.sender, burn_address, self.asset_id, self.amount])
+        hash([id_hash, self.is_approved as Field, self.from, burn_address, asset_id, amount, confidential_context])
     }
 
     pub fn get_nullifier(self) -> Field {
         let id_hash = hash([self.src_chain_id, self.entry_id]);
-        let secret_commitment = hash([self.recipient, self.asset_id, self.sender, self.amount]);
+        let secret_commitment = hash([self.recipient, self.asset_id, self.from, self.amount]);
         hash([1, id_hash, self.wormhole_secret, secret_commitment])
     }
 }

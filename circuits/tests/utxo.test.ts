@@ -3,7 +3,7 @@ import { getMerkleTree } from "../src/merkle";
 import { getCommitment, getNullifier, getWormholeBurnCommitment, getWormholeNullifier, getWormholePseudoNullifier } from "../src/joinsplits";
 import { Prover } from "../src/prover";
 import { privateKeyToAccount } from "viem/accounts";
-import { TransferType, type InputNote, type OutputNote, type WormholeNote } from "../src/types";
+import { ConfidentialType, TransferType, type InputNote, type OutputNote, type WormholeNote } from "../src/types";
 import { createPublicClient, getAddress, hashMessage, hexToBytes, http, parseAbi, recoverPublicKey, toHex, type Abi } from "viem";
 import type { ProofData } from "@aztec/bb.js";
 import { sepolia } from "viem/chains";
@@ -185,7 +185,8 @@ describe("utxo", () => {
           recipient: "0", 
           wormhole_secret: "0", 
           asset_id: "0", 
-          sender: "0", 
+          to: "0",
+          from: "0", 
           amount: "0",
           branch_index: "0",
           branch_siblings: Array(MERKLE_TREE_DEPTH).fill("0"),
@@ -193,6 +194,7 @@ describe("utxo", () => {
           master_index: "0",
           master_siblings: Array(MERKLE_TREE_DEPTH).fill("0"),
           is_approved: false,
+          confidential_type: ConfidentialType.NONE,
         } 
       },
       wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
@@ -252,8 +254,10 @@ describe("utxo", () => {
       recipient: account.address,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
-      sender: account.address,
+      from: account.address,
+      to: account.address,
       amount: BigInt(100e18),
+      confidential_type: ConfidentialType.NONE,
       approved: true,
     })
 
@@ -296,8 +300,10 @@ describe("utxo", () => {
       recipient: account.address,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
-      sender: account.address,
+      from: account.address,
+      to: account.address,
       amount: BigInt(100e18),
+      confidential_type: ConfidentialType.NONE,
     }
 
     const outputNotes: OutputNote[] = [
@@ -345,7 +351,8 @@ describe("utxo", () => {
           recipient: account.address.toString(), 
           wormhole_secret: wormholeSecret.toString(), 
           asset_id: assetId.toString(), 
-          sender: account.address.toString(), 
+          to: account.address.toString(),
+          from: account.address.toString(), 
           amount: BigInt(100e18).toString(), 
           branch_index: wormholeProof.index.toString(),
           branch_siblings: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")),
@@ -353,6 +360,7 @@ describe("utxo", () => {
           master_index: BigInt(masterWormholeProof.index).toString(),
           master_siblings: masterWormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - masterWormholeProof.siblings.length).fill("0")),
           is_approved: true,
+          confidential_type: ConfidentialType.NONE,
         } 
       },
       wormhole_pseudo_secret: { _is_some: false, _value: "0" },

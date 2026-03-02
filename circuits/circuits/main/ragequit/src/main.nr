@@ -18,5 +18,5 @@ fn main(
     assert_merkle_leaf_membership(wormhole_note.branch_root, wormhole_leaf, wormhole_note.branch_index, wormhole_note.branch_siblings);
     // Verify branch tree root is in master tree
     assert_merkle_leaf_membership(wormhole_master_root, wormhole_note.branch_root, wormhole_note.master_index, wormhole_note.master_siblings);
-    (wormhole_leaf, wormhole_note.get_nullifier(), wormhole_note.sender)
+    (wormhole_leaf, wormhole_note.get_nullifier(), wormhole_note.from)
 }

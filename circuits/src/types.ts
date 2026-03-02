@@ -24,6 +24,12 @@ export interface OutputNote {
   transfer_type: TransferType;
 }
 
+export enum ConfidentialType {
+  NONE = 0,
+  PARTIAL = 1,
+  FULL = 2,
+}
+
 export interface WormholeNote {
   dst_chain_id: bigint;
   src_chain_id: bigint;
@@ -31,8 +37,10 @@ export interface WormholeNote {
   recipient: Address;
   wormhole_secret: bigint;
   asset_id: bigint;
-  sender: Address;
+  to: Address;
+  from: Address;
   amount: bigint;
+  confidential_type: ConfidentialType;
 }
 
 export interface WormholeDeposit extends WormholeNote {

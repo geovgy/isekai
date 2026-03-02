@@ -3,7 +3,7 @@ import { getMerkleTree } from "../src/merkle";
 import { getCommitment, getNullifier, getWormholeBurnCommitment, getWormholeNullifier, getWormholePseudoNullifier } from "../src/joinsplits";
 import { Prover } from "../src/prover";
 import { privateKeyToAccount } from "viem/accounts";
-import { TransferType, type InputNote, type OutputNote, type WormholeNote } from "../src/types";
+import { ConfidentialType, TransferType, type InputNote, type OutputNote, type WormholeNote } from "../src/types";
 import { BN254_PRIME } from "../src/constants";
 import { hashMessage, hexToBytes, pad, recoverPublicKey, toHex } from "viem";
 
@@ -32,8 +32,10 @@ describe("ragequit", () => {
       recipient,
       wormhole_secret: wormholeSecret,
       asset_id: assetId,
-      sender,
+      from: sender,
+      to: recipient,
       amount: BigInt(100e18),
+      confidential_type: ConfidentialType.NONE,
     }
 
     const burnCommitment = getWormholeBurnCommitment({
@@ -56,7 +58,8 @@ describe("ragequit", () => {
         recipient: wormholeNote.recipient.toString(), 
         wormhole_secret: wormholeNote.wormhole_secret.toString(), 
         asset_id: assetId.toString(), 
-        sender: wormholeNote.sender.toString(), 
+        to: wormholeNote.to.toString(),
+        from: wormholeNote.from.toString(), 
         amount: wormholeNote.amount.toString(), 
         branch_index: wormholeProof.index.toString(),
         branch_siblings: wormholeProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeProof.siblings.length).fill("0")),
@@ -64,6 +67,7 @@ describe("ragequit", () => {
         master_index: wormholeMasterProof.index.toString(),
         master_siblings: wormholeMasterProof.siblings.map(sibling => sibling.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeMasterProof.siblings.length).fill("0")),
         is_approved: false,
+        confidential_type: wormholeNote.confidential_type,
       },
     }
 
@@ -85,6 +89,6 @@ describe("ragequit", () => {
     expect(actual.wormholeRoot, "wormhole root public input mismatch").toBe(toHex(wormholeMasterTree.root, { size: 32 }))
     expect(actual.wormholeCommitment, "wormhole commitment public input mismatch").toBe(toHex(burnCommitment, { size: 32 }))
     expect(actual.wormholeNullifier, "wormhole nullifier public input mismatch").toBe(toHex(expectedWormholeNullifier, { size: 32 }))
-    expect(actual.wormholeSender, "wormhole sender public input mismatch").toBe(pad(sender, { size: 32 }).toLowerCase())
+    expect(actual.wormholeSender, "wormhole sender public input mismatch").toBe(pad(wormholeNote.from, { size: 32 }).toLowerCase())
   });
 });
