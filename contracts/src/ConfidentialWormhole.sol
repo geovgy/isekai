@@ -10,8 +10,6 @@ import {IVerifier} from "./interfaces/IVerifier.sol";
 abstract contract ConfidentialWormhole is Wormhole {
     using LeanIMT for LeanIMTData;
 
-    bytes32 private constant CONFIDENTIAL_TRANSFER_TYPEHASH = keccak256("ConfidentialTransfer(address from,address to,bytes32[] nullifiers,bytes32[] commitments)");
-
     IPoseidon2 public immutable poseidon2;
     IVerifier public immutable confidentialVerifier;
 
