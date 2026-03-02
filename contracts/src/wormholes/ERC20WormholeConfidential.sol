@@ -9,7 +9,7 @@ import {Wormhole} from "../Wormhole.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 // A modified version of OpenZeppelin's ERC20Wrapper that supports wormhole
-contract ERC20Wormhole is ERC20, Wormhole, Ownable {
+contract ERC20WormholeConfidential is ERC20, Wormhole, Ownable {
     using SafeERC20 for IERC20;
 
     bool public initialized;

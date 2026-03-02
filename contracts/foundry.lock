@@ -5,6 +5,9 @@
       "rev": "1801b0541f4fda118a10798fd3486bb7051c5dd6"
     }
   },
+  "lib/indexed-merkle-tree": {
+    "rev": "05e63af06b5659a8f79f7de0072261290d8e6879"
+  },
   "lib/openzeppelin-contracts": {
     "tag": {
       "name": "v5.5.0",

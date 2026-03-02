@@ -45,7 +45,7 @@ contract ERC4626Wormhole is IERC4626, ERC20, Wormhole, Ownable {
 
     function _update(address from, address to, uint256 value) internal virtual override {
         super._update(from, to, value);
-        _requestWormholeEntry(from, to, 0, value); // id is always 0 for ERC20 tokens
+        _requestWormholeEntry(from, to, 0, value, bytes32(0)); // id is always 0 for ERC20 tokens
     }
 
     function asset() external view returns (address) {

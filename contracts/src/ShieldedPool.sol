@@ -21,6 +21,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         address asset;
         uint256 id;
         uint256 amount;
+        bytes32 confidentialContext;
     }
 
     struct Withdrawal {
@@ -105,7 +106,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     mapping(uint64 chainId => uint256 index) internal _currentBranchIndices;
     mapping(uint64 chainId => mapping(uint256 index => BranchInfo)) internal _branchInfos; // for tracking possible chain rollbacks
 
-    event WormholeEntry(uint256 indexed entryId, address indexed token, address indexed from, address to, uint256 id, uint256 amount);
+    event WormholeEntry(uint256 indexed entryId, address indexed token, address indexed from, address to, uint256 id, uint256 amount, bytes32 confidentialContext);
     event WormholeCommitment(uint256 indexed entryId, uint256 indexed commitment, uint256 treeId, uint256 leafIndex, bytes32 assetId, address from, address to, uint256 amount, bool approved);
     event WormholeNullifier(bytes32 indexed nullifier);
 
@@ -190,7 +191,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit WormholeApproverSet(approver, isApprover);
     }
 
-    function requestWormholeEntry(address from, address to, uint256 id, uint256 amount) external returns (uint256 index) {
+    function requestWormholeEntry(address from, address to, uint256 id, uint256 amount, bytes32 confidentialContext) external returns (uint256 index) {
         // Every wormhole asset is a token (ERC20/ERC721/ERC1155/etc.)
         index = totalWormholeEntries;
         _wormholeEntries[index] = TransferMetadata({
@@ -198,12 +199,13 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             to: to,
             asset: msg.sender,
             id: id,
-            amount: amount
+            amount: amount,
+            confidentialContext: confidentialContext
         });
         unchecked {
             totalWormholeEntries++;
         }
-        emit WormholeEntry(index, msg.sender, from, to, id, amount);
+        emit WormholeEntry(index, msg.sender, from, to, id, amount, confidentialContext);
     }
 
     function appendWormholeLeaf(uint256 entryId, bool approved) external {

@@ -32,11 +32,11 @@ abstract contract Wormhole is IWormhole {
         return to != address(0) && amount > 0;
     }
 
-    function _requestWormholeEntry(address from, address to, uint256 id, uint256 amount) internal returns (bool submitted, uint256 pendingIndex) {
+    function _requestWormholeEntry(address from, address to, uint256 id, uint256 amount, bytes32 confidentialContext) internal returns (bool submitted, uint256 pendingIndex) {
         if (!_isWormholeEligible(to, amount)) {
             return (false, 0);
         }
-        pendingIndex = shieldedPool.requestWormholeEntry(from, to, id, amount);
+        pendingIndex = shieldedPool.requestWormholeEntry(from, to, id, amount, confidentialContext);
         return (true, pendingIndex);
     }
 }
