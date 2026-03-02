@@ -4,9 +4,9 @@ pragma solidity ^0.8.28;
 import {IShieldedPool} from "./IShieldedPool.sol";
 
 interface IWormhole {
-    event Unshield(address to, uint256 id, uint256 amount);
+    event Unshield(address to, uint256 id, uint256 amount, bytes32 confidentialContext);
 
     function shieldedPool() external view returns (IShieldedPool);
     function actualSupply() external view returns (uint256);
-    function unshield(address to, uint256 id, uint256 amount) external;
+    function unshield(address to, uint256 id, uint256 amount, bytes32 confidentialContext) external;
 }

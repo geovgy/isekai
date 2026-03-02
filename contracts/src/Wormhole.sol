@@ -18,14 +18,14 @@ abstract contract Wormhole is IWormhole {
     }
 
     // Override this function to unshield the asset
-    function _unshield(address to, uint256 id, uint256 amount) internal virtual {}
+    function _unshield(address to, uint256 id, uint256 amount, bytes32 confidentialContext) internal virtual {}
 
     // Override this function to return the actual supply of the asset
     function actualSupply() public virtual view returns (uint256) {}
 
-    function unshield(address to, uint256 id, uint256 amount) external onlyShieldedPool {
-        _unshield(to, id, amount);
-        emit Unshield(to, id, amount);
+    function unshield(address to, uint256 id, uint256 amount, bytes32 confidentialContext) external onlyShieldedPool {
+        _unshield(to, id, amount, confidentialContext);
+        emit Unshield(to, id, amount, confidentialContext);
     }
 
     function _isWormholeEligible(address to, uint256 amount) internal pure returns (bool) {

@@ -343,9 +343,10 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         uint256 root = _branchShieldedTrees[currentShieldedTreeId].insertMany(shieldedTx.commitments);
 
         // If withdrawals are present, mint new shares for each withdrawal
+        // TODO: add confidential context to withdrawals
         for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
             Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
-            IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount);
+            IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount, bytes32(0)); // TODO: add confidential context
         }
 
         emit WormholeNullifier(shieldedTx.wormholeNullifier);
@@ -390,7 +391,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit WormholeNullifier(ragequitTx.wormholeNullifier);
 
         // return asset amount back to sender
-        IWormhole(entry.asset).unshield(entry.from, entry.id, entry.amount);
+        IWormhole(entry.asset).unshield(entry.from, entry.id, entry.amount, bytes32(0)); // MUST be public. No confidential context for ragequit
         emit Ragequit(ragequitTx.entryId, msg.sender, entry.from, entry.asset, entry.id, entry.amount);
     }
 
