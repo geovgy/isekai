@@ -227,7 +227,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             require(entry.from == msg.sender, "ShieldedPool: caller is not the original sender");
             require(!approved, "ShieldedPool: entry cannot be appended as approved");
         }
-        uint256 commitment = _getWormholeCommitment(entryId, approved, entry.from, entry.to, entry.asset, entry.id, entry.amount);
+        uint256 commitment = _getWormholeCommitment(entryId, approved, entry.from, entry.to, entry.asset, entry.id, entry.amount, entry.confidentialContext);
         if (_isMerkleTreeFull(_branchWormholeTrees[currentWormholeTreeId])) {
             currentWormholeTreeId++;
             _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
@@ -269,7 +269,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         uint256 startLeafIndex = _branchWormholeTrees[currentWormholeTreeId].size;
         for (uint256 i = 0; i < nodes.length; i++) {
             TransferMetadata memory entry = _wormholeEntries[nodes[i].entryId];
-            commitments[i] = _getWormholeCommitment(nodes[i].entryId, nodes[i].approved, entry.from, entry.to, entry.asset, entry.id, entry.amount);
+            commitments[i] = _getWormholeCommitment(nodes[i].entryId, nodes[i].approved, entry.from, entry.to, entry.asset, entry.id, entry.amount, entry.confidentialContext);
             _wormholeEntriesCommitted[nodes[i].entryId] = true;
             emit WormholeCommitment(
                 nodes[i].entryId,
@@ -373,7 +373,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         TransferMetadata memory entry = _wormholeEntries[ragequitTx.entryId];
 
         // get wormhole commitment
-        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, entry.asset, entry.id, entry.amount);
+        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, entry.asset, entry.id, entry.amount, entry.confidentialContext);
 
         bytes32[] memory inputs = new bytes32[](4);
         inputs[0] = ragequitTx.wormholeRoot;
@@ -544,7 +544,16 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         return poseidon2.hash_5(recipientHash, token, tokenId, amount, transferType);
     }
 
-    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, address token, uint256 tokenId, uint256 amount) internal view returns (uint256) {
+    function _getWormholeCommitment(
+        uint256 entryId, 
+        bool approved, 
+        address from, 
+        address to, 
+        address token, 
+        uint256 tokenId, 
+        uint256 amount,
+        bytes32 confidentialContext
+    ) internal view returns (uint256) {
         uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
         uint256[] memory inputs = new uint256[](8);
         inputs[0] = idHash;
@@ -554,7 +563,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         inputs[4] = uint256(uint160(token));
         inputs[5] = tokenId;
         inputs[6] = amount;
-        inputs[7] = 0; // confidential context (always 0 for non-confidential)
+        inputs[7] = uint256(confidentialContext);
         return poseidon2.hash(inputs);
     }
 
