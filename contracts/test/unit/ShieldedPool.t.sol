@@ -444,7 +444,8 @@ contract ShieldedPoolTest is Test {
             to: unshieldTo,
             asset: address(wormholeVault),
             id: 0,
-            amount: 50e18
+            amount: 50e18,
+            confidentialContext: bytes32(0)
         });
 
         ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({

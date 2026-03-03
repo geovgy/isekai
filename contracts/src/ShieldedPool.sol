@@ -29,6 +29,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         address asset;
         uint256 id;
         uint256 amount;
+        bytes32 confidentialContext;
     }
 
     struct ShieldedTx {
@@ -65,8 +66,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     uint64 public constant MASTER_CHAIN_ID = 11155111;
 
-    bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount)");
-    bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount)");
+    bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
+    bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
 
     IPoseidon2 public immutable poseidon2;
     IVerifier public immutable ragequitVerifier;
@@ -342,10 +343,9 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         uint256 root = _branchShieldedTrees[currentShieldedTreeId].insertMany(shieldedTx.commitments);
 
         // If withdrawals are present, mint new shares for each withdrawal
-        // TODO: add confidential context to withdrawals
         for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
             Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
-            IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount, bytes32(0)); // TODO: add confidential context
+            IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount, withdrawal.confidentialContext);
         }
 
         emit WormholeNullifier(shieldedTx.wormholeNullifier);
@@ -589,7 +589,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
                     shieldedTx.withdrawals[i].to, 
                     shieldedTx.withdrawals[i].asset, 
                     shieldedTx.withdrawals[i].id, 
-                    shieldedTx.withdrawals[i].amount
+                    shieldedTx.withdrawals[i].amount,
+                    shieldedTx.withdrawals[i].confidentialContext
                 )
             );
         }
