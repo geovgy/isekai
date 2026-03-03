@@ -12,7 +12,8 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     chain_id: Field,
     shielded_root: Field, // pub
     wormhole_root: Field, // pub
-    asset_id: Field,
+    token: Field,
+    token_id: Field,
     owner_address: Field,
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
@@ -39,13 +40,14 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
 
     let joinsplit = JoinSplit::new(
         chain_id,
-        shielded_root, 
-        wormhole_root, 
-        asset_id, 
-        owner_address, 
-        input_notes, 
-        output_notes, 
-        wormhole_note, 
+        shielded_root,
+        wormhole_root,
+        token,
+        token_id,
+        owner_address,
+        input_notes,
+        output_notes,
+        wormhole_note,
         wormhole_pseudo_secret
     );
     let (wormhole_nullifier, input_nullifiers, output_commitments) = joinsplit.execute();

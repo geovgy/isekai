@@ -6,7 +6,8 @@ pub struct JoinSplit<let M: u32, let N: u32, let C: u32> {
     chain_id: Field,
     shielded_root: Field, // master tree root
     wormhole_root: Field, // master tree root
-    asset_id: Field,
+    token: Field,
+    token_id: Field,
     owner_address: Field,
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
@@ -44,8 +45,8 @@ pub fn assert_merkle_leaf_membership<let M: u32>(root: Field, leaf: Field, index
 }
 
 pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
-    pub fn new(chain_id: Field, shielded_root: Field, wormhole_root: Field, asset_id: Field, owner_address: Field, input_notes: [InputNote<M>; N], output_notes: [OutputNote; C], wormhole_note: Option<WormholeNote<M>>, wormhole_pseudo_secret: Option<Field>) -> Self {
-        Self { chain_id, shielded_root, wormhole_root, asset_id, owner_address, input_notes, output_notes, wormhole_note, wormhole_pseudo_secret }
+    pub fn new(chain_id: Field, shielded_root: Field, wormhole_root: Field, token: Field, token_id: Field, owner_address: Field, input_notes: [InputNote<M>; N], output_notes: [OutputNote; C], wormhole_note: Option<WormholeNote<M>>, wormhole_pseudo_secret: Option<Field>) -> Self {
+        Self { chain_id, shielded_root, wormhole_root, token, token_id, owner_address, input_notes, output_notes, wormhole_note, wormhole_pseudo_secret }
     }
 
     // Returns (wormhole nullifier, input nullifiers, output commitments)
@@ -62,7 +63,8 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
         if self.wormhole_note.is_some() {
             let wormhole_note = self.wormhole_note.unwrap();
             assert(wormhole_note.dst_chain_id == self.chain_id, "Wormhole note chain id must match chain id");
-            assert(wormhole_note.asset_id == self.asset_id, "Wormhole note asset id must match asset id");
+            assert(wormhole_note.token == self.token, "Wormhole note token must match token");
+            assert(wormhole_note.token_id == self.token_id, "Wormhole note token_id must match token_id");
             assert(wormhole_note.is_approved, "Wormhole note must be approved");
             let wormhole_leaf = wormhole_note.to_burn_commitment();
             // Verify wormhole note commitment is in branch tree
@@ -74,14 +76,14 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
         } else {
             // Create a pseudo nullifier
             assert(self.wormhole_pseudo_secret.is_some(), "Wormhole pseudo secret is required for pseudo nullifier");
-            wormhole_nullifier = get_wormhole_pseudo_nullifier(self.chain_id, self.owner_address, self.asset_id, self.wormhole_pseudo_secret.unwrap());
+            wormhole_nullifier = get_wormhole_pseudo_nullifier(self.chain_id, self.owner_address, self.token, self.token_id, self.wormhole_pseudo_secret.unwrap());
         }
 
         // Verify input notes are valid
         for i in 0..N {
             let input_note = self.input_notes[i];
             if input_note.amount != 0 {
-                let commitment = input_note.to_commitment(self.owner_address, self.asset_id);
+                let commitment = input_note.to_commitment(self.owner_address, self.token, self.token_id);
                 // Should only use notes from this chain
                 assert(input_note.chain_id == self.chain_id, "Input note chain id must match chain id");
                 // Verify note commitment is in branch tree
@@ -90,7 +92,7 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
                 assert_merkle_leaf_membership(self.shielded_root, input_note.branch_root, input_note.master_index, input_note.master_siblings);
                 totalAmountIn += input_note.amount;
             }
-            input_nullifiers[i] = input_note.get_nullifier(self.owner_address, self.asset_id);
+            input_nullifiers[i] = input_note.get_nullifier(self.owner_address, self.token, self.token_id);
         }
 
         // Verify output notes are valid
@@ -98,7 +100,7 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
             let output_note = self.output_notes[i];
             assert(output_note.amount != 0, "Output note amount cannot be 0");
             totalAmountOut += output_note.amount;
-            output_commitments[i] = output_note.to_commitment(self.asset_id);
+            output_commitments[i] = output_note.to_commitment(self.token, self.token_id);
         }
 
         // Verify sums of input (+ wormhole) and output notes are equal

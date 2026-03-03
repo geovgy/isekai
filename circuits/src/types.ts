@@ -36,7 +36,8 @@ export interface WormholeNote {
   entry_id: bigint;
   recipient: Address;
   wormhole_secret: bigint;
-  asset_id: bigint;
+  token: bigint;
+  token_id: bigint;
   to: Address;
   from: Address;
   amount: bigint;

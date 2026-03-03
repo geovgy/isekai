@@ -19,7 +19,8 @@ function extractPublicInputs(result: string[]) {
 }
 
 describe("ragequit", () => {
-  const assetId = 1n
+  const token = 1n
+  const tokenId = 0n
   const sender = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
   const recipient = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
   
@@ -31,7 +32,8 @@ describe("ragequit", () => {
       entry_id: 1n,
       recipient,
       wormhole_secret: wormholeSecret,
-      asset_id: assetId,
+      token,
+      token_id: tokenId,
       from: sender,
       to: recipient,
       amount: BigInt(100e18),
@@ -57,7 +59,8 @@ describe("ragequit", () => {
         entry_id: wormholeNote.entry_id.toString(),
         recipient: wormholeNote.recipient.toString(), 
         wormhole_secret: wormholeNote.wormhole_secret.toString(), 
-        asset_id: assetId.toString(), 
+        token: token.toString(),
+        token_id: tokenId.toString(),
         to: wormholeNote.to.toString(),
         from: wormholeNote.from.toString(), 
         amount: wormholeNote.amount.toString(), 

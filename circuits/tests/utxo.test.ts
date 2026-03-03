@@ -107,16 +107,17 @@ async function verifyOnchain(proofData: ProofData) {
 
 describe("utxo", () => {
   const account = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-  const assetId = 1n
+  const token = 1n
+  const tokenId = 0n
   const recipient = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 
   it("should get 2x2 proof without wormhole", async () => {
     const notes = [
-      { owner: account.address, blinding: 123456789n, assetId, amount: BigInt(100e18) },
-      { owner: account.address, blinding: 987654321n, assetId, amount: BigInt(100e18) },
+      { owner: account.address, blinding: 123456789n, token, tokenId, amount: BigInt(100e18) },
+      { owner: account.address, blinding: 987654321n, token, tokenId, amount: BigInt(100e18) },
     ]
     const commitments = notes.map(note => getCommitment(
-      note.assetId, 
+      note.token, note.tokenId,
       { chain_id: 1n, recipient: note.owner, blinding: note.blinding, amount: note.amount, transfer_type: TransferType.TRANSFER }
     ))
     const utxoBranchTree = getMerkleTree(commitments)
@@ -157,7 +158,8 @@ describe("utxo", () => {
       chain_id: "1",
       shielded_root: utxoBranchTree.root.toString(),
       wormhole_root: "0x0000000000000000000000000000000000000000000000000000000000000000",
-      asset_id: assetId.toString(),
+      token: token.toString(),
+      token_id: tokenId.toString(),
       owner_address: account.address,
       input_notes: inputNotes.map(note => ({
         chain_id: note.chain_id.toString(),
@@ -184,7 +186,8 @@ describe("utxo", () => {
           entry_id: "0",
           recipient: "0", 
           wormhole_secret: "0", 
-          asset_id: "0", 
+          token: "0",
+          token_id: "0",
           to: "0",
           from: "0", 
           amount: "0",
@@ -212,9 +215,9 @@ describe("utxo", () => {
     expect(isValid).toBe(true)
     
     // Confirm proof outputs
-    const expectedWormholeNullifier = getWormholePseudoNullifier(1n, account.address, assetId, wormholePseudoSecret)
-    const expectedNullifiers = inputNotes.map(note => getNullifier(1n, utxoBranchTree.root, account.address, assetId, note))
-    const expectedCommitments = outputNotes.map(note => getCommitment(assetId, note))
+    const expectedWormholeNullifier = getWormholePseudoNullifier(1n, account.address, token, tokenId, wormholePseudoSecret)
+    const expectedNullifiers = inputNotes.map(note => getNullifier(1n, utxoBranchTree.root, account.address, token, tokenId, note))
+    const expectedCommitments = outputNotes.map(note => getCommitment(token, tokenId, note))
     const expectedHashedMessageOutputs = {
       hi: BigInt("0x" + messageHash.slice(2, 34)),
       lo: BigInt("0x" + messageHash.slice(34, 66)),
@@ -236,11 +239,11 @@ describe("utxo", () => {
   
   it("should get 2x2 proof with wormhole included", async () => {
     const notes = [
-      { owner: account.address, blinding: 123456789n, assetId, amount: BigInt(100e18) },
-      // { owner: account.address, blinding: 987654321n, assetId, amount: BigInt(100e18) },
+      { owner: account.address, blinding: 123456789n, token, tokenId, amount: BigInt(100e18) },
+      // { owner: account.address, blinding: 987654321n, token, tokenId, amount: BigInt(100e18) },
     ]
     const commitments = notes.map(note => getCommitment(
-      note.assetId, 
+      note.token, note.tokenId,
       { chain_id: 1n, recipient: note.owner, blinding: note.blinding, amount: note.amount, transfer_type: TransferType.TRANSFER }
     ))
     const utxoBranchTree = getMerkleTree(commitments)
@@ -253,7 +256,8 @@ describe("utxo", () => {
       entry_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
-      asset_id: assetId,
+      token,
+      token_id: tokenId,
       from: account.address,
       to: account.address,
       amount: BigInt(100e18),
@@ -299,7 +303,8 @@ describe("utxo", () => {
       entry_id: 1n,
       recipient: account.address,
       wormhole_secret: wormholeSecret,
-      asset_id: assetId,
+      token,
+      token_id: tokenId,
       from: account.address,
       to: account.address,
       amount: BigInt(100e18),
@@ -323,7 +328,8 @@ describe("utxo", () => {
       chain_id: "1",
       shielded_root: utxoMasterTree.root.toString(),
       wormhole_root: wormholeMasterTree.root.toString(),
-      asset_id: assetId.toString(),
+      token: token.toString(),
+      token_id: tokenId.toString(),
       owner_address: account.address,
       input_notes: inputNotes.map(note => ({
         chain_id: note.chain_id.toString(),
@@ -350,7 +356,8 @@ describe("utxo", () => {
           entry_id: "1",
           recipient: account.address.toString(), 
           wormhole_secret: wormholeSecret.toString(), 
-          asset_id: assetId.toString(), 
+          token: token.toString(),
+          token_id: tokenId.toString(),
           to: account.address.toString(),
           from: account.address.toString(), 
           amount: BigInt(100e18).toString(), 
@@ -379,8 +386,8 @@ describe("utxo", () => {
     
     // Confirm proof outputs
     const expectedWormholeNullifier = getWormholeNullifier(wormholeNote)
-    const expectedNullifiers = inputNotes.map(note => getNullifier(1n, utxoBranchTree.root, account.address, assetId, note))
-    const expectedCommitments = outputNotes.map(note => getCommitment(assetId, note))
+    const expectedNullifiers = inputNotes.map(note => getNullifier(1n, utxoBranchTree.root, account.address, token, tokenId, note))
+    const expectedCommitments = outputNotes.map(note => getCommitment(token, tokenId, note))
     const expectedHashedMessageOutputs = {
       hi: BigInt("0x" + messageHash.slice(2, 34)),
       lo: BigInt("0x" + messageHash.slice(34, 66)),

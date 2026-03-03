@@ -41,7 +41,7 @@ contract WETHWormhole is ERC20, Wormhole {
         emit Withdrawal(msg.sender, amount);
     }
 
-    function _unshield(address to, uint256 /* id */, uint256 amount) internal override {
+    function _unshield(address to, uint256 /* id */, uint256 amount, bytes32 /* confidentialContext */) internal override {
         _mint(to, amount);
     }
 

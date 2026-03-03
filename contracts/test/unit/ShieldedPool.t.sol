@@ -29,6 +29,8 @@ contract ShieldedPoolTest is Test {
     MockVerifier verifier;
     MockCrossL2Prover crossL2Prover;
 
+    uint64 constant masterChainId = 11155111;
+
     function _dealWormholeTokens(address to, uint256 shares) internal {
         uint256 amount = vault.convertToAssets(shares);
         underlying.mint(to, amount);
@@ -38,13 +40,18 @@ contract ShieldedPoolTest is Test {
         vm.stopPrank();
     }
 
-    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, bytes32 assetId, uint256 amount) internal view returns (uint256) {
+    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, address token, uint256 tokenId, uint256 amount) internal view returns (uint256) {
         uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
-        return poseidon2.hash_6(idHash, approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
-    }
-
-    function _getAssetId(address asset, uint256 id) internal view returns (bytes32) {
-        return bytes32(poseidon2.hash_2(uint256(uint160(asset)), id));
+        uint256[] memory inputs = new uint256[](8);
+        inputs[0] = idHash;
+        inputs[1] = approved ? 1 : 0;
+        inputs[2] = uint256(uint160(from));
+        inputs[3] = uint256(uint160(to));
+        inputs[4] = uint256(uint160(token));
+        inputs[5] = tokenId;
+        inputs[6] = amount;
+        inputs[7] = 0;
+        return poseidon2.hash(inputs);
     }
 
     function setUp() public {
@@ -118,11 +125,10 @@ contract ShieldedPoolTest is Test {
         entryCount = shieldedPool.totalWormholeEntries();
         assertEq(entryCount, 2, "Should increment total wormhole entries by 2 after transfer");
 
-        bytes32 assetId = _getAssetId(address(wormholeVault), 0);
-        uint256 expectedCommitment = _getWormholeCommitment(1, true, from, to, assetId, 100e18);
+        uint256 expectedCommitment = _getWormholeCommitment(1, true, from, to, address(wormholeVault), 0, 100e18);
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, assetId, from, to, 100e18, true);
+        emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, address(wormholeVault), 0, from, to, 100e18, true);
         vm.prank(screener);
         shieldedPool.appendWormholeLeaf(1, true);
 
@@ -154,20 +160,18 @@ contract ShieldedPoolTest is Test {
         entryCount = shieldedPool.totalWormholeEntries();
         assertEq(entryCount, 2, "Should increment total wormhole entries by 2 after transfer");
 
-        bytes32 assetId = _getAssetId(address(wormholeVault), 0);
-
         IShieldedPool.WormholePreCommitment[] memory nodes = new IShieldedPool.WormholePreCommitment[](2);
         nodes[0] = IShieldedPool.WormholePreCommitment({entryId: 0, approved: false});
         nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
 
         uint256[2] memory expectedCommitments = [
-            _getWormholeCommitment(0, nodes[0].approved, address(0), from, assetId, 100e18),
-            _getWormholeCommitment(1, nodes[1].approved, from, to, assetId, 100e18)
+            _getWormholeCommitment(0, nodes[0].approved, address(0), from, address(wormholeVault), 0, 100e18),
+            _getWormholeCommitment(1, nodes[1].approved, from, to, address(wormholeVault), 0, 100e18)
         ];
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(nodes[0].entryId, expectedCommitments[0], 0, 0, assetId, address(0), from, 100e18, nodes[0].approved);
-        emit ShieldedPool.WormholeCommitment(nodes[1].entryId, expectedCommitments[1], 0, 1, assetId, from, to, 100e18, nodes[1].approved);
+        emit ShieldedPool.WormholeCommitment(nodes[0].entryId, expectedCommitments[0], 0, 0, address(wormholeVault), 0, address(0), from, 100e18, nodes[0].approved);
+        emit ShieldedPool.WormholeCommitment(nodes[1].entryId, expectedCommitments[1], 0, 1, address(wormholeVault), 0, from, to, 100e18, nodes[1].approved);
         vm.prank(screener);
         shieldedPool.appendManyWormholeLeaves(nodes);
 
@@ -225,12 +229,11 @@ contract ShieldedPoolTest is Test {
         vm.expectRevert("ShieldedPool: caller is not the original sender");
         shieldedPool.initiateRagequit(1);
 
-        bytes32 assetId = _getAssetId(address(wormholeVault), 0);
-        uint256 expectedCommitment = _getWormholeCommitment(1, false, from, to, assetId, 100e18);
+        uint256 expectedCommitment = _getWormholeCommitment(1, false, from, to, address(wormholeVault), 0, 100e18);
 
         // Should succeed
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, assetId, from, to, 100e18, false);
+        emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, address(wormholeVault), 0, from, to, 100e18, false);
         vm.prank(from);
         shieldedPool.initiateRagequit(1);
         
@@ -239,11 +242,11 @@ contract ShieldedPoolTest is Test {
         vm.prank(from);
         shieldedPool.initiateRagequit(1);
 
-        expectedCommitment = _getWormholeCommitment(0, false, address(0), from, assetId, 100e18);
+        expectedCommitment = _getWormholeCommitment(0, false, address(0), from, address(wormholeVault), 0, 100e18);
 
         // Can still append leafs of older entries skipped
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(0, expectedCommitment, 0, 1, assetId, address(0), from, 100e18, false);
+        emit ShieldedPool.WormholeCommitment(0, expectedCommitment, 0, 1, address(wormholeVault), 0, address(0), from, 100e18, false);
         vm.prank(screener);
         shieldedPool.appendWormholeLeaf(0, false);
 
@@ -346,7 +349,7 @@ contract ShieldedPoolTest is Test {
         commitments[0] = uint256(keccak256(abi.encodePacked("mock commitment 1"))) % SNARK_SCALAR_FIELD;
         commitments[1] = uint256(keccak256(abi.encodePacked("mock commitment 2"))) % SNARK_SCALAR_FIELD;
         ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
-            chainId: 1,
+            chainId: masterChainId,
             wormholeRoot: wormholeRoot,
             wormholeNullifier: keccak256(abi.encodePacked("mock wormhole nullifier")),
             shieldedRoot: shieldedRoot,
@@ -445,7 +448,7 @@ contract ShieldedPoolTest is Test {
         });
 
         ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
-            chainId: 1,
+            chainId: masterChainId,
             wormholeRoot: wormholeRoot,
             wormholeNullifier: keccak256(abi.encodePacked("mock wormhole nullifier")),
             shieldedRoot: shieldedRoot,
@@ -517,7 +520,7 @@ contract ShieldedPoolTest is Test {
         bool valid
     ) internal {
         bytes memory topics = _encodeMasterTreesUpdatedTopics(masterShieldedRoot, masterWormholeRoot);
-        bytes memory unindexedData = abi.encode(blockNumber, blockTimestamp);
+        bytes memory unindexedData = abi.encode(uint256(0), uint256(0), blockNumber, blockTimestamp);
         crossL2Prover.setValidateEventReturn(chainId, emittingContract, topics, unindexedData, valid);
     }
 
@@ -526,7 +529,7 @@ contract ShieldedPoolTest is Test {
     // -------------------------------------------------------------------
 
     function test_updateMasterTrees_masterChain_validBranchEvent() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
@@ -547,7 +550,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_emitsMasterTreesUpdated() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
@@ -558,19 +561,19 @@ contract ShieldedPoolTest is Test {
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
     }
 
-    function test_updateMasterTrees_masterChain_revert_branchChainIdIsOne() public {
-        vm.chainId(1);
+    function test_updateMasterTrees_masterChain_revert_branchChainIdIsMaster() public {
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(1, address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, true);
+        _setupBranchEventProof(uint32(masterChainId), address(shieldedPool), branchShieldedRoot, branchWormholeRoot, 100, true);
 
         vm.expectRevert("Branch tree cannot be master chain");
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
     }
 
     function test_updateMasterTrees_masterChain_revert_invalidEmittingContract() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
@@ -581,7 +584,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_revert_invalidTopicsLength() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         // 64 bytes instead of 96 (missing one topic word)
         bytes memory invalidTopics = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)));
@@ -593,7 +596,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_revert_staleBlockNumber() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
@@ -610,7 +613,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_revert_olderBlockNumber() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
@@ -627,7 +630,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_revert_invalidProof() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
@@ -638,7 +641,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_multipleUpdatesFromDifferentChains() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         // First update from chain 42
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
@@ -675,7 +678,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_updateMasterTrees_masterChain_sameChainSequentialUpdates() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
@@ -705,7 +708,7 @@ contract ShieldedPoolTest is Test {
         // Default chainId is 31337 (branch chain)
         uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot, masterWormholeRoot, 100, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot, masterWormholeRoot, 100, 1000, true);
 
         assertFalse(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot)), "Should not be valid before update");
         assertFalse(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot)), "Should not be valid before update");
@@ -728,7 +731,7 @@ contract ShieldedPoolTest is Test {
     function test_updateMasterTrees_branchChain_revert_invalidEmittingContract() public {
         uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(0xdead), masterShieldedRoot, masterWormholeRoot, 100, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(0xdead), masterShieldedRoot, masterWormholeRoot, 100, 1000, true);
 
         vm.expectRevert("Invalid emitting contract");
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
@@ -736,8 +739,8 @@ contract ShieldedPoolTest is Test {
 
     function test_updateMasterTrees_branchChain_revert_invalidTopicsLength() public {
         bytes memory invalidTopics = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)));
-        bytes memory unindexedData = abi.encode(uint256(100), uint256(1000));
-        crossL2Prover.setValidateEventReturn(1, address(shieldedPool), invalidTopics, unindexedData, true);
+        bytes memory unindexedData = abi.encode(uint256(0), uint256(0), uint256(100), uint256(1000));
+        crossL2Prover.setValidateEventReturn(uint32(masterChainId), address(shieldedPool), invalidTopics, unindexedData, true);
 
         vm.expectRevert("Invalid topics length");
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
@@ -746,7 +749,7 @@ contract ShieldedPoolTest is Test {
     function test_updateMasterTrees_branchChain_revert_invalidProof() public {
         uint256 masterShieldedRoot = uint256(keccak256("master shielded root")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot, masterWormholeRoot, 100, 1000, false);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot, masterWormholeRoot, 100, 1000, false);
 
         vm.expectRevert("Mock configured to return invalid data");
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
@@ -755,12 +758,12 @@ contract ShieldedPoolTest is Test {
     function test_updateMasterTrees_branchChain_multipleUpdates() public {
         uint256 masterShieldedRoot1 = uint256(keccak256("master shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot1 = uint256(keccak256("master wormhole root 1")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, 100, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, 100, 1000, true);
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
 
         uint256 masterShieldedRoot2 = uint256(keccak256("master shielded root 2")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot2 = uint256(keccak256("master wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 101, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 101, 1000, true);
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
 
         // Both old and new roots should be valid
@@ -773,12 +776,12 @@ contract ShieldedPoolTest is Test {
     function test_updateMasterTrees_branchChain_revert_notNewMasterTreeEvent() public {
         uint256 masterShieldedRoot1 = uint256(keccak256("master shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot1 = uint256(keccak256("master wormhole root 1")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, 100, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, 100, 1000, true);
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
 
         uint256 masterShieldedRoot2 = uint256(keccak256("master shielded root 2")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot2 = uint256(keccak256("master wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 100, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 100, 1000, true);
 
         vm.expectRevert("Master tree event is not new");
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
@@ -798,7 +801,7 @@ contract ShieldedPoolTest is Test {
         // Simulate receiving master tree update on branch chain
         uint256 newMasterShieldedRoot = uint256(keccak256("new master shielded root")) % SNARK_SCALAR_FIELD;
         uint256 newMasterWormholeRoot = uint256(keccak256("new master wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(1, address(shieldedPool), newMasterShieldedRoot, newMasterWormholeRoot, 100, 1000, true);
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), newMasterShieldedRoot, newMasterWormholeRoot, 100, 1000, true);
         shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
 
         // Use the received roots in a shielded transfer
@@ -837,7 +840,7 @@ contract ShieldedPoolTest is Test {
     // -------------------------------------------------------------------
 
     function test_appendWormholeLeaf_masterChain_updatesMasterWormholeTree() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         address from = makeAddr("from");
         address to = makeAddr("to");
@@ -864,7 +867,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_appendManyWormholeLeaves_masterChain_updatesMasterWormholeTree() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         address from = makeAddr("from");
         address to = makeAddr("to");
@@ -894,7 +897,7 @@ contract ShieldedPoolTest is Test {
     // -------------------------------------------------------------------
 
     function test_shieldedTransfer_masterChain_updatesMasterShieldedTree() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         address from = makeAddr("from");
         address to = makeAddr("to");
@@ -916,7 +919,7 @@ contract ShieldedPoolTest is Test {
         commitments[1] = uint256(keccak256(abi.encodePacked("commitment 2"))) % SNARK_SCALAR_FIELD;
 
         ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
-            chainId: 1,
+            chainId: masterChainId,
             wormholeRoot: wormholeRoot,
             wormholeNullifier: keccak256(abi.encodePacked("wormhole nullifier")),
             shieldedRoot: shieldedRoot,
@@ -943,7 +946,7 @@ contract ShieldedPoolTest is Test {
     }
 
     function test_shieldedTransfer_masterChain_emitsMasterTreesUpdated() public {
-        vm.chainId(1);
+        vm.chainId(masterChainId);
 
         address from = makeAddr("from");
         address to = makeAddr("to");
@@ -965,7 +968,7 @@ contract ShieldedPoolTest is Test {
         commitments[1] = uint256(keccak256(abi.encodePacked("commitment 2"))) % SNARK_SCALAR_FIELD;
 
         ShieldedPool.ShieldedTx memory shieldedTx = ShieldedPool.ShieldedTx({
-            chainId: 1,
+            chainId: masterChainId,
             wormholeRoot: wormholeRoot,
             wormholeNullifier: keccak256(abi.encodePacked("wormhole nullifier")),
             shieldedRoot: shieldedRoot,

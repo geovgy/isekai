@@ -107,7 +107,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     mapping(uint64 chainId => mapping(uint256 index => BranchInfo)) internal _branchInfos; // for tracking possible chain rollbacks
 
     event WormholeEntry(uint256 indexed entryId, address indexed token, address indexed from, address to, uint256 id, uint256 amount, bytes32 confidentialContext);
-    event WormholeCommitment(uint256 indexed entryId, uint256 indexed commitment, uint256 treeId, uint256 leafIndex, bytes32 assetId, address from, address to, uint256 amount, bool approved);
+    event WormholeCommitment(uint256 indexed entryId, uint256 indexed commitment, uint256 treeId, uint256 leafIndex, address token, uint256 tokenId, address from, address to, uint256 amount, bool approved);
     event WormholeNullifier(bytes32 indexed nullifier);
 
     event ShieldedTransfer(uint256 indexed treeId, uint256 startIndex, uint256[] commitments, bytes32[] nullifiers, Withdrawal[] withdrawals);
@@ -227,8 +227,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             require(entry.from == msg.sender, "ShieldedPool: caller is not the original sender");
             require(!approved, "ShieldedPool: entry cannot be appended as approved");
         }
-        bytes32 assetId = _getAssetId(entry.asset, entry.id);
-        uint256 commitment = _getWormholeCommitment(entryId, approved, entry.from, entry.to, assetId, entry.amount);
+        uint256 commitment = _getWormholeCommitment(entryId, approved, entry.from, entry.to, entry.asset, entry.id, entry.amount);
         if (_isMerkleTreeFull(_branchWormholeTrees[currentWormholeTreeId])) {
             currentWormholeTreeId++;
             _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
@@ -239,7 +238,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             totalWormholeCommitments++;
         }
         
-        emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _branchWormholeTrees[currentWormholeTreeId].size - 1, assetId, entry.from, entry.to, entry.amount, approved);
+        emit WormholeCommitment(entryId, commitment, currentWormholeTreeId, _branchWormholeTrees[currentWormholeTreeId].size - 1, entry.asset, entry.id, entry.from, entry.to, entry.amount, approved);
         emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, _branchShieldedTrees[currentShieldedTreeId].root(), root, block.number, block.timestamp);
 
         if (block.chainid == MASTER_CHAIN_ID) {
@@ -270,15 +269,15 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         uint256 startLeafIndex = _branchWormholeTrees[currentWormholeTreeId].size;
         for (uint256 i = 0; i < nodes.length; i++) {
             TransferMetadata memory entry = _wormholeEntries[nodes[i].entryId];
-            bytes32 assetId = _getAssetId(entry.asset, entry.id);
-            commitments[i] = _getWormholeCommitment(nodes[i].entryId, nodes[i].approved, entry.from, entry.to, assetId, entry.amount);
+            commitments[i] = _getWormholeCommitment(nodes[i].entryId, nodes[i].approved, entry.from, entry.to, entry.asset, entry.id, entry.amount);
             _wormholeEntriesCommitted[nodes[i].entryId] = true;
             emit WormholeCommitment(
                 nodes[i].entryId,
                 commitments[i],
                 currentWormholeTreeId,
                 startLeafIndex + i,
-                assetId,
+                entry.asset,
+                entry.id,
                 entry.from,
                 entry.to,
                 entry.amount,
@@ -374,8 +373,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         TransferMetadata memory entry = _wormholeEntries[ragequitTx.entryId];
 
         // get wormhole commitment
-        bytes32 assetId = _getAssetId(entry.asset, entry.id);
-        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, assetId, entry.amount);
+        uint256 commitment = _getWormholeCommitment(ragequitTx.entryId, ragequitTx.approved, entry.from, entry.to, entry.asset, entry.id, entry.amount);
 
         bytes32[] memory inputs = new bytes32[](4);
         inputs[0] = ragequitTx.wormholeRoot;
@@ -533,7 +531,8 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
             Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
             uint256 commitment = _getCommitment(
                 uint256(uint160(withdrawal.to)), 
-                _getAssetId(withdrawal.asset, withdrawal.id), 
+                uint256(uint160(withdrawal.asset)),
+                withdrawal.id,
                 withdrawal.amount, 
                 2 // Transfer Type: WITHDRAWAL
             );
@@ -541,17 +540,22 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         }
     }
 
-    function _getAssetId(address asset, uint256 id) internal view returns (bytes32) {
-        return bytes32(poseidon2.hash_2(uint256(uint160(asset)), id));
+    function _getCommitment(uint256 recipientHash, uint256 token, uint256 tokenId, uint256 amount, uint256 transferType) internal view returns (uint256) {
+        return poseidon2.hash_5(recipientHash, token, tokenId, amount, transferType);
     }
 
-    function _getCommitment(uint256 recipientHash, bytes32 assetId, uint256 amount, uint256 transferType) internal view returns (uint256) {
-        return poseidon2.hash_4(recipientHash, uint256(assetId), amount, uint256(transferType));
-    }
-
-    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, bytes32 assetId, uint256 amount) internal view returns (uint256) {
+    function _getWormholeCommitment(uint256 entryId, bool approved, address from, address to, address token, uint256 tokenId, uint256 amount) internal view returns (uint256) {
         uint256 idHash = poseidon2.hash_2(block.chainid, entryId);
-        return poseidon2.hash_6(idHash, approved ? 1 : 0, uint256(uint160(from)), uint256(uint160(to)), uint256(assetId), amount);
+        uint256[] memory inputs = new uint256[](8);
+        inputs[0] = idHash;
+        inputs[1] = approved ? 1 : 0;
+        inputs[2] = uint256(uint160(from));
+        inputs[3] = uint256(uint160(to));
+        inputs[4] = uint256(uint160(token));
+        inputs[5] = tokenId;
+        inputs[6] = amount;
+        inputs[7] = 0; // confidential context (always 0 for non-confidential)
+        return poseidon2.hash(inputs);
     }
 
     function _initializeMerkleTree(LeanIMTData storage tree) internal returns (uint256 root) {

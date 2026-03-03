@@ -49,7 +49,7 @@ contract ERC20WormholeConfidential is ERC20, Wormhole, Ownable {
         renounceOwnership();
     }
 
-    function _unshield(address to, uint256 /* id */, uint256 amount) internal override {
+    function _unshield(address to, uint256 /* id */, uint256 amount, bytes32 /* confidentialContext */) internal override {
         _mint(to, amount);
     }
 
