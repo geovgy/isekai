@@ -110,12 +110,9 @@ pub impl <let M: u32> WormholeNote<M> {
         if (self.confidential_type == 0) {
             0
         } else if (self.confidential_type == 1) {
-            let blinded_recipient = hash([self.recipient, self.wormhole_secret]);
-            hash([blinded_recipient, 0x01]) // 0x01 represents 'true' for it's a wormhole deposit
+            get_confidential_blinded_recipient_or_secret(true, self.recipient, self.wormhole_secret)
         } else {
-            let mut blinded_recipient = hash([self.recipient, self.wormhole_secret]);
-            blinded_recipient = hash([blinded_recipient, 0x01]); // 0x01 represents 'true' for it's a wormhole withdrawal
-            hash([blinded_recipient, self.from, self.token, self.token_id, self.amount])
+            to_confidential_context(true, self.recipient, self.wormhole_secret, self.token, self.token_id, self.amount)
         }
     }
 
@@ -123,15 +120,74 @@ pub impl <let M: u32> WormholeNote<M> {
         let burn_address = self.get_burn_address();
         let confidential_context = self.get_confidential_context();
         let id_hash = hash([self.src_chain_id, self.entry_id]);
-        let token = if (self.confidential_type == 2) { 0 } else { self.token };
         let token_id = if (self.confidential_type == 2) { 0 } else { self.token_id };
         let amount = if (self.confidential_type == 2) { 0 } else { self.amount };
-        hash([id_hash, self.is_approved as Field, self.from, burn_address, token, token_id, amount, confidential_context])
+        hash([id_hash, self.is_approved as Field, self.from, burn_address, self.token, token_id, amount, confidential_context])
     }
 
     pub fn get_nullifier(self) -> Field {
         let id_hash = hash([self.src_chain_id, self.entry_id]);
         let secret_commitment = hash([self.recipient, self.token, self.token_id, self.from, self.amount]);
         hash([1, id_hash, self.wormhole_secret, secret_commitment])
+    }
+}
+
+pub fn get_confidential_blinded_recipient_or_secret(is_wormhole: bool, recipient: Field, secret: Field) -> Field {
+    let blinded_rec_or_secret = if is_wormhole {
+        hash([recipient, secret])
+    } else {
+        // Ignore recipient and just hash the secret twice
+        // In confidential transfers, the to/recipient is public
+        hash([secret, secret])
+    };
+    hash([blinded_rec_or_secret, is_wormhole as Field])
+}
+
+pub fn to_confidential_context(is_wormhole: bool, recipient: Field, secret: Field, token: Field, token_id: Field, amount: Field) -> Field {
+    let blinded_rec_or_secret = get_confidential_blinded_recipient_or_secret(is_wormhole, recipient, secret);
+    hash([blinded_rec_or_secret, token, token_id, amount])
+}
+
+pub struct ConfidentialInputNote<let M: u32> {
+    pub tree_id: Field,
+    pub secret: Field,
+    pub amount: Field,
+    pub leaf_index: Field,
+    pub leaf_path: [Field; M],
+}
+
+pub impl <let M: u32> ConfidentialInputNote<M> {
+    pub fn from(tree_id: Field, secret: Field, amount: Field, leaf_index: Field, leaf_path: [Field; M]) -> Self {
+        Self { tree_id, secret, amount, leaf_index, leaf_path }
+    }
+
+    pub fn to_commitment(self, from: Field, to: Field, token: Field, token_id: Field) -> Field {
+        let confidential_context = to_confidential_context(false, to, self.secret, token, token_id, self.amount);
+        hash([from, to, self.tree_id, confidential_context])
+    }
+
+    pub fn get_nullifier(self, from: Field, to: Field, token: Field, token_id: Field) -> Field {
+        let secret_commitment = hash([from, to, token, token_id, self.amount]);
+        hash([1, self.tree_id, self.leaf_index, self.secret, secret_commitment])
+    }
+}
+
+pub struct ConfidentialOutputNote {
+    pub wormhole_recipient: Option<Field>, // If exists, then confidential context is wormhole deposit
+    pub amount: Field,
+    pub secret: Field,
+    pub transfer_type: u8, // 1: Transfer, 2: Withdrawal
+}
+
+pub impl ConfidentialOutputNote {
+    pub fn from(wormhole_recipient: Option<Field>, amount: Field, secret: Field, transfer_type: u8) -> Self {
+        Self { wormhole_recipient, amount, secret, transfer_type }
+    }
+
+    // Full commitment is [from, to, tree_id, confidential_context] hashed and inserted in smart contract
+    pub fn to_confidential_context(self, token: Field, token_id: Field) -> Field {
+        let is_wormhole = self.wormhole_recipient.is_some();
+        let recipient = self.wormhole_recipient.unwrap_or(0);
+        to_confidential_context(is_wormhole, recipient, self.secret, token, token_id, self.amount)
     }
 }

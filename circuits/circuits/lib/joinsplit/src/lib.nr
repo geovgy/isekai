@@ -1,5 +1,5 @@
 pub mod notes;
-use notes::{InputNote, OutputNote, WormholeNote, get_wormhole_pseudo_nullifier};
+use notes::{InputNote, OutputNote, WormholeNote, get_wormhole_pseudo_nullifier, ConfidentialInputNote, ConfidentialOutputNote};
 use poseidon::poseidon2::Poseidon2;
 
 pub struct JoinSplit<let M: u32, let N: u32, let C: u32> {
@@ -13,6 +13,16 @@ pub struct JoinSplit<let M: u32, let N: u32, let C: u32> {
     output_notes: [OutputNote; C],
     wormhole_note: Option<WormholeNote<M>>,
     wormhole_pseudo_secret: Option<Field>, // Only required if no wormhole note is provided (to obfuscate whether a wormhole note is provided or not)
+}
+
+pub struct ConfidentialJoinSplit<let M: u32, let N: u32, let C: u32> {
+    root: Field,
+    from: Field,
+    to: Field,
+    token: Field,
+    token_id: Field,
+    input_notes: [ConfidentialInputNote<M>; N],
+    output_notes: [ConfidentialOutputNote; C],
 }
 
 fn hasher<let N: u32>(inputs: [Field; N]) -> Field {
@@ -98,15 +108,56 @@ pub impl <let M: u32, let N: u32, let C: u32> JoinSplit<M, N, C> {
         // Verify output notes are valid
         for i in 0..C {
             let output_note = self.output_notes[i];
-            assert(output_note.amount != 0, "Output note amount cannot be 0");
             totalAmountOut += output_note.amount;
             output_commitments[i] = output_note.to_commitment(self.token, self.token_id);
         }
 
         // Verify sums of input (+ wormhole) and output notes are equal
+        assert(totalAmountIn != 0, "Total amount in must be non-zero");
         assert(totalAmountIn == totalAmountOut, "Total amount in and out must be equal");
 
         // Return (wormhole nullifier, input nullifiers, output commitments)
         (wormhole_nullifier, input_nullifiers, output_commitments)
+    }
+}
+
+pub impl <let M: u32, let N: u32, let C: u32> ConfidentialJoinSplit<M, N, C> {
+    pub fn new(root: Field, from: Field, to: Field, token: Field, token_id: Field, input_notes: [ConfidentialInputNote<M>; N], output_notes: [ConfidentialOutputNote; C]) -> Self {
+        Self { root, from, to, token, token_id, input_notes, output_notes }
+    }
+
+    // outputs are input nullifiers and output confidential contexts
+    pub fn execute(self) -> ([Field; N], [Field; C]) {
+        let mut totalAmountIn = 0;
+        let mut totalAmountOut = 0;
+
+        let mut input_nullifiers: [Field; N] = [0; N];
+        let mut output_confidential_contexts: [Field; C] = [0; C];
+
+        // Verify input notes are valid
+        for i in 0..N {
+            let input_note = self.input_notes[i];
+            if input_note.amount != 0 {
+                let commitment = input_note.to_commitment(self.from, self.to, self.token, self.token_id);
+                // Verify note commitment is in confidential tree
+                assert_merkle_leaf_membership(self.root, commitment, input_note.leaf_index, input_note.leaf_path);                
+                totalAmountIn += input_note.amount;
+            }
+            input_nullifiers[i] = input_note.get_nullifier(self.from, self.to, self.token, self.token_id);
+        }
+
+        // Verify output notes are valid
+        for i in 0..C {
+            let output_note = self.output_notes[i];
+            totalAmountOut += output_note.amount;
+            output_confidential_contexts[i] = output_note.to_confidential_context(self.token, self.token_id);
+        }
+
+        // Verify sums of input and output notes are equal
+        assert(totalAmountIn != 0, "Total amount in must be non-zero");
+        assert(totalAmountIn == totalAmountOut, "Total amount in and out must be equal");
+
+        // Return (input nullifiers, output confidential contexts)
+        (input_nullifiers, output_confidential_contexts)
     }
 }

@@ -44,6 +44,21 @@ export interface WormholeNote {
   confidential_type: ConfidentialType;
 }
 
+export interface ConfidentialInputNote {
+  tree_id: bigint;
+  secret: bigint;
+  amount: bigint;
+  leaf_index: bigint;
+  leaf_path: bigint[];
+}
+
+export interface ConfidentialOutputNote {
+  wormhole_recipient: bigint | null;
+  amount: bigint;
+  secret: bigint;
+  transfer_type: TransferType;
+}
+
 export interface WormholeDeposit extends WormholeNote {
   master_root: bigint;
   branch_root: bigint;

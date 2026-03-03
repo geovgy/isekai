@@ -1,0 +1,8 @@
+[package]
+name = "confidential_utxo_2x2"
+type = "bin"
+authors = [""]
+
+[dependencies]
+utxo = { path = "../../lib/utxo" }
+joinsplit = { path = "../../lib/joinsplit" }

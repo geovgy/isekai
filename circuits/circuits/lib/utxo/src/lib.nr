@@ -1,5 +1,8 @@
-use joinsplit::JoinSplit;
-use joinsplit::notes::{InputNote, OutputNote, WormholeNote};
+use joinsplit::{
+    JoinSplit,
+    ConfidentialJoinSplit,
+    notes::{InputNote, OutputNote, WormholeNote, ConfidentialInputNote, ConfidentialOutputNote},
+};
 use ecrecover::ecrecover;
 
 pub global MERKLE_TREE_DEPTH: u32 = 20;
@@ -18,12 +21,6 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
     wormhole_note: Option<WormholeNote<M>>,
-    // wormhole_leaf_root: Option<Field>,
-    // wormhole_leaf_index: Option<Field>,
-    // wormhole_leaf_siblings: Option<[Field; M]>,
-    // wormhole_master_leaf_index: Option<Field>,
-    // wormhole_master_leaf_siblings: Option<[Field; M]>,
-    // wormhole_approved: Option<bool>,
     wormhole_pseudo_secret: Option<Field>,
 ) -> (Field, Field, Field, [Field; N], [Field; C]) {
     let address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
@@ -52,4 +49,26 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     );
     let (wormhole_nullifier, input_nullifiers, output_commitments) = joinsplit.execute();
     (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), wormhole_nullifier, input_nullifiers, output_commitments)
+}
+
+pub fn execute_confidential_utxo<let M: u32, let N: u32, let C: u32>(
+    root: Field,
+    from: Field,
+    to: Field,
+    token: Field,
+    token_id: Field,
+    input_notes: [ConfidentialInputNote<M>; N],
+    output_notes: [ConfidentialOutputNote; C],
+) -> ([Field; N], [Field; C]) {
+    let joinsplit = ConfidentialJoinSplit::new(
+        root,
+        from,
+        to,
+        token,
+        token_id,
+        input_notes,
+        output_notes
+    );
+    let (input_nullifiers, output_confidential_contexts) = joinsplit.execute();
+    (input_nullifiers, output_confidential_contexts)
 }
