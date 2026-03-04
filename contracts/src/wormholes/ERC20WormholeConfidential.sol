@@ -3,14 +3,17 @@ pragma solidity ^0.8.28;
 
 import {IERC20, IERC20Metadata, ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC4626} from "openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
+import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
+import {IVerifier} from "../interfaces/IVerifier.sol";
 import {IShieldedPool} from "../interfaces/IShieldedPool.sol";
-import {Wormhole} from "../Wormhole.sol";
+import {ConfidentialWormhole} from "../ConfidentialWormhole.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {LeanIMT, LeanIMTData} from "../libraries/LeanIMT.sol";
 
 // A modified version of OpenZeppelin's ERC20Wrapper that supports wormhole
-contract ERC20WormholeConfidential is ERC20, Wormhole, Ownable {
+contract ERC20WormholeConfidential is ERC20, ConfidentialWormhole, Ownable {
     using SafeERC20 for IERC20;
+    using LeanIMT for LeanIMTData;
 
     bool public initialized;
 
@@ -30,9 +33,11 @@ contract ERC20WormholeConfidential is ERC20, Wormhole, Ownable {
 
     constructor(
         IShieldedPool shieldedPool_,
+        IPoseidon2 poseidon2_,
+        IVerifier confidentialVerifier_,
         string memory namePrefix_,
         string memory symbolPrefix_
-    ) ERC20("", "") Wormhole(shieldedPool_) Ownable(msg.sender) {
+    ) ERC20("", "") ConfidentialWormhole(shieldedPool_, poseidon2_, confidentialVerifier_) Ownable(msg.sender) {
         _namePrefix = namePrefix_;
         _symbolPrefix = symbolPrefix_;
     }
@@ -49,13 +54,48 @@ contract ERC20WormholeConfidential is ERC20, Wormhole, Ownable {
         renounceOwnership();
     }
 
-    function _unshield(address to, uint256 /* id */, uint256 amount, bytes32 /* confidentialContext */) internal override {
+    function _convertToConfidential(
+        address from,
+        address to,
+        uint256 id,
+        uint256 amount,
+        bytes32 confidentialContext
+    ) internal override {
+        super._convertToConfidential(from, to, id, amount, confidentialContext);
+        // burn public tokens
+        _burn(from, amount);
+    }
+
+    function _convertFromConfidential(
+        address from,
+        address to,
+        uint256 id,
+        uint256 amount,
+        bytes32 confidentialContext,
+        bytes32 root,
+        bytes32[] memory nullifiers,
+        bytes32[] memory confidentialContexts,
+        bytes calldata proof
+    ) internal virtual override {
+        super._convertFromConfidential(from, to, id, amount, confidentialContext, root, nullifiers, confidentialContexts, proof);
+        // mint public tokens
         _mint(to, amount);
     }
 
-    function _update(address from, address to, uint256 value) internal virtual override {
+    function _unshield(address to, uint256 /* id */, uint256 amount, bytes32 confidentialContext) internal override {
+        _mint(to, amount);
+        if (confidentialContext != bytes32(0)) {
+            _convertToConfidential(msg.sender, to, 0, amount, confidentialContext);
+        }
+        _requestWormholeEntry(address(0), to, 0, amount, confidentialContext);
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
         super._update(from, to, value);
-        _requestWormholeEntry(from, to, 0, value, bytes32(0)); // id is always 0 for ERC20 tokens
+        // Limit to only transfers, not mints and burns. They have their own custom logic for confidential transfers.
+        if (from != address(0) && to != address(0)) {
+            _requestWormholeEntry(from, to, 0, value, bytes32(0)); // id is always 0 for ERC20 tokens
+        }
     }
 
     function actualSupply() public view override returns (uint256) {

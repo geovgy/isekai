@@ -39,25 +39,29 @@ abstract contract ConfidentialWormhole is Wormhole {
         address to,
         bytes32 root,
         bytes32[] memory nullifiers,
-        uint256[] memory commitments,
+        bytes32[] memory confidentialContexts,
         bytes calldata proof
     ) virtual external {
         require(isConfidentialRoot[root], "ConfidentialWormhole: root is not valid");
-        bytes32[] memory inputs = _formatPublicInputs(msg.sender, to, nullifiers, commitments);
+        bytes32[] memory inputs = _formatPublicInputs(root, msg.sender, to, nullifiers, confidentialContexts);
         require(confidentialVerifier.verify(proof, inputs), "ConfidentialWormhole: proof is not valid");
         for (uint256 i = 0; i < nullifiers.length; i++) {
             require(!nullifierUsed[nullifiers[i]], "ConfidentialWormhole: nullifier is already used");
             nullifierUsed[nullifiers[i]] = true;
         }
-        if (_isMerkleTreeSizeOverflow(commitments.length)) {
+        if (_isMerkleTreeSizeOverflow(confidentialContexts.length)) {
             currentConfidentialTreeId++;
             _confidentialTrees[currentConfidentialTreeId].init(address(poseidon2));
+        }
+        uint256[] memory commitments = new uint256[](confidentialContexts.length);
+        for (uint256 i = 0; i < confidentialContexts.length; i++) {
+            commitments[i] = _toConfidentialCommitment(currentConfidentialTreeId, msg.sender, to, 0, 0, confidentialContexts[i]);
         }
         uint256 newRoot = _confidentialTrees[currentConfidentialTreeId].insertMany(commitments);
         isConfidentialRoot[bytes32(newRoot)] = true;
         emit ConfidentialTransfer(msg.sender, to, bytes32(newRoot), nullifiers, commitments);
-        for (uint256 i = 0; i < commitments.length; i++) {
-            _requestWormholeEntry(msg.sender, to, 0, 0, bytes32(commitments[i]));
+        for (uint256 i = 0; i < confidentialContexts.length; i++) {
+            _requestWormholeEntry(msg.sender, to, 0, 0, confidentialContexts[i]);
         }
     }
 
@@ -68,6 +72,23 @@ abstract contract ConfidentialWormhole is Wormhole {
         bytes32 confidentialContext
     ) external {
         _convertToConfidential(msg.sender, to, id, amount, confidentialContext);
+        // request the wormhole entry
+        _requestWormholeEntry(msg.sender, to, id, amount, confidentialContext);
+    }
+
+    function _toConfidentialCommitment(
+        uint256 treeId,
+        address from,
+        address to,
+        uint256 id,
+        uint256 amount,
+        bytes32 confidentialContext
+    ) internal view returns (uint256) {
+        uint256 fullContext = uint256(confidentialContext);
+        if (amount != 0) {
+            fullContext = poseidon2.hash_4(uint160(address(this)), id, amount, fullContext);
+        }
+        return poseidon2.hash_4(uint256(uint160(from)), uint256(uint160(to)), treeId, fullContext);
     }
 
     // Override this function to convert the transfer to confidential
@@ -78,7 +99,14 @@ abstract contract ConfidentialWormhole is Wormhole {
         uint256 amount,
         bytes32 confidentialContext
     ) internal virtual {
-        _requestWormholeEntry(from, to, id, amount, confidentialContext);
+        require(confidentialContext != bytes32(0), "ConfidentialWormhole: confidential context is zero");
+        if (_isMerkleTreeSizeOverflow(1)) {
+            currentConfidentialTreeId++;
+            _confidentialTrees[currentConfidentialTreeId].init(address(poseidon2));
+        }
+        uint256 commitment = _toConfidentialCommitment(currentConfidentialTreeId, from, to, id, amount, confidentialContext);
+        uint256 newRoot = _confidentialTrees[currentConfidentialTreeId].insert(commitment);
+        isConfidentialRoot[bytes32(newRoot)] = true;
     }
 
     function convertFromConfidential(
@@ -88,10 +116,12 @@ abstract contract ConfidentialWormhole is Wormhole {
         bytes32 confidentialContext,
         bytes32 root,
         bytes32[] memory nullifiers,
-        uint256[] memory commitments,
+        bytes32[] memory confidentialContexts,
         bytes calldata proof
     ) external {
-        _convertFromConfidential(msg.sender, to, id, amount, confidentialContext, root, nullifiers, commitments, proof);
+        _convertFromConfidential(msg.sender, to, id, amount, confidentialContext, root, nullifiers, confidentialContexts, proof);
+        // request the wormhole entry
+        _requestWormholeEntry(msg.sender, to, id, amount, confidentialContext);
     }
 
     // Override this function to convert the transfer from confidential
@@ -103,43 +133,52 @@ abstract contract ConfidentialWormhole is Wormhole {
         bytes32 confidentialContext,
         bytes32 root,
         bytes32[] memory nullifiers,
-        uint256[] memory commitments,
+        bytes32[] memory confidentialContexts,
         bytes calldata proof
     ) internal virtual {
         require(isConfidentialRoot[root], "ConfidentialWormhole: root is not valid");
-        bytes32[] memory inputs = _formatPublicInputs(from, to, nullifiers, commitments);
+        bytes32[] memory inputs = _formatPublicInputs(root, from, to, nullifiers, confidentialContexts);
         require(confidentialVerifier.verify(proof, inputs), "ConfidentialWormhole: proof is not valid");
         for (uint256 i = 0; i < nullifiers.length; i++) {
             require(!nullifierUsed[nullifiers[i]], "ConfidentialWormhole: nullifier is already used");
             nullifierUsed[nullifiers[i]] = true;
         }
-        if (_isMerkleTreeSizeOverflow(commitments.length)) {
+        if (_isMerkleTreeSizeOverflow(confidentialContexts.length)) {
             currentConfidentialTreeId++;
             _confidentialTrees[currentConfidentialTreeId].init(address(poseidon2));
+        }
+        uint256[] memory commitments = new uint256[](confidentialContexts.length);
+        for (uint256 i = 0; i < confidentialContexts.length; i++) {
+            commitments[i] = _toConfidentialCommitment(currentConfidentialTreeId, from, to, 0, 0, confidentialContexts[i]);
         }
         uint256 newRoot = _confidentialTrees[currentConfidentialTreeId].insertMany(commitments);
         isConfidentialRoot[bytes32(newRoot)] = true;
         emit ConfidentialTransfer(from, to, bytes32(newRoot), nullifiers, commitments);
-        for (uint256 i = 0; i < commitments.length; i++) {
-            _requestWormholeEntry(from, to, 0, 0, bytes32(commitments[i]));
+        for (uint256 i = 0; i < confidentialContexts.length; i++) {
+            _requestWormholeEntry(from, to, 0, 0, confidentialContexts[i]);
         }
-        _requestWormholeEntry(from, to, id, amount, confidentialContext);
+        if (confidentialContext != bytes32(0)) {
+            _convertToConfidential(from, to, id, amount, confidentialContext);
+        }
     }
 
     function _formatPublicInputs(
+        bytes32 root,
         address from,
         address to,
         bytes32[] memory nullifiers,
-        uint256[] memory commitments
-    ) internal virtual pure returns (bytes32[] memory) {
-        bytes32[] memory inputs = new bytes32[](2 + nullifiers.length + commitments.length);
-        inputs[0] = bytes20(from);
-        inputs[1] = bytes20(to);
+        bytes32[] memory confidentialContexts
+    ) internal virtual view returns (bytes32[] memory) {
+        bytes32[] memory inputs = new bytes32[](4 + nullifiers.length + confidentialContexts.length);
+        inputs[0] = root;
+        inputs[1] = bytes32(uint256(uint160(from)));
+        inputs[2] = bytes32(uint256(uint160(to)));
+        inputs[3] = bytes32(uint256(uint160(address(this))));
         for (uint256 i = 0; i < nullifiers.length; i++) {
-            inputs[2 + i] = nullifiers[i];
+            inputs[4 + i] = nullifiers[i];
         }
-        for (uint256 i = 0; i < commitments.length; i++) {
-            inputs[2 + nullifiers.length + i] = bytes32(commitments[i]);
+        for (uint256 i = 0; i < confidentialContexts.length; i++) {
+            inputs[4 + nullifiers.length + i] = confidentialContexts[i];
         }
         return inputs;
     }
