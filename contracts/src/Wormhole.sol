@@ -28,12 +28,12 @@ abstract contract Wormhole is IWormhole {
         emit Unshield(to, id, amount, confidentialContext);
     }
 
-    function _isWormholeEligible(address to, uint256 amount) internal pure returns (bool) {
-        return to != address(0) && amount > 0;
+    function _isWormholeEligible(address to, uint256 amount, bytes32 confidentialContext) internal pure returns (bool) {
+        return to != address(0) && (amount > 0 || confidentialContext != bytes32(0));
     }
 
     function _requestWormholeEntry(address from, address to, uint256 id, uint256 amount, bytes32 confidentialContext) internal returns (bool submitted, uint256 pendingIndex) {
-        if (!_isWormholeEligible(to, amount)) {
+        if (!_isWormholeEligible(to, amount, confidentialContext)) {
             return (false, 0);
         }
         pendingIndex = shieldedPool.requestWormholeEntry(from, to, id, amount, confidentialContext);

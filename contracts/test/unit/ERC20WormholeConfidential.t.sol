@@ -124,8 +124,7 @@ contract ERC20WormholeConfidentialTest is Test {
         assertEq(wormhole.actualSupply(), 100e18);
     }
 
-    // TODO: Fix core logic so wormhole entry is created on deposit
-    function test_deposit_noWormholeEntry() public {
+    function test_deposit_createsWormholeEntry() public {
         uint256 entriesBefore = shieldedPool.totalWormholeEntries();
 
         underlying.mint(alice, 100e18);
@@ -134,7 +133,14 @@ contract ERC20WormholeConfidentialTest is Test {
         wormhole.deposit(100e18, alice);
         vm.stopPrank();
 
-        assertEq(shieldedPool.totalWormholeEntries(), entriesBefore, "Deposit should not create wormhole entry (mint filtered in _update)");
+        assertEq(shieldedPool.totalWormholeEntries(), entriesBefore + 1, "Deposit should create one wormhole entry");
+
+        ShieldedPool.TransferMetadata memory entry = shieldedPool.wormholeEntry(entriesBefore);
+        assertEq(entry.from, address(0), "Deposit entry from should be address(0)");
+        assertEq(entry.to, alice, "Deposit entry to should be the receiver");
+        assertEq(entry.asset, address(wormhole), "Deposit entry asset should be wormhole");
+        assertEq(entry.amount, 100e18, "Deposit entry amount should match");
+        assertEq(entry.confidentialContext, bytes32(0), "Deposit entry context should be zero");
     }
 
     function test_deposit_revert_selfSender() public {
@@ -163,7 +169,6 @@ contract ERC20WormholeConfidentialTest is Test {
         assertEq(wormhole.actualSupply(), 50e18);
     }
 
-    // TODO: Fix core logic so wormhole entry is created on withdraw
     function test_withdraw_noWormholeEntry() public {
         _dealTokens(alice, 100e18);
 
@@ -326,8 +331,7 @@ contract ERC20WormholeConfidentialTest is Test {
         assertTrue(wormhole.isConfidentialRoot(expectedNewRoot), "New confidential root should be set after transfer");
     }
 
-    // TODO: Fix core logic so wormhole entry is created on confidential transfer
-    function test_confidentialTransfer_noWormholeEntryCreated() public {
+    function test_confidentialTransfer_createsWormholeEntries() public {
         _dealTokens(alice, 100e18);
         bytes32 confContext = bytes32(uint256(12345));
 
@@ -347,9 +351,13 @@ contract ERC20WormholeConfidentialTest is Test {
         vm.prank(alice);
         wormhole.confidentialTransfer(bob, confRoot, nullifiers, contexts, abi.encodePacked("proof"));
 
-        // TODO: Fix core logic so wormhole entry is created on confidential transfer
-        // amount=0 in _requestWormholeEntry → filtered by _isWormholeEligible
-        assertEq(shieldedPool.totalWormholeEntries(), entriesBefore, "confidentialTransfer should not create wormhole entries");
+        assertEq(shieldedPool.totalWormholeEntries(), entriesBefore + 1, "confidentialTransfer should create one wormhole entry per context");
+
+        ShieldedPool.TransferMetadata memory entry = shieldedPool.wormholeEntry(entriesBefore);
+        assertEq(entry.from, alice, "Entry from should be the sender");
+        assertEq(entry.to, bob, "Entry to should be the recipient");
+        assertEq(entry.amount, 0, "Entry amount should be 0 for confidential transfer");
+        assertEq(entry.confidentialContext, contexts[0], "Entry should carry the confidentialContext");
     }
 
     function test_confidentialTransfer_revert_invalidRoot() public {
@@ -453,13 +461,15 @@ contract ERC20WormholeConfidentialTest is Test {
         bytes32[] memory contexts = new bytes32[](1);
         contexts[0] = bytes32(uint256(777));
 
+        uint256 aliceBalanceBefore = wormhole.balanceOf(alice);
         uint256 bobBalanceBefore = wormhole.balanceOf(bob);
         uint256 entriesBefore = shieldedPool.totalWormholeEntries();
 
-        // Zero confidentialContext = pure withdrawal from confidential → public tokens
+        // convertFromConfidential uses WITHDRAWAL — mints public tokens to recipient
         vm.prank(alice);
         wormhole.convertFromConfidential(bob, 0, 30e18, bytes32(0), confRoot, nullifiers, contexts, "proof");
 
+        assertEq(wormhole.balanceOf(alice), aliceBalanceBefore, "Alice's public balance should not change");
         assertEq(wormhole.balanceOf(bob), bobBalanceBefore + 30e18, "Bob should receive minted public tokens");
         assertTrue(wormhole.nullifierUsed(nullifiers[0]), "Nullifier should be consumed");
         assertGt(shieldedPool.totalWormholeEntries(), entriesBefore, "Wormhole entry should be created for the conversion");
@@ -488,8 +498,6 @@ contract ERC20WormholeConfidentialTest is Test {
         wormhole.convertFromConfidential(bob, 0, 30e18, bytes32(0), confRoot, nullifiers, contexts, "proof");
     }
 
-    // TODO: Check logic of this one.
-    // If non-zero context included in conversion from confidential, both alice and bob's public balance should NOT change.
     function test_convertFromConfidential_withNonZeroContext() public {
         _dealTokens(alice, 100e18);
         bytes32 confContext = bytes32(uint256(12345));
@@ -505,18 +513,17 @@ contract ERC20WormholeConfidentialTest is Test {
         contexts[0] = bytes32(uint256(1));
         bytes32 newConfContext = bytes32(uint256(888));
 
-        // This is wrong. The public balance should not change.
-        // Bug:
-        // Non-zero confidentialContext: burns from sender then mints to recipient.
-        // Alice has 50e18 remaining. Burn 30e18 from alice → 20e18 left. Then mint 30e18 to bob.
+        // Non-zero confidentialContext: WITHDRAWAL calls _mintWithContext which creates
+        // a confidential commitment via _convertToConfidential(address(0), bob, ...).
+        // No public token changes for either party.
         uint256 aliceBalanceBefore = wormhole.balanceOf(alice);
         uint256 bobBalanceBefore = wormhole.balanceOf(bob);
 
         vm.prank(alice);
         wormhole.convertFromConfidential(bob, 0, 30e18, newConfContext, confRoot, nullifiers, contexts, "proof");
 
-        assertEq(wormhole.balanceOf(alice), aliceBalanceBefore - 30e18, "Alice's public tokens should decrease by conversion amount");
-        assertEq(wormhole.balanceOf(bob), bobBalanceBefore + 30e18, "Bob should receive minted public tokens");
+        assertEq(wormhole.balanceOf(alice), aliceBalanceBefore, "Alice's public balance should not change");
+        assertEq(wormhole.balanceOf(bob), bobBalanceBefore, "Bob's public balance should not change");
     }
 
     function test_convertFromConfidential_revert_invalidRoot() public {
@@ -567,17 +574,25 @@ contract ERC20WormholeConfidentialTest is Test {
 
         uint256 entriesBefore = shieldedPool.totalWormholeEntries();
 
-        vm.prank(alice);
+        vm.prank(bob);
         wormhole.convertFromConfidential(bob, 0, 30e18, bytes32(0), confRoot, nullifiers, contexts, "proof");
 
         uint256 entriesAfter = shieldedPool.totalWormholeEntries();
-        assertEq(entriesAfter, entriesBefore + 1, "Should create one wormhole entry for the conversion");
+        // Inner loop: 1 entry (amount=0, context=contexts[0])
+        // _updateOnConfidentialConversion super: 1 entry (from=bob, to=bob, amount=30e18, context=bytes32(0))
+        assertEq(entriesAfter, entriesBefore + 2, "Should create two wormhole entries: inner loop + _mintWithContext");
 
-        ShieldedPool.TransferMetadata memory entry = shieldedPool.wormholeEntry(entriesBefore);
-        assertEq(entry.from, alice);
-        assertEq(entry.to, bob);
-        assertEq(entry.amount, 30e18);
-        assertEq(entry.confidentialContext, bytes32(0), "Withdrawal context should be zero");
+        ShieldedPool.TransferMetadata memory innerEntry = shieldedPool.wormholeEntry(entriesBefore);
+        assertEq(innerEntry.from, bob, "Inner loop entry from should be alice");
+        assertEq(innerEntry.to, bob, "Inner loop entry to should be bob");
+        assertEq(innerEntry.amount, 0, "Inner loop entry amount should be zero");
+        assertEq(innerEntry.confidentialContext, contexts[0], "Inner loop entry should carry the context");
+
+        ShieldedPool.TransferMetadata memory superEntry = shieldedPool.wormholeEntry(entriesBefore + 1);
+        assertEq(superEntry.from, bob, "Super entry from should be bob");
+        assertEq(superEntry.to, bob, "Super entry to should be bob");
+        assertEq(superEntry.amount, 30e18, "Super entry amount should be 30e18");
+        assertEq(superEntry.confidentialContext, bytes32(0), "Super entry context should be zero");
     }
 
     // ========================================
@@ -604,15 +619,25 @@ contract ERC20WormholeConfidentialTest is Test {
         assertEq(entry.confidentialContext, bytes32(0));
     }
 
-    // TODO: Fix core logic so unshield with confidential context doesn't revert
-    function test_unshield_withConfidentialContext_reverts() public {
-        // _unshield mints to `to`, then _convertToConfidential tries to burn from
-        // msg.sender (ShieldedPool) which holds no wormhole tokens.
+    function test_unshield_withConfidentialContext() public {
         bytes32 confContext = bytes32(uint256(42));
 
         vm.prank(address(shieldedPool));
-        vm.expectRevert();
         wormhole.unshield(alice, 0, 50e18, confContext);
+
+        // _mintWithContext with non-zero context calls _convertToConfidential(address(0), alice, ...) — no public mint
+        assertEq(wormhole.balanceOf(alice), 0, "Unshield with context should result in zero public balance");
+
+        uint256 lastEntryId = shieldedPool.totalWormholeEntries() - 1;
+        ShieldedPool.TransferMetadata memory entry = shieldedPool.wormholeEntry(lastEntryId);
+        assertEq(entry.from, address(0), "Unshield entry from should be address(0)");
+        assertEq(entry.to, alice);
+        assertEq(entry.amount, 50e18);
+        assertEq(entry.confidentialContext, confContext, "Unshield entry should carry confidentialContext");
+
+        // Confidential commitment uses from=address(0) since _mintWithContext calls _convertToConfidential(address(0), to, ...)
+        uint256 expectedCommitment = _computeConfidentialCommitment(address(0), alice, 0, 0, 50e18, confContext);
+        assertTrue(wormhole.isConfidentialRoot(bytes32(expectedCommitment)), "Confidential root should be set after unshield with context");
     }
 
     function test_unshield_emitsEvent() public {
@@ -628,42 +653,48 @@ contract ERC20WormholeConfidentialTest is Test {
     // ========================================
 
     function test_fullFlow_depositConvertTransferAndBack() public {
-        // 1. Alice deposits underlying → gets wrapped tokens
+        // 1. Alice deposits underlying → gets wrapped tokens (creates wormhole entry 0)
         _dealTokens(alice, 1000e18);
         assertEq(wormhole.balanceOf(alice), 1000e18);
 
-        // 2. Alice converts some to confidential
+        // 2. Alice converts some to confidential (creates wormhole entry 1)
         bytes32 confContext = bytes32(uint256(42));
         vm.prank(alice);
         wormhole.convertToConfidential(bob, 0, 400e18, confContext);
         assertEq(wormhole.balanceOf(alice), 600e18, "Alice should have 600 after converting 400 to confidential");
 
-        // 3. Alice transfers public tokens to bob
+        // 3. Alice transfers public tokens to bob (creates wormhole entry 2)
         vm.prank(alice);
         wormhole.transfer(bob, 200e18);
         assertEq(wormhole.balanceOf(alice), 400e18);
         assertEq(wormhole.balanceOf(bob), 200e18);
 
-        // 4. Verify wormhole entries
-        assertEq(shieldedPool.totalWormholeEntries(), 2, "Should have 2 entries: convertToConfidential + transfer");
+        // 4. Verify wormhole entries: deposit + convertToConfidential + transfer
+        assertEq(shieldedPool.totalWormholeEntries(), 3, "Should have 3 entries: deposit + convertToConfidential + transfer");
 
-        ShieldedPool.TransferMetadata memory entry0 = shieldedPool.wormholeEntry(0);
-        assertEq(entry0.from, alice);
-        assertEq(entry0.to, bob);
-        assertEq(entry0.amount, 400e18);
-        assertEq(entry0.confidentialContext, confContext, "Entry 0 should carry confidentialContext");
+        ShieldedPool.TransferMetadata memory depositEntry = shieldedPool.wormholeEntry(0);
+        assertEq(depositEntry.from, address(0), "Entry 0 should be from address(0) (deposit)");
+        assertEq(depositEntry.to, alice);
+        assertEq(depositEntry.amount, 1000e18);
+        assertEq(depositEntry.confidentialContext, bytes32(0));
 
-        ShieldedPool.TransferMetadata memory entry1 = shieldedPool.wormholeEntry(1);
-        assertEq(entry1.from, alice);
-        assertEq(entry1.to, bob);
-        assertEq(entry1.amount, 200e18);
-        assertEq(entry1.confidentialContext, bytes32(0), "Entry 1 should have zero confidentialContext");
+        ShieldedPool.TransferMetadata memory convertEntry = shieldedPool.wormholeEntry(1);
+        assertEq(convertEntry.from, alice);
+        assertEq(convertEntry.to, bob);
+        assertEq(convertEntry.amount, 400e18);
+        assertEq(convertEntry.confidentialContext, confContext, "Entry 1 should carry confidentialContext");
 
-        // 5. Approve and commit both entries to wormhole tree
+        ShieldedPool.TransferMetadata memory transferEntry = shieldedPool.wormholeEntry(2);
+        assertEq(transferEntry.from, alice);
+        assertEq(transferEntry.to, bob);
+        assertEq(transferEntry.amount, 200e18);
+        assertEq(transferEntry.confidentialContext, bytes32(0), "Entry 2 should have zero confidentialContext");
+
+        // 5. Approve and commit the convertToConfidential and transfer entries
         vm.prank(screener);
         IShieldedPool.WormholePreCommitment[] memory nodes = new IShieldedPool.WormholePreCommitment[](2);
-        nodes[0] = IShieldedPool.WormholePreCommitment({entryId: 0, approved: true});
-        nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
+        nodes[0] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
+        nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 2, approved: true});
         shieldedPool.appendManyWormholeLeaves(nodes);
 
         assertEq(shieldedPool.totalWormholeCommitments(), 2, "Both entries should be committed");
@@ -677,13 +708,12 @@ contract ERC20WormholeConfidentialTest is Test {
         _dealTokens(alice, 100e18);
         bytes32 confContext1 = bytes32(uint256(111));
 
-        // Convert to confidential
+        // Convert to confidential: burns 60e18 from alice
         vm.prank(alice);
         wormhole.convertToConfidential(bob, 0, 60e18, confContext1);
         assertEq(wormhole.balanceOf(alice), 40e18);
 
-        // TODO: Fix core logic so confidential transfer creates wormhole entry
-        // Confidential transfer (no public token changes, no wormhole entry - for now which is a bug)
+        // Confidential transfer (no public token changes, creates wormhole entry)
         uint256 depositCommitment = _computeConfidentialCommitment(alice, bob, 0, 0, 60e18, confContext1);
         bytes32 confRoot = bytes32(depositCommitment);
 
@@ -697,10 +727,10 @@ contract ERC20WormholeConfidentialTest is Test {
         vm.prank(alice);
         wormhole.confidentialTransfer(bob, confRoot, nullifiers, contexts, "proof");
 
-        assertEq(shieldedPool.totalWormholeEntries(), entriesBefore, "confidentialTransfer should not create wormhole entries");
+        assertEq(shieldedPool.totalWormholeEntries(), entriesBefore + 1, "confidentialTransfer should create one wormhole entry per context");
         assertEq(wormhole.balanceOf(alice), 40e18, "Public balance should not change during confidential transfer");
 
-        // Convert from confidential back to public (withdrawal)
+        // Convert from confidential: WITHDRAWAL mints 40e18 to bob
         uint256 transferCommitment = poseidon2.hash_4(uint256(uint160(alice)), uint256(uint160(bob)), 0, uint256(contexts[0]));
         bytes32 newRoot = bytes32(poseidon2.hash_2(depositCommitment, transferCommitment));
 
@@ -712,6 +742,7 @@ contract ERC20WormholeConfidentialTest is Test {
         vm.prank(alice);
         wormhole.convertFromConfidential(bob, 0, 40e18, bytes32(0), newRoot, nullifiers2, contexts2, "proof");
 
-        assertEq(wormhole.balanceOf(bob), 40e18, "Bob should receive public tokens from convertFromConfidential");
+        assertEq(wormhole.balanceOf(alice), 40e18, "Alice's public balance should not change");
+        assertEq(wormhole.balanceOf(bob), 40e18, "Bob should receive minted public tokens");
     }
 }

@@ -78,8 +78,7 @@ abstract contract ConfidentialWormhole is Wormhole {
         bytes32 confidentialContext
     ) external {
         _convertToConfidential(msg.sender, to, id, amount, confidentialContext);
-        // request the wormhole entry
-        _requestWormholeEntry(msg.sender, to, id, amount, confidentialContext);
+        _updateOnConfidentialConversion(msg.sender, to, id, amount, confidentialContext, ConfidentialConversionType.DEPOSIT);
     }
 
     function convertFromConfidential(
@@ -92,9 +91,8 @@ abstract contract ConfidentialWormhole is Wormhole {
         bytes32[] memory confidentialContexts,
         bytes calldata proof
     ) external {
-        _convertFromConfidential(msg.sender, to, id, amount, confidentialContext, root, nullifiers, confidentialContexts, proof);
-        // request the wormhole entry
-        _requestWormholeEntry(msg.sender, to, id, amount, confidentialContext);
+        _convertFromConfidential(msg.sender, to, root, nullifiers, confidentialContexts, proof);
+        _updateOnConfidentialConversion(msg.sender, to, id, amount, confidentialContext, ConfidentialConversionType.WITHDRAWAL);
     }
 
     function _toConfidentialCommitment(
@@ -110,6 +108,20 @@ abstract contract ConfidentialWormhole is Wormhole {
             fullContext = poseidon2.hash_4(uint160(address(this)), id, amount, fullContext);
         }
         return poseidon2.hash_4(uint256(uint160(from)), uint256(uint160(to)), treeId, fullContext);
+    }
+
+    function _updateOnConfidentialConversion(
+        address from,
+        address to,
+        uint256 id,
+        uint256 amount,
+        bytes32 confidentialContext,
+        ConfidentialConversionType conversionType
+    ) internal virtual {
+        uint256 treeId = currentConfidentialTreeId;
+        uint256 root = _confidentialTrees[treeId].root();
+        emit ConfidentialConversion(from, to, treeId, bytes32(root), id, amount, confidentialContext, conversionType);
+        _requestWormholeEntry(from, to, id, amount, confidentialContext);
     }
 
     // Override this function to convert the transfer to confidential
@@ -128,16 +140,12 @@ abstract contract ConfidentialWormhole is Wormhole {
         uint256 commitment = _toConfidentialCommitment(currentConfidentialTreeId, from, to, id, amount, confidentialContext);
         uint256 newRoot = _confidentialTrees[currentConfidentialTreeId].insert(commitment);
         isConfidentialRoot[bytes32(newRoot)] = true;
-        emit ConfidentialConversion(from, to, currentConfidentialTreeId, bytes32(newRoot), id, amount, confidentialContext, ConfidentialConversionType.DEPOSIT);
     }
 
     // Override this function to convert the transfer from confidential
     function _convertFromConfidential(
         address from,
         address to,
-        uint256 id,
-        uint256 amount,
-        bytes32 confidentialContext,
         bytes32 root,
         bytes32[] memory nullifiers,
         bytes32[] memory confidentialContexts,
@@ -163,11 +171,6 @@ abstract contract ConfidentialWormhole is Wormhole {
         emit ConfidentialTransfer(from, to, currentConfidentialTreeId, bytes32(newRoot), nullifiers, confidentialContexts);
         for (uint256 i = 0; i < confidentialContexts.length; i++) {
             _requestWormholeEntry(from, to, 0, 0, confidentialContexts[i]);
-        }
-        if (confidentialContext != bytes32(0)) {
-            _convertToConfidential(from, to, id, amount, confidentialContext);
-        } else {
-            emit ConfidentialConversion(from, to, currentConfidentialTreeId, bytes32(newRoot), id, amount, confidentialContext, ConfidentialConversionType.WITHDRAWAL);
         }
     }
 

@@ -1021,7 +1021,7 @@ contract ShieldedPoolTest is Test {
         _dealConfidentialWormholeTokens(from, 100e18);
 
         uint256 entriesBefore = shieldedPool.totalWormholeEntries();
-        assertEq(entriesBefore, 0, "Confidential wormhole deposit should not create wormhole entry");
+        assertEq(entriesBefore, 1, "Deposit should create one wormhole entry");
 
         vm.prank(from);
         wormholeConfidential.convertToConfidential(to, 0, 50e18, confContext);
@@ -1101,13 +1101,14 @@ contract ShieldedPoolTest is Test {
         vm.prank(from);
         wormholeConfidential.convertToConfidential(to, 0, 50e18, confContext);
 
+        // Entry 0 = deposit (from=address(0), to=from), Entry 1 = transfer, Entry 2 = convertToConfidential
         IShieldedPool.WormholePreCommitment[] memory nodes = new IShieldedPool.WormholePreCommitment[](2);
-        nodes[0] = IShieldedPool.WormholePreCommitment({entryId: 0, approved: true});
-        nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
+        nodes[0] = IShieldedPool.WormholePreCommitment({entryId: 1, approved: true});
+        nodes[1] = IShieldedPool.WormholePreCommitment({entryId: 2, approved: true});
 
         uint256[2] memory expectedCommitments = [
-            _getWormholeCommitmentWithContext(0, true, from, to, address(wormholeConfidential), 0, 100e18, bytes32(0)),
-            _getWormholeCommitmentWithContext(1, true, from, to, address(wormholeConfidential), 0, 50e18, confContext)
+            _getWormholeCommitmentWithContext(1, true, from, to, address(wormholeConfidential), 0, 100e18, bytes32(0)),
+            _getWormholeCommitmentWithContext(2, true, from, to, address(wormholeConfidential), 0, 50e18, confContext)
         ];
 
         vm.prank(screener);
@@ -1171,8 +1172,7 @@ contract ShieldedPoolTest is Test {
         assertEq(entry.confidentialContext, bytes32(0), "Unshield entry context should be zero");
     }
 
-    // TODO: Fix core logic so that this doesn't revert
-    function test_shieldedTransfer_unshield_confidentialContext_reverts() public {
+    function test_shieldedTransfer_unshield_confidentialContext() public {
         address from = makeAddr("from");
         address unshieldTo = makeAddr("unshield to");
         bytes32 confContext = bytes32(uint256(999));
@@ -1212,11 +1212,27 @@ contract ShieldedPoolTest is Test {
             withdrawals: withdrawals
         });
 
-        // TODO: Fix core logic so that this doesn't revert
-        // _unshield mints to `to` then tries _convertToConfidential which burns from
-        // msg.sender (ShieldedPool) — ShieldedPool holds no wormhole tokens, so this reverts.
-        vm.expectRevert();
         shieldedPool.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+
+        // _mint(unshieldTo, 50e18, confContext) → mints then burns to confidential
+        assertEq(wormholeConfidential.balanceOf(unshieldTo), 0, "Unshield with confidential context should result in zero public balance");
+
+        _verifyUnshieldConfidentialEntry(unshieldTo, confContext);
+    }
+
+    function _verifyUnshieldConfidentialEntry(address unshieldTo, bytes32 confContext) internal view {
+        uint256 lastEntryId = shieldedPool.totalWormholeEntries() - 1;
+        ShieldedPool.TransferMetadata memory entry = shieldedPool.wormholeEntry(lastEntryId);
+        assertEq(entry.from, address(0), "Unshield entry from should be address(0)");
+        assertEq(entry.to, unshieldTo, "Unshield entry to should be the recipient");
+        assertEq(entry.asset, address(wormholeConfidential), "Unshield entry asset should be confidential wormhole");
+        assertEq(entry.amount, 50e18, "Unshield entry amount should match");
+        assertEq(entry.confidentialContext, confContext, "Unshield entry should carry the confidentialContext");
+
+        // Confidential commitment uses from=address(0) since _mintWithContext calls _convertToConfidential(address(0), to, ...)
+        uint256 fullContext = poseidon2.hash_4(uint160(address(wormholeConfidential)), 0, 50e18, uint256(confContext));
+        uint256 expectedCommitment = poseidon2.hash_4(0, uint256(uint160(unshieldTo)), 0, fullContext);
+        assertTrue(wormholeConfidential.isConfidentialRoot(bytes32(expectedCommitment)), "Confidential root should be set after unshield with context");
     }
 
     function test_ragequit_confidentialContextEntry() public {

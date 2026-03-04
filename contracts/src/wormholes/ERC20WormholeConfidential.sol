@@ -54,39 +54,32 @@ contract ERC20WormholeConfidential is ERC20, ConfidentialWormhole, Ownable {
         renounceOwnership();
     }
 
-    function _convertToConfidential(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount,
-        bytes32 confidentialContext
-    ) internal override {
-        super._convertToConfidential(from, to, id, amount, confidentialContext);
-        // burn public tokens
-        _burn(from, amount);
-    }
-
-    function _convertFromConfidential(
+    function _updateOnConfidentialConversion(
         address from,
         address to,
         uint256 id,
         uint256 amount,
         bytes32 confidentialContext,
-        bytes32 root,
-        bytes32[] memory nullifiers,
-        bytes32[] memory confidentialContexts,
-        bytes calldata proof
-    ) internal virtual override {
-        super._convertFromConfidential(from, to, id, amount, confidentialContext, root, nullifiers, confidentialContexts, proof);
-        // mint public tokens
-        _mint(to, amount);
+        ConfidentialConversionType conversionType
+    ) internal override {
+        if (conversionType == ConfidentialConversionType.DEPOSIT) {
+            _burn(from, amount);
+        } else if (conversionType == ConfidentialConversionType.WITHDRAWAL) {
+            _mintWithContext(from, to, amount, confidentialContext);
+        }
+        super._updateOnConfidentialConversion(from, to, id, amount, confidentialContext, conversionType);
+    }
+
+    function _mintWithContext(address from, address to, uint256 amount, bytes32 confidentialContext) internal {
+        if (confidentialContext != bytes32(0)) {
+            _convertToConfidential(from, to, 0, amount, confidentialContext);
+        } else {
+            _mint(to, amount);
+        }
     }
 
     function _unshield(address to, uint256 /* id */, uint256 amount, bytes32 confidentialContext) internal override {
-        _mint(to, amount);
-        if (confidentialContext != bytes32(0)) {
-            _convertToConfidential(msg.sender, to, 0, amount, confidentialContext);
-        }
+        _mintWithContext(address(0), to, amount, confidentialContext);
         _requestWormholeEntry(address(0), to, 0, amount, confidentialContext);
     }
 
@@ -138,6 +131,13 @@ contract ERC20WormholeConfidential is ERC20, ConfidentialWormhole, Ownable {
      * @dev Allow a user to deposit underlying tokens and mint the corresponding number of wrapped tokens.
      */
     function deposit(uint256 value, address receiver) public virtual returns (bool) {
+        return depositWithContext(value, receiver, bytes32(0));
+    }
+
+    /**
+     * @dev Allow a user to deposit underlying tokens and mint the corresponding number of wrapped tokens.
+     */
+    function depositWithContext(uint256 value, address receiver, bytes32 confidentialContext) public virtual returns (bool) {
         address sender = _msgSender();
         if (sender == address(this)) {
             revert ERC20InvalidSender(address(this));
@@ -149,7 +149,13 @@ contract ERC20WormholeConfidential is ERC20, ConfidentialWormhole, Ownable {
         unchecked {
             _supply += value;
         }
-        _mint(receiver, value);
+        _mintWithContext(address(0), receiver, value, confidentialContext);
+        if (confidentialContext != bytes32(0)) {
+            uint256 treeId = currentConfidentialTreeId;
+            uint256 root = _confidentialTrees[treeId].root();
+            emit ConfidentialConversion(address(0), receiver, treeId, bytes32(root), 0, value, confidentialContext, ConfidentialConversionType.DEPOSIT);
+        }
+        _requestWormholeEntry(address(0), receiver, 0, value, confidentialContext);
         return true;
     }
 
@@ -180,7 +186,8 @@ contract ERC20WormholeConfidential is ERC20, ConfidentialWormhole, Ownable {
      */
     function _recover(address account) internal virtual returns (uint256) {
         uint256 value = _underlying.balanceOf(address(this)) - actualSupply();
-        _mint(account, value);
+        _mintWithContext(address(0), account, value, bytes32(0));
+        _requestWormholeEntry(address(0), account, 0, value, bytes32(0));
         return value;
     }
 }
