@@ -6,7 +6,7 @@ import {MockERC20} from "../mock/MockERC20.sol";
 import {MockVerifier} from "../mock/MockVerifier.sol";
 import {MockCrossL2Prover} from "../mock/MockCrossL2Prover.sol";
 import {ShieldedPool} from "../../src/ShieldedPool.sol";
-import {ERC20WormholeConfidential} from "../../src/wormholes/ERC20WormholeConfidential.sol";
+import {ERC20ConfidentialWormhole} from "../../src/wormholes/ERC20ConfidentialWormhole.sol";
 import {ConfidentialWormhole} from "../../src/ConfidentialWormhole.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
@@ -15,10 +15,10 @@ import {IWormhole} from "../../src/interfaces/IWormhole.sol";
 import {IShieldedPool} from "../../src/interfaces/IShieldedPool.sol";
 import {SNARK_SCALAR_FIELD} from "../../src/utils/Constants.sol";
 
-contract ERC20WormholeConfidentialTest is Test {
+contract ERC20ConfidentialWormholeTest is Test {
     MockERC20 underlying;
     ShieldedPool shieldedPool;
-    ERC20WormholeConfidential wormhole;
+    ERC20ConfidentialWormhole wormhole;
 
     IPoseidon2 poseidon2;
     MockVerifier utxoVerifier;
@@ -38,7 +38,7 @@ contract ERC20WormholeConfidentialTest is Test {
 
         shieldedPool = new ShieldedPool(poseidon2, utxoVerifier, crossL2Prover, owner);
         underlying = new MockERC20();
-        wormhole = new ERC20WormholeConfidential(
+        wormhole = new ERC20ConfidentialWormhole(
             shieldedPool, poseidon2, confVerifier, "Shielded ", "s"
         );
         wormhole.initialize(abi.encodePacked(address(underlying)));
@@ -84,18 +84,18 @@ contract ERC20WormholeConfidentialTest is Test {
     }
 
     function test_initialize_revert_selfAddress() public {
-        ERC20WormholeConfidential w2 = new ERC20WormholeConfidential(
+        ERC20ConfidentialWormhole w2 = new ERC20ConfidentialWormhole(
             shieldedPool, poseidon2, confVerifier, "zk", "zk"
         );
-        vm.expectRevert(abi.encodeWithSelector(ERC20WormholeConfidential.ERC20InvalidUnderlying.selector, address(w2)));
+        vm.expectRevert(abi.encodeWithSelector(ERC20ConfidentialWormhole.ERC20InvalidUnderlying.selector, address(w2)));
         w2.initialize(abi.encodePacked(address(w2)));
     }
 
     function test_initialize_revert_zeroAddress() public {
-        ERC20WormholeConfidential w2 = new ERC20WormholeConfidential(
+        ERC20ConfidentialWormhole w2 = new ERC20ConfidentialWormhole(
             shieldedPool, poseidon2, confVerifier, "zk", "zk"
         );
-        vm.expectRevert(abi.encodeWithSelector(ERC20WormholeConfidential.ERC20InvalidUnderlying.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(ERC20ConfidentialWormhole.ERC20InvalidUnderlying.selector, address(0)));
         w2.initialize(abi.encodePacked(address(0)));
     }
 

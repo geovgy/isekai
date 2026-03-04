@@ -13,7 +13,7 @@ import {MockVerifier} from "../mock/MockVerifier.sol";
 import {MockCrossL2Prover} from "../mock/MockCrossL2Prover.sol";
 import {IVerifier} from "../../src/interfaces/IVerifier.sol";
 import {ERC4626Wormhole} from "../../src/wormholes/ERC4626Wormhole.sol";
-import {ERC20WormholeConfidential} from "../../src/wormholes/ERC20WormholeConfidential.sol";
+import {ERC20ConfidentialWormhole} from "../../src/wormholes/ERC20ConfidentialWormhole.sol";
 import {ConfidentialWormhole} from "../../src/ConfidentialWormhole.sol";
 import {IWormhole} from "../../src/interfaces/IWormhole.sol";
 import {SNARK_SCALAR_FIELD} from "../../src/utils/Constants.sol";
@@ -31,7 +31,7 @@ contract ShieldedPoolTest is Test {
     MockVerifier verifier;
     MockCrossL2Prover crossL2Prover;
 
-    ERC20WormholeConfidential wormholeConfidential;
+    ERC20ConfidentialWormhole wormholeConfidential;
     MockERC20 confUnderlying;
     MockVerifier confVerifier;
 
@@ -97,7 +97,7 @@ contract ShieldedPoolTest is Test {
 
         confUnderlying = new MockERC20();
         confVerifier = new MockVerifier();
-        wormholeConfidential = new ERC20WormholeConfidential(shieldedPool, poseidon2, confVerifier, "zk", "zk");
+        wormholeConfidential = new ERC20ConfidentialWormhole(shieldedPool, poseidon2, confVerifier, "zk", "zk");
         wormholeConfidential.initialize(abi.encodePacked(address(confUnderlying)));
     }
 

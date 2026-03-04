@@ -11,7 +11,7 @@ import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {LeanIMT, LeanIMTData} from "../libraries/LeanIMT.sol";
 
 // A modified version of OpenZeppelin's ERC20Wrapper that supports wormhole
-contract ERC20WormholeConfidential is ERC20, ConfidentialWormhole, Ownable {
+contract ERC20ConfidentialWormhole is ERC20, ConfidentialWormhole, Ownable {
     using SafeERC20 for IERC20;
     using LeanIMT for LeanIMTData;
 
