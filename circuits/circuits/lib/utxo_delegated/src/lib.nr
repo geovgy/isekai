@@ -70,7 +70,7 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
 
     // abi.encode(...) for the struct fields, excluding the typehash prefix that
     // `to_struct_hash` prepends internally.
-    let mut encoded: [u8; 384] = [0; 384];
+    let mut encoded: [u8; 416] = [0; 416];
     for i in 0..32 {
         encoded[i] = chain_id_bytes[i];
         encoded[32 + i] = owner_bytes[i];
@@ -83,8 +83,8 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
         encoded[256 + i] = amount_type_bytes[i];
         encoded[288 + i] = max_cumulative_amount_bytes[i];
         encoded[320 + i] = max_nonce_bytes[i];
-        encoded[320 + i] = time_interval_bytes[i];
-        encoded[352 + i] = transfer_type_bytes[i];
+        encoded[352 + i] = time_interval_bytes[i];
+        encoded[384 + i] = transfer_type_bytes[i];
     }
 
     let struct_hash = eip712::to_struct_hash(delegation_typehash, encoded);
@@ -136,7 +136,9 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
     }
 
     let mut signer_commitment = signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
-    assert_merkle_leaf_membership(signer_root, signer_commitment, signer_note.index, signer_note.siblings);
+    if (signer_note.nonce > 0) {
+        assert_merkle_leaf_membership(signer_root, signer_commitment, signer_note.index, signer_note.siblings);
+    }
     
     let signer_nullifier = signer_note.get_nullifier(delegate_address, owner_address, delegation_hash);
 

@@ -24,6 +24,31 @@ export interface OutputNote {
   transfer_type: TransferType;
 }
 
+export interface SignerDelegation {
+  chainId: bigint;
+  owner: Address;
+  delegate: Address;
+  startTime: bigint;
+  endTime: bigint;
+  token: Address;
+  tokenId: bigint;
+  amount: bigint;
+  amountType: number;
+  maxCumulativeAmount: bigint;
+  maxNonce: bigint;
+  timeInterval: bigint;
+  transferType: number;
+}
+
+export interface SignerNote {
+  index: bigint;
+  siblings: bigint[];
+  total_amount: bigint;
+  nonce: bigint;
+  timestamp: bigint;
+  blinding: bigint;
+}
+
 export enum ConfidentialType {
   NONE = 0,
   PARTIAL = 1,

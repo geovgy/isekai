@@ -1,7 +1,7 @@
 import { Noir, type InputMap, type CompiledCircuit } from "@noir-lang/noir_js";
 import { Barretenberg, type ProofData, UltraHonkBackend, type VerifierTarget } from "@aztec/bb.js";
 
-export type CircuitType = "utxo_2x2" | "confidential_utxo_2x2" | "ragequit";
+export type CircuitType = "utxo_2x2" | "delegated_utxo_2x2" | "confidential_utxo_2x2" | "ragequit";
 
 function getCircuitPath(type: CircuitType): string {
   return `../circuits/main/${type}/target/${type}.json`;
