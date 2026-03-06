@@ -1,0 +1,8 @@
+[package]
+name = "delegated_utxo_2x2"
+type = "bin"
+authors = [""]
+
+[dependencies]
+delegated_utxo = { path = "../../lib/utxo_delegated" }
+joinsplit = { path = "../../lib/joinsplit" }
