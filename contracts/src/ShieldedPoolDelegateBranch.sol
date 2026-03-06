@@ -32,14 +32,15 @@ contract ShieldedPoolBranch is EIP712, Ownable {
         uint64 chainId;
         address owner;
         address delegate;
-        uint256 startTime;
-        uint256 endTime;
+        uint64 startTime;
+        uint64 endTime;
         address token;
         uint256 tokenId;
         uint256 amount;
         uint8 amountType; // 0: exact (enforce tokenId), 1: max (enforce tokenId), 2: min (enforce tokenId), 3: exact (ignore tokenId), 4: max (ignore tokenId), 5: min (ignore tokenId)
-        uint256 maxNonce;
-        uint256 timeInterval;
+        uint64 maxCumulativeAmount;
+        uint64 maxNonce;
+        uint64 timeInterval;
         uint8 transferType; // 0: transfer, 1: withdrawal
     }
 
@@ -47,7 +48,7 @@ contract ShieldedPoolBranch is EIP712, Ownable {
 
     bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
     bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32 signerRoot,bytes32 signerCommitment,bytes32 signerNullifier,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
-    bytes32 private constant SIGNER_DELEGATION_TYPEHASH = keccak256("SignerDelegation(uint64 chainId,address owner,address delegate,uint256 startTime,uint256 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint256 maxNonce,uint256 timeInterval,uint8 transferType)");
+    bytes32 private constant SIGNER_DELEGATION_TYPEHASH = keccak256("SignerDelegation(uint64 chainId,address owner,address delegate,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)");
 
     IShieldedPool public immutable masterShieldedPool;
     IPoseidon2 public immutable poseidon2;
@@ -320,6 +321,7 @@ contract ShieldedPoolBranch is EIP712, Ownable {
                     signerDelegation.tokenId,
                     signerDelegation.amount,
                     signerDelegation.amountType,
+                    signerDelegation.maxCumulativeAmount,
                     signerDelegation.maxNonce,
                     signerDelegation.timeInterval,
                     signerDelegation.transferType
