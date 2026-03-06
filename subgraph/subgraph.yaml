@@ -17,23 +17,20 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - Ragequit
-        - ShieldedTransfer
         - VerifierAdded
         - WormholeApprover
         - WormholeCommitment
         - WormholeEntry
         - WormholeNullifier
-        - ShieldNullifier
         - WormholeTree
-        - ShieldedTree
-        - BranchTreesUpdated
+        - Branch
+        - BranchAdded
+        - BranchWormholeTreeSnapshot
         - MasterTreesUpdated
         - MasterShieldedTreeLeaf
         - MasterWormholeTreeLeaf
         - MasterShieldedTree
         - MasterWormholeTree
-        - BranchShieldedTreeSnapshot
-        - BranchWormholeTreeSnapshot
         - MasterShieldedTreeSnapshot
         - MasterWormholeTreeSnapshot
       abis:
@@ -43,24 +40,21 @@ dataSources:
         - event: Ragequit(indexed uint256,indexed address,indexed
             address,address,uint256,uint256)
           handler: handleRagequit
-        - event: ShieldedTransfer(indexed
-            uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256)[])
-          handler: handleShieldedTransfer
         - event: VerifierAdded(address,uint256,uint256)
           handler: handleVerifierAdded
         - event: WormholeApproverSet(indexed address,bool)
           handler: handleWormholeApproverSet
         - event: WormholeCommitment(indexed uint256,indexed
-            uint256,uint256,uint256,bytes32,address,address,uint256,bool)
+            uint256,uint256,uint256,address,uint256,address,address,uint256,bool)
           handler: handleWormholeCommitment
         - event: WormholeEntry(indexed uint256,indexed address,indexed
-            address,address,uint256,uint256)
+            address,address,uint256,uint256,bytes32)
           handler: handleWormholeEntry
         - event: WormholeNullifier(indexed bytes32)
           handler: handleWormholeNullifier
-        - event: BranchTreesUpdated(uint256,uint256,indexed uint256,indexed
-            uint256,uint256,uint256)
-          handler: handleBranchTreesUpdated
+        - event: WormholeTreeUpdated(indexed uint256,indexed uint256,indexed
+            uint256,uint256)
+          handler: handleWormholeTreeUpdated
         - event: MasterTreesUpdated(uint256,uint256,indexed uint256,indexed
             uint256,uint256,uint256)
           handler: handleMasterTreesUpdated
@@ -70,4 +64,39 @@ dataSources:
         - event: MasterWormholeTreeLeaf(indexed uint256,indexed uint256,indexed
             uint256,uint256,uint256)
           handler: handleMasterWormholeTreeLeaf
+        - event: BranchAdded(indexed uint64,indexed address)
+          handler: handleBranchAdded
       file: ./src/shielded-pool.ts
+templates:
+  - kind: ethereum/contract
+    name: ShieldedPoolDelegateBranch
+    network: sepolia
+    source:
+      abi: ShieldedPoolDelegateBranch
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - ShieldedTransfer
+        - ShieldNullifier
+        - Withdrawal
+        - BranchVerifierAdded
+        - BranchShieldedTree
+        - BranchShieldedTreeSnapshot
+        - BranchShieldedTreeUpdate
+        - SignerTree
+        - SignerTreeUpdate
+      abis:
+        - name: ShieldedPoolDelegateBranch
+          file: ../contracts/out/ShieldedPoolDelegateBranch.sol/ShieldedPoolBranch.json
+      eventHandlers:
+        - event: ShieldedTransfer(indexed uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256,bytes32)[],bytes32,bytes32)
+          handler: handleBranchShieldedTransfer
+        - event: ShieldedTreeUpdated(indexed uint256,indexed uint256,uint256,uint256)
+          handler: handleBranchShieldedTreeUpdated
+        - event: SignerTreeUpdated(indexed uint256,indexed uint256,uint256,uint256)
+          handler: handleSignerTreeUpdated
+        - event: VerifierAdded(address,uint256,uint256)
+          handler: handleBranchVerifierAdded
+      file: ./src/shielded-pool-delegate-branch.ts

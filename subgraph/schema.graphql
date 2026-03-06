@@ -11,8 +11,26 @@ type Ragequit @entity(immutable: true) {
   transactionHash: Bytes!
 }
 
+type Branch @entity(immutable: false) {
+  id: Bytes! # branch address
+  address: Bytes! # address
+  chainId: BigInt! # uint64
+  master: Bytes! # address
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type BranchAdded @entity(immutable: true) {
+  id: Bytes!
+  chainId: BigInt! # uint64
+  branch: Bytes! # address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
 type MasterShieldedTreeLeaf @entity(immutable: true) {
-  id: Bytes! # treeId:branchRoot:branchChainId
+  id: ID! # treeId:branchRoot:branchChainId
   treeId: BigInt! # uint256
   branchRoot: BigInt! # uint256
   branchChainId: BigInt! # uint256
@@ -23,7 +41,7 @@ type MasterShieldedTreeLeaf @entity(immutable: true) {
 }
 
 type MasterWormholeTreeLeaf @entity(immutable: true) {
-  id: Bytes! # masterTreeId:branchRoot:branchChainId
+  id: ID! # masterTreeId:branchRoot:branchChainId
   treeId: BigInt! # uint256
   branchRoot: BigInt! # uint256
   branchChainId: BigInt! # uint256
@@ -34,7 +52,7 @@ type MasterWormholeTreeLeaf @entity(immutable: true) {
 }
 
 type MasterShieldedTree @entity(immutable: false) {
-  id: Bytes! # treeId
+  id: ID! # treeId
   treeId: BigInt! # uint256
   leaves: [BigInt!]! # uint256[]
   size: BigInt! # uint256
@@ -43,7 +61,7 @@ type MasterShieldedTree @entity(immutable: false) {
 }
 
 type MasterWormholeTree @entity(immutable: false) {
-  id: Bytes! # treeId
+  id: ID! # treeId
   treeId: BigInt! # uint256
   leaves: [BigInt!]! # uint256[]
   size: BigInt! # uint256
@@ -52,10 +70,11 @@ type MasterWormholeTree @entity(immutable: false) {
 }
 
 type BranchShieldedTreeSnapshot @entity(immutable: true) {
-  id: ID! # treeId:root
+  id: ID! # branchAddress:treeId:root
+  branch: Branch!
   treeId: BigInt! # uint256
   root: BigInt! # uint256
-	leaves: [BigInt!]! # uint256[]
+  leaves: [BigInt!]! # uint256[]
   size: BigInt! # uint256
   blockNumber: BigInt!
   createdAt: BigInt! # uint256
@@ -65,7 +84,7 @@ type BranchWormholeTreeSnapshot @entity(immutable: true) {
   id: ID! # treeId:root
   treeId: BigInt! # uint256
   root: BigInt! # uint256
-	leaves: [BigInt!]! # uint256[]
+  leaves: [BigInt!]! # uint256[]
   size: BigInt! # uint256
   blockNumber: BigInt!
   createdAt: BigInt! # uint256
@@ -75,7 +94,7 @@ type MasterShieldedTreeSnapshot @entity(immutable: true) {
   id: ID! # treeId:root
   treeId: BigInt! # uint256
   root: BigInt! # uint256
-	leaves: [BigInt!]! # uint256[]
+  leaves: [BigInt!]! # uint256[]
   size: BigInt! # uint256
   blockNumber: BigInt!
   createdAt: BigInt! # uint256
@@ -85,23 +104,55 @@ type MasterWormholeTreeSnapshot @entity(immutable: true) {
   id: ID! # treeId:root
   treeId: BigInt! # uint256
   root: BigInt! # uint256
-	leaves: [BigInt!]! # uint256[]
+  leaves: [BigInt!]! # uint256[]
   size: BigInt! # uint256
   blockNumber: BigInt!
   createdAt: BigInt! # uint256
 }
 
-type ShieldedTree @entity(immutable: false) {
-  id: Bytes! # treeId
-	treeId: BigInt! # uint256
-  leaves: [BigInt!]! # uint256[]
+type BranchShieldedTree @entity(immutable: false) {
+  id: ID! # branch:treeId
+  branch: Branch!
+  treeId: BigInt! # uint256
+  roots: [BigInt!]! # uint256[]
   size: BigInt! # uint256
   createdAt: BigInt! # uint256
   updatedAt: BigInt! # uint256
 }
 
+type BranchShieldedTreeUpdate @entity(immutable: true) {
+  id: ID! # branch:treeId:root
+  branch: Branch!
+  treeId: BigInt! # uint256
+  root: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type SignerTree @entity(immutable: false) {
+  id: ID! # branch:treeId
+  branch: Branch!
+  branchAddress: Bytes! # address
+  treeId: BigInt! # uint256
+  roots: [BigInt!]! # uint256[]
+  size: BigInt! # uint256
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type SignerTreeUpdate @entity(immutable: true) {
+  id: ID! # branch:treeId:root
+  branch: Branch!
+  treeId: BigInt! # uint256
+  root: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
 type WormholeTree @entity(immutable: false) {
-  id: Bytes! # treeId
+  id: ID! # treeId
   treeId: BigInt! # uint256
   leaves: [BigInt!]! # uint256[]
   commitments: [WormholeCommitment!]! # WormholeCommitment[]
@@ -111,34 +162,49 @@ type WormholeTree @entity(immutable: false) {
 }
 
 type ShieldedTransfer @entity(immutable: true) {
-  id: Bytes!
+  id: ID! # branch:treeId:startIndex
+  branch: Branch!
   treeId: BigInt! # uint256
   startIndex: BigInt! # uint256
   commitments: [BigInt!]! # uint256[]
   nullifiers: [ShieldNullifier!]! # ShieldNullifier[]
   withdrawals: [Withdrawal!]! # Withdrawal[]
+  signerCommitment: Bytes! # bytes32
+  signerNullifier: Bytes! # bytes32
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   transactionHash: Bytes!
 }
 
 type Withdrawal @entity(immutable: true) {
-  id: ID! # shieldedTransfer id:withdrawalIndex
+  id: ID! # branchShieldedTransfer id:withdrawalIndex
   to: Bytes! # address
   token: Bytes! # address
   tokenId: BigInt! # uint256
   amount: BigInt! # uint256
-  shieldedTransfer: ShieldedTransfer! @derivedFrom(field: "withdrawals") # ShieldedTransfer
+  confidentialContext: Bytes! # bytes32
+  shieldedTransfer: ShieldedTransfer! @derivedFrom(field: "withdrawals")
 }
 
 type ShieldNullifier @entity(immutable: true) {
   id: Bytes! # nullifier
   nullifier: Bytes! # bytes32
-  shieldedTransfer: ShieldedTransfer! @derivedFrom(field: "nullifiers") # ShieldedTransfer
+  shieldedTransfer: ShieldedTransfer! @derivedFrom(field: "nullifiers")
 }
 
 type VerifierAdded @entity(immutable: true) {
   id: Bytes!
+  verifier: Bytes! # address
+  inputs: BigInt! # uint256
+  outputs: BigInt! # uint256
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type BranchVerifierAdded @entity(immutable: true) {
+  id: Bytes!
+  branch: Branch!
   verifier: Bytes! # address
   inputs: BigInt! # uint256
   outputs: BigInt! # uint256
@@ -161,7 +227,8 @@ type WormholeCommitment @entity(immutable: true) {
   commitment: BigInt! # uint256
   treeId: BigInt! # uint256
   leafIndex: BigInt! # uint256
-  assetId: Bytes! # bytes32
+  token: Bytes! # address
+  tokenId: BigInt! # uint256
   from: Bytes! # address
   to: Bytes! # address
   amount: BigInt! # uint256
@@ -173,13 +240,14 @@ type WormholeCommitment @entity(immutable: true) {
 }
 
 type WormholeEntry @entity(immutable: false) {
-  id: Bytes! # entryId
+  id: ID! # entryId
   entryId: BigInt! # uint256
   token: Bytes! # address
   from: Bytes! # address
   to: Bytes! # address
   tokenId: BigInt! # uint256
   amount: BigInt! # uint256
+  confidentialContext: Bytes! # bytes32
   commitment: WormholeCommitment @derivedFrom(field: "entry") # if undefined, the entry is not appended to the wormhole tree yet
   submitted: Boolean! # bool
   blockNumber: BigInt!
