@@ -37,22 +37,18 @@ contract ShieldedPoolBranch is EIP712, Ownable {
     ICrossL2ProverV2 public immutable crossL2Prover;
 
     uint256 public currentShieldedTreeId;
-    uint256 public currentWormholeTreeId;
 
     mapping(uint256 inputs => mapping(uint256 outputs => IVerifier)) internal _utxoVerifiers;
     
     mapping(uint256 treeId => LeanIMTData) internal _branchShieldedTrees; // chain-specific whose root appends to master shielded tree
-    mapping(uint256 treeId => LeanIMTData) internal _branchWormholeTrees; // chain-specific whose root appends to master wormhole tree
 
     mapping(uint64 chainId => uint256 lastBlockNumber) internal _lastBlockNumbers;
 
     event ShieldedTransfer(uint256 indexed treeId, uint256 startIndex, uint256[] commitments, bytes32[] nullifiers, IShieldedPool.Withdrawal[] withdrawals);
 
-    event BranchTreesUpdated(
-        uint256 shieldedTreeId,
-        uint256 wormholeTreeId,
-        uint256 indexed branchShieldedRoot, 
-        uint256 indexed branchWormholeRoot,
+    event ShieldedTreeUpdated(
+        uint256 indexed shieldedTreeId,
+        uint256 indexed shieldedRoot, 
         uint256 blockNumber,
         uint256 blockTimestamp
     );
@@ -63,12 +59,7 @@ contract ShieldedPoolBranch is EIP712, Ownable {
         masterShieldedPool = masterShieldedPool_;
         poseidon2 = masterShieldedPool_.poseidon2();
         _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
-        _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
         crossL2Prover = masterShieldedPool_.crossL2Prover();
-    }
-
-    function branchWormholeTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
-        return (bytes32(_branchWormholeTrees[treeId].root()), _branchWormholeTrees[treeId].size, _branchWormholeTrees[treeId].depth);
     }
 
     function branchShieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
@@ -131,7 +122,7 @@ contract ShieldedPoolBranch is EIP712, Ownable {
 
         emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
 
-        emit BranchTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, root, _branchWormholeTrees[currentWormholeTreeId].root(), block.number, block.timestamp);
+        emit ShieldedTreeUpdated(currentShieldedTreeId, root, block.number, block.timestamp);
 
         if (block.chainid == MASTER_CHAIN_ID) {
             // Insert branch shielded root into master shielded tree
@@ -140,12 +131,12 @@ contract ShieldedPoolBranch is EIP712, Ownable {
     }
 
     function updateMasterTrees(bytes calldata proof) external {
-        (uint64 chainId, bytes32 branchShieldedRoot,, uint256 blockNumber, uint256 timestamp) = _verifyAndExtractBranchTreeEvent(proof);
-        masterShieldedPool.insertShieldedMasterLeaf(chainId, uint256(branchShieldedRoot), blockNumber, timestamp);
+        (uint64 chainId,, bytes32 shieldedTreeRoot, uint256 blockNumber, uint256 timestamp) = _verifyAndExtractBranchTreeEvent(proof);
+        masterShieldedPool.insertShieldedMasterLeaf(chainId, uint256(shieldedTreeRoot), blockNumber, timestamp);
     }
 
     // TODO: Verify and extract branch tree event log from branch chain
-    function _verifyAndExtractBranchTreeEvent(bytes calldata proof) internal returns (uint64 chainId, bytes32 branchShieldedRoot, bytes32 branchWormholeRoot, uint256 blockNumber, uint256 timestamp) {
+    function _verifyAndExtractBranchTreeEvent(bytes calldata proof) internal returns (uint64 chainId, uint256 shieldedTreeId, bytes32 shieldedTreeRoot, uint256 blockNumber, uint256 timestamp) {
         // TODO: Implement
         (
             uint32 emittingChainId,
@@ -168,17 +159,17 @@ contract ShieldedPoolBranch is EIP712, Ownable {
                 )
             }
         }
-        require(topicsArray[0] == BranchTreesUpdated.selector, "Invalid event signature");
-        bytes32 shieldedTreeRoot = topicsArray[1];
-        bytes32 wormholeTreeRoot = topicsArray[2];
+        require(topicsArray[0] == ShieldedTreeUpdated.selector, "Invalid event signature");
+        shieldedTreeId = uint256(topicsArray[1]);
+        shieldedTreeRoot = topicsArray[2];
 
         // TODO: update this to handle rollbacks
         // Should change to conditional that handles rollback if blockNumber < _lastBlockNumbers[chainId] && blockTimestamp < _lastBlockTimestamps[chainId]
-        (,,blockNumber, timestamp) = abi.decode(unindexedData, (uint256, uint256, uint256, uint256));
+        (blockNumber, timestamp) = abi.decode(unindexedData, (uint256, uint256));
         require(blockNumber > _lastBlockNumbers[chainId], "Branch tree event is not new");
         _lastBlockNumbers[chainId] = blockNumber;
 
-        return (chainId, shieldedTreeRoot, wormholeTreeRoot, blockNumber, timestamp);
+        return (chainId, shieldedTreeId, shieldedTreeRoot, blockNumber, timestamp);
     }
 
     function _formatPublicInputs(ShieldedTx memory shieldedTx, bytes32 messageHash) internal view returns (bytes32[] memory inputs) {

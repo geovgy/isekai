@@ -513,11 +513,11 @@ contract ShieldedPoolTest is Test {
     // ========================================
 
     function _encodeBranchTreesUpdatedTopics(
-        uint256 branchShieldedRoot,
-        uint256 branchWormholeRoot
+        uint256 shieldedTreeId,
+        bytes32 shieldedTreeRoot
     ) internal pure returns (bytes memory) {
-        bytes32 eventSig = ShieldedPoolBranch.BranchTreesUpdated.selector;
-        return abi.encodePacked(eventSig, bytes32(branchShieldedRoot), bytes32(branchWormholeRoot));
+        bytes32 eventSig = ShieldedPoolBranch.ShieldedTreeUpdated.selector;
+        return abi.encodePacked(eventSig, bytes32(shieldedTreeId), shieldedTreeRoot);
     }
 
     function _encodeMasterTreesUpdatedTopics(
@@ -531,13 +531,13 @@ contract ShieldedPoolTest is Test {
     function _setupBranchEventProof(
         uint32 chainId,
         address emittingContract,
-        uint256 branchShieldedRoot,
-        uint256 branchWormholeRoot,
+        uint256 shieldedTreeRoot,
         uint256 blockNumber,
         bool valid
     ) internal {
-        bytes memory topics = _encodeBranchTreesUpdatedTopics(branchShieldedRoot, branchWormholeRoot);
-        bytes memory unindexedData = abi.encode(uint256(0), uint256(0), blockNumber, uint256(1000));
+        uint256 treeId = 0;
+        bytes memory topics = _encodeBranchTreesUpdatedTopics(treeId, bytes32(shieldedTreeRoot));
+        bytes memory unindexedData = abi.encode(blockNumber, uint256(1000));
         crossL2Prover.setValidateEventReturn(chainId, emittingContract, topics, unindexedData, valid);
     }
 
@@ -572,8 +572,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot, branchWormholeRoot, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot, 100, true);
 
         branch.updateMasterTrees(abi.encodePacked("proof"));
         (bytes32 masterShieldedRoot, uint256 shieldedSize,) = shieldedPool.masterShieldedTree(0);
@@ -595,8 +594,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot, branchWormholeRoot, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot, 100, true);
 
         // Get current master wormhole root (unchanged since only shielded root is inserted)
         (bytes32 currentMasterWormholeRoot,,) = shieldedPool.masterWormholeTree(0);
@@ -613,8 +611,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(uint32(masterChainId), address(branch), branchShieldedRoot, branchWormholeRoot, 100, true);
+        _setupBranchEventProof(uint32(masterChainId), address(branch), branchShieldedRoot, 100, true);
 
         vm.expectRevert("Branch tree cannot be master chain");
         branch.updateMasterTrees(abi.encodePacked("proof"));
@@ -627,8 +624,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(0xdead), branchShieldedRoot, branchWormholeRoot, 100, true);
+        _setupBranchEventProof(42, address(0xdead), branchShieldedRoot, 100, true);
 
         vm.expectRevert("Invalid emitting contract");
         branch.updateMasterTrees(abi.encodePacked("proof"));
@@ -642,7 +638,7 @@ contract ShieldedPoolTest is Test {
 
         // 64 bytes instead of 96 (missing one topic word)
         bytes memory invalidTopics = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)));
-        bytes memory unindexedData = abi.encode(uint256(0), uint256(0), uint256(100), uint256(1000));
+        bytes memory unindexedData = abi.encode(uint256(100), uint256(1000));
         crossL2Prover.setValidateEventReturn(42, address(branch), invalidTopics, unindexedData, true);
 
         vm.expectRevert("Invalid topics length");
@@ -656,14 +652,12 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, 100, true);
         branch.updateMasterTrees(abi.encodePacked("proof"));
 
         // Same block number from same chain should revert
         uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot2, branchWormholeRoot2, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot2, 100, true);
 
         vm.expectRevert("Branch tree event is not new");
         branch.updateMasterTrees(abi.encodePacked("proof"));
@@ -676,14 +670,12 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, 100, true);
         branch.updateMasterTrees(abi.encodePacked("proof"));
 
         // Older block number should revert
         uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot2, branchWormholeRoot2, 50, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot2, 50, true);
 
         vm.expectRevert("Branch tree event is not new");
         branch.updateMasterTrees(abi.encodePacked("proof"));
@@ -696,8 +688,7 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot = uint256(keccak256("branch shielded root")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot = uint256(keccak256("branch wormhole root")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot, branchWormholeRoot, 100, false);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot, 100, false);
 
         vm.expectRevert("Mock configured to return invalid data");
         branch.updateMasterTrees(abi.encodePacked("proof"));
@@ -713,8 +704,7 @@ contract ShieldedPoolTest is Test {
 
         // First update from chain 42
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, 100, true);
         branch.updateMasterTrees(abi.encodePacked("proof"));
 
         (bytes32 masterShieldedRoot1,,) = shieldedPool.masterShieldedTree(0);
@@ -722,8 +712,7 @@ contract ShieldedPoolTest is Test {
 
         // Second update from chain 10
         uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(10, address(branch), branchShieldedRoot2, branchWormholeRoot2, 200, true);
+        _setupBranchEventProof(10, address(branch), branchShieldedRoot2, 200, true);
         branch.updateMasterTrees(abi.encodePacked("proof"));
 
         (bytes32 masterShieldedRoot2, uint256 shieldedSize,) = shieldedPool.masterShieldedTree(0);
@@ -752,14 +741,12 @@ contract ShieldedPoolTest is Test {
         shieldedPool.addBranch(42, address(branch));
 
         uint256 branchShieldedRoot1 = uint256(keccak256("branch shielded root 1")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot1 = uint256(keccak256("branch wormhole root 1")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, branchWormholeRoot1, 100, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot1, 100, true);
         branch.updateMasterTrees(abi.encodePacked("proof"));
 
         // Same chain, higher block number succeeds
         uint256 branchShieldedRoot2 = uint256(keccak256("branch shielded root 2")) % SNARK_SCALAR_FIELD;
-        uint256 branchWormholeRoot2 = uint256(keccak256("branch wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupBranchEventProof(42, address(branch), branchShieldedRoot2, branchWormholeRoot2, 200, true);
+        _setupBranchEventProof(42, address(branch), branchShieldedRoot2, 200, true);
         branch.updateMasterTrees(abi.encodePacked("proof"));
 
         (bytes32 masterShieldedRoot, uint256 shieldedSize,) = shieldedPool.masterShieldedTree(0);
