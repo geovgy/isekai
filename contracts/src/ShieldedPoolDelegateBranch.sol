@@ -53,6 +53,8 @@ contract ShieldedPoolBranch is EIP712, Ownable {
     IShieldedPool public immutable masterShieldedPool;
     IPoseidon2 public immutable poseidon2;
     ICrossL2ProverV2 public immutable crossL2Prover;
+    bytes32 private immutable _eip712DomainHashLo;
+    bytes32 private immutable _eip712DomainHashHi;
 
     uint256 public currentShieldedTreeId;
 
@@ -94,6 +96,10 @@ contract ShieldedPoolBranch is EIP712, Ownable {
         poseidon2 = masterShieldedPool_.poseidon2();
         _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
         crossL2Prover = masterShieldedPool_.crossL2Prover();
+
+        (bytes32 domainHashHi, bytes32 domainHashLo) = _splitHash(_domainSeparatorV4());
+        _eip712DomainHashLo = domainHashLo;
+        _eip712DomainHashHi = domainHashHi;
     }
 
     function branchShieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
@@ -116,11 +122,10 @@ contract ShieldedPoolBranch is EIP712, Ownable {
         // Validate roots
         require(masterShieldedPool.isMasterWormholeRoot(shieldedTx.wormholeRoot), "ShieldedPool: wormhole root is not valid");
         require(masterShieldedPool.isMasterShieldedRoot(shieldedTx.shieldedRoot), "ShieldedPool: shielded root is not valid");
-
         require(isSignerRoot[shieldedTx.signerRoot], "ShieldedPool: signer root is not valid");
-        require(!signerNullifierUsed[shieldedTx.signerNullifier], "ShieldedPool: signer nullifier is already used");
 
         // Validate nullifiers
+        require(!signerNullifierUsed[shieldedTx.signerNullifier], "ShieldedPool: signer nullifier is already used");
         require(!masterShieldedPool.wormholeNullifierUsed(shieldedTx.wormholeNullifier), "ShieldedPool: wormhole nullifier is already used");
         for (uint256 i = 0; i < shieldedTx.nullifiers.length; i++) {
             require(!masterShieldedPool.nullifierUsed(shieldedTx.nullifiers[i]), "ShieldedPool: nullifier is already used");
@@ -160,10 +165,6 @@ contract ShieldedPoolBranch is EIP712, Ownable {
         isSignerRoot[bytes32(signerRoot)] = true;
 
         // If withdrawals are present, mint new shares for each withdrawal
-        // for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
-        //     Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
-        //     IWormhole(withdrawal.asset).unshield(withdrawal.to, withdrawal.id, withdrawal.amount, withdrawal.confidentialContext);
-        // }
         masterShieldedPool.unshield(shieldedTx.withdrawals);
 
         emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals, shieldedTx.signerCommitment, shieldedTx.signerNullifier);
@@ -222,24 +223,46 @@ contract ShieldedPoolBranch is EIP712, Ownable {
     }
 
     function _formatPublicInputs(ShieldedTx memory shieldedTx, bytes32 messageHash) internal view returns (bytes32[] memory inputs) {
-        // Split 256-bit message hash into two 128-bit halves (matches circuit output)
-        uint256 hashUint = uint256(messageHash);
-        bytes32 messageHashHi = bytes32(hashUint >> 128);
-        bytes32 messageHashLo = bytes32(hashUint & type(uint128).max);
+        (bytes32 messageHashHi, bytes32 messageHashLo) = _splitHash(messageHash);
 
-        // Public inputs ordering: pub params first, then return values
-        // Pub params: chain_id, shielded_root, wormhole_root
-        // Return values: hashed_message_hi, hashed_message_lo, wormhole_nullifier, nullifiers[], commitments[]
-        uint256 offset = 6 + shieldedTx.nullifiers.length;
+        // Public inputs ordering matches `circuits/circuits/main/delegated_utxo_2x2/src/main.nr`.
+        // Public params:
+        // - eip712_domain_lo
+        // - eip712_domain_hi
+        // - hashed_message_hi
+        // - hashed_message_lo
+        // - chain_id
+        // - timestamp
+        // - shielded_root
+        // - wormhole_root
+        // - signer_root
+        //
+        // Public return values:
+        // - hashed_message_hi
+        // - hashed_message_lo
+        // - signer_commitment
+        // - signer_nullifier
+        // - wormhole_nullifier
+        // - nullifiers[]
+        // - commitments[]
+        uint256 offset = 14 + shieldedTx.nullifiers.length;
         inputs = new bytes32[](offset + shieldedTx.commitments.length + shieldedTx.withdrawals.length);
-        inputs[0] = bytes32(block.chainid);
-        inputs[1] = shieldedTx.shieldedRoot;
-        inputs[2] = shieldedTx.wormholeRoot;
-        inputs[3] = messageHashHi;
-        inputs[4] = messageHashLo;
-        inputs[5] = shieldedTx.wormholeNullifier;
+        inputs[0] = _eip712DomainHashLo;
+        inputs[1] = _eip712DomainHashHi;
+        inputs[2] = messageHashHi;
+        inputs[3] = messageHashLo;
+        inputs[4] = bytes32(block.chainid);
+        inputs[5] = bytes32(block.timestamp);
+        inputs[6] = shieldedTx.shieldedRoot;
+        inputs[7] = shieldedTx.wormholeRoot;
+        inputs[8] = shieldedTx.signerRoot;
+        inputs[9] = messageHashHi;
+        inputs[10] = messageHashLo;
+        inputs[11] = shieldedTx.signerCommitment;
+        inputs[12] = shieldedTx.signerNullifier;
+        inputs[13] = shieldedTx.wormholeNullifier;
         for (uint256 i; i < shieldedTx.nullifiers.length; i++) {
-            inputs[6 + i] = shieldedTx.nullifiers[i];
+            inputs[14 + i] = shieldedTx.nullifiers[i];
         }
         for (uint256 i; i < shieldedTx.commitments.length; i++) {
             inputs[offset + i] = bytes32(shieldedTx.commitments[i]);
@@ -255,6 +278,12 @@ contract ShieldedPoolBranch is EIP712, Ownable {
             );
             inputs[offset + shieldedTx.commitments.length + i] = bytes32(commitment);
         }
+    }
+
+    function _splitHash(bytes32 value) internal pure returns (bytes32 hi, bytes32 lo) {
+        uint256 valueUint = uint256(value);
+        hi = bytes32(valueUint >> 128);
+        lo = bytes32(valueUint & type(uint128).max);
     }
 
     function _getCommitment(uint256 recipientHash, uint256 token, uint256 tokenId, uint256 amount, uint256 transferType) internal view returns (uint256) {
