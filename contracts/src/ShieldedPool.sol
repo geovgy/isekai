@@ -167,12 +167,6 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     }
 
     // Owner functions
-    function addVerifier(IVerifier verifier, uint256 inputs, uint256 outputs) external onlyOwner {
-        require(address(verifier) != address(0), "ShieldedPool: verifier is zero address");
-        require(inputs > 0 && outputs > 0, "ShieldedPool: invalid inputs or outputs");
-        _utxoVerifiers[inputs][outputs] = verifier;
-        emit VerifierAdded(address(verifier), inputs, outputs);
-    }
 
     function addBranch(uint64 chainId, address branch) external onlyOwner {
         require(!isBranch[chainId][branch], "ShieldedPool: branch already exists");

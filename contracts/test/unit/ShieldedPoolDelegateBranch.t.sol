@@ -6,7 +6,7 @@ import {MockERC20} from "../mock/MockERC20.sol";
 import {MockERC4626} from "../mock/MockERC4626.sol";
 import {IShieldedPool} from "../../src/interfaces/IShieldedPool.sol";
 import {ShieldedPool} from "../../src/ShieldedPool.sol";
-import {ShieldedPoolBranch as ShieldedPoolDelegateBranch} from "../../src/ShieldedPoolDelegateBranch.sol";
+import {ShieldedPoolDelegateBranch} from "../../src/ShieldedPoolDelegateBranch.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {MockVerifier} from "../mock/MockVerifier.sol";

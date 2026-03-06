@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {ShieldedPool} from "../src/ShieldedPool.sol";
-import {ShieldedPoolBranch as ShieldedPoolDelegateBranch} from "../src/ShieldedPoolDelegateBranch.sol";
+import {ShieldedPoolDelegateBranch} from "../src/ShieldedPoolDelegateBranch.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";

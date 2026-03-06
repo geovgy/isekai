@@ -11,7 +11,7 @@ import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {IndexedMerkleTreeLib, IndexedMerkleTree} from "indexed-merkle-tree/contracts/src/IndexedMerkleTreePoseidon2.sol";
 import {ICrossL2ProverV2} from "./interfaces/ICrossL2ProverV2.sol";
 
-contract ShieldedPoolBranch is EIP712, Ownable {
+contract ShieldedPoolDelegateBranch is EIP712, Ownable {
     using LeanIMT for LeanIMTData;
     using IndexedMerkleTreeLib for IndexedMerkleTree;
 

@@ -6,6 +6,7 @@ import {MockERC20} from "../mock/MockERC20.sol";
 import {MockVerifier} from "../mock/MockVerifier.sol";
 import {MockCrossL2Prover} from "../mock/MockCrossL2Prover.sol";
 import {ShieldedPool} from "../../src/ShieldedPool.sol";
+import {ShieldedPoolBranch} from "../../src/ShieldedPoolBranch.sol";
 import {ERC20ConfidentialWormhole} from "../../src/wormholes/ERC20ConfidentialWormhole.sol";
 import {ConfidentialWormhole} from "../../src/ConfidentialWormhole.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
@@ -18,6 +19,7 @@ import {SNARK_SCALAR_FIELD} from "../../src/utils/Constants.sol";
 contract ERC20ConfidentialWormholeTest is Test {
     MockERC20 underlying;
     ShieldedPool shieldedPool;
+    ShieldedPoolBranch branch;
     ERC20ConfidentialWormhole wormhole;
 
     IPoseidon2 poseidon2;
@@ -37,6 +39,7 @@ contract ERC20ConfidentialWormholeTest is Test {
         crossL2Prover = new MockCrossL2Prover();
 
         shieldedPool = new ShieldedPool(poseidon2, utxoVerifier, crossL2Prover, owner);
+        branch = new ShieldedPoolBranch(IShieldedPool(address(shieldedPool)), owner);
         underlying = new MockERC20();
         wormhole = new ERC20ConfidentialWormhole(
             shieldedPool, poseidon2, confVerifier, "Shielded ", "s"
@@ -44,7 +47,7 @@ contract ERC20ConfidentialWormholeTest is Test {
         wormhole.initialize(abi.encodePacked(address(underlying)));
 
         vm.prank(owner);
-        shieldedPool.addVerifier(utxoVerifier, 2, 2);
+        branch.addVerifier(utxoVerifier, 2, 2);
         vm.prank(owner);
         shieldedPool.setWormholeApprover(screener, true);
     }
