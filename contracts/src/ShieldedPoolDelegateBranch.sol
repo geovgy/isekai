@@ -95,6 +95,8 @@ contract ShieldedPoolBranch is EIP712, Ownable {
         masterShieldedPool = masterShieldedPool_;
         poseidon2 = masterShieldedPool_.poseidon2();
         _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
+        uint256 signerRoot = _initializeMerkleTree(_signerTrees[currentSignerTreeId]);
+        isSignerRoot[bytes32(signerRoot)] = true;
         crossL2Prover = masterShieldedPool_.crossL2Prover();
 
         (bytes32 domainHashHi, bytes32 domainHashLo) = _splitHash(_domainSeparatorV4());
