@@ -27,8 +27,6 @@ contract ShieldedPoolBranch is EIP712, Ownable {
 
     uint8 public constant MERKLE_TREE_DEPTH = 20;
 
-    uint64 public constant MASTER_CHAIN_ID = 11155111;
-
     bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
     bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
 
@@ -124,7 +122,7 @@ contract ShieldedPoolBranch is EIP712, Ownable {
 
         emit ShieldedTreeUpdated(currentShieldedTreeId, root, block.number, block.timestamp);
 
-        if (block.chainid == MASTER_CHAIN_ID) {
+        if (block.chainid == masterShieldedPool.MASTER_CHAIN_ID()) {
             // Insert branch shielded root into master shielded tree
             masterShieldedPool.insertShieldedMasterLeaf(block.chainid, root, block.number, block.timestamp);
         }
@@ -145,7 +143,8 @@ contract ShieldedPoolBranch is EIP712, Ownable {
             bytes memory unindexedData
         ) = crossL2Prover.validateEvent(proof);
         chainId = uint64(emittingChainId);
-        require(chainId != MASTER_CHAIN_ID && block.chainid == MASTER_CHAIN_ID, "Branch tree cannot be master chain");
+        uint64 masterChainId = masterShieldedPool.MASTER_CHAIN_ID();
+        require(chainId != masterChainId && block.chainid == masterChainId, "Branch tree cannot be master chain");
         require(emittingContract == address(this), "Invalid emitting contract");
         require(topics.length == 96, "Invalid topics length");
         bytes32[] memory topicsArray = new bytes32[](3);
