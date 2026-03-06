@@ -4,11 +4,13 @@ pragma solidity ^0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {ShieldedPool} from "../src/ShieldedPool.sol";
+import {ShieldedPoolBranch as ShieldedPoolDelegateBranch} from "../src/ShieldedPoolDelegateBranch.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
-import {HonkVerifier as UTXO2x2Verifier} from "../src/verifiers/UTXO2x2Verifier.sol";
+import {IShieldedPool} from "../src/interfaces/IShieldedPool.sol";
 import {HonkVerifier as RagequitVerifier} from "../src/verifiers/RagequitVerifier.sol";
+import {HonkVerifier as DelegatedUTXO2x2Verifier} from "../src/verifiers/DelegatedUTXO2x2Verifier.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {ICrossL2ProverV2} from "../src/interfaces/ICrossL2ProverV2.sol";
 
@@ -22,13 +24,13 @@ contract DeployShieldedPoolScript is Script {
     bytes32 SALT = vm.envBytes32("SALT");
 
     ShieldedPool shieldedPool;
+    ShieldedPoolDelegateBranch shieldedPoolDelegateBranch;
 
     IPoseidon2 poseidon2;
     IVerifier ragequitVerifier;
+    IVerifier delegatedUtxo2x2Verifier;
 
-    IVerifier utxo2x2Verifier;
-
-    struct AddUTXOVerifierParams {
+    struct AddVerifierParams {
         uint256   inputs;
         uint256   outputs;
         IVerifier verifier;
@@ -42,24 +44,34 @@ contract DeployShieldedPoolScript is Script {
         poseidon2 = IPoseidon2(address(new Poseidon2{salt: SALT}()));
         ragequitVerifier = new RagequitVerifier{salt: SALT}();
         shieldedPool = new ShieldedPool{salt: SALT}(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
+        shieldedPoolDelegateBranch =
+            new ShieldedPoolDelegateBranch{salt: SALT}(IShieldedPool(address(shieldedPool)), msg.sender);
+
+        delegatedUtxo2x2Verifier = new DelegatedUTXO2x2Verifier();
 
         console.log("\nDeployment Results:");
         console.log("\nShieldedPool -->", address(shieldedPool));
+        console.log("|-- Delegate branch -->", address(shieldedPoolDelegateBranch));
         console.log("|-- Poseidon2 -->", address(poseidon2));
         console.log("|-- Ragequit verifier -->", address(ragequitVerifier));
+        console.log("|-- Delegated UTXO2x2 verifier -->", address(delegatedUtxo2x2Verifier));
         console.log("|-- Governor -->", GOVERNOR);
 
-        // add utxo verifiers
-        AddUTXOVerifierParams[] memory params = new AddUTXOVerifierParams[](1);
-        params[0] = AddUTXOVerifierParams({
+        console.log("\nShieldedPool Delegate Branch -->", address(shieldedPoolDelegateBranch));
+        console.log("|-- ShieldedPool -->", address(shieldedPool));
+        console.log("|-- Governor -->", GOVERNOR);
+
+        // add delegated branch verifiers
+        AddVerifierParams[] memory params = new AddVerifierParams[](1);
+        params[0] = AddVerifierParams({
             inputs: 2,
             outputs: 2,
-            verifier: new UTXO2x2Verifier()
+            verifier: delegatedUtxo2x2Verifier
         });
 
-        console.log("\nAdding UTXO verifiers:");
+        console.log("\nAdding delegated branch UTXO verifiers:");
         for (uint256 i; i < params.length; i++) {
-            shieldedPool.addVerifier(params[i].verifier, params[i].inputs, params[i].outputs);
+            shieldedPoolDelegateBranch.addVerifier(params[i].verifier, params[i].inputs, params[i].outputs);
 
             string memory utxoType = string(bytes.concat(bytes(params[i].inputs.toString()), "x", bytes(params[i].outputs.toString()), " -->"));
             console.log("|--", utxoType, address(params[i].verifier));
@@ -68,6 +80,7 @@ contract DeployShieldedPoolScript is Script {
         // Transfer ownership to governor
         if (GOVERNOR != msg.sender) {
             shieldedPool.transferOwnership(GOVERNOR);
+            shieldedPoolDelegateBranch.transferOwnership(GOVERNOR);
         }
 
         vm.stopBroadcast();

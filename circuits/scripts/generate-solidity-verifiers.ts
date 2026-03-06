@@ -2,7 +2,7 @@ import { Prover, type CircuitType } from "../src/prover"
 import { writeFileSync } from "fs"
 import path from "path"
 
-const CIRCUITS: CircuitType[] = ["utxo_2x2", "ragequit"]
+const CIRCUITS: CircuitType[] = ["utxo_2x2", "ragequit", "delegated_utxo_2x2", "confidential_utxo_2x2"]
 
 async function generateAndWriteSolidityVerifierFor(circuit: CircuitType) {
   const prover = new Prover(circuit)
