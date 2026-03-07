@@ -4,8 +4,8 @@ pragma solidity ^0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
-import {HonkVerifier as UTXO2x2Verifier} from "../src/verifiers/UTXO2x2Verifier.sol";
-import {HonkVerifier as RagequitVerifier} from "../src/verifiers/RagequitVerifier.sol";
+import {HonkVerifier as UTXO2x2Verifier} from "../src/verifiers/utxo_2x2_verifier.sol";
+import {HonkVerifier as RagequitVerifier} from "../src/verifiers/ragequit_verifier.sol";
 import {ShieldedPoolDelegateBranch} from "../src/ShieldedPoolDelegateBranch.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 

@@ -9,8 +9,9 @@ import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {IVerifier} from "../src/interfaces/IVerifier.sol";
 import {IShieldedPool} from "../src/interfaces/IShieldedPool.sol";
-import {HonkVerifier as RagequitVerifier} from "../src/verifiers/RagequitVerifier.sol";
-import {HonkVerifier as DelegatedUTXO2x2Verifier} from "../src/verifiers/DelegatedUTXO2x2Verifier.sol";
+import {HonkVerifier as RagequitVerifier} from "../src/verifiers/ragequit_verifier.sol";
+import {HonkVerifier as DelegatedUTXO2x2Verifier} from "../src/verifiers/delegated_utxo_2x2_verifier.sol";
+import {HonkVerifier as BatchDelegatedUTXO2x2Verifier} from "../src/verifiers/batch_delegated_utxo_2x2_verifier.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {ICrossL2ProverV2} from "../src/interfaces/ICrossL2ProverV2.sol";
 
@@ -29,10 +30,18 @@ contract DeployShieldedPoolScript is Script {
     IPoseidon2 poseidon2;
     IVerifier ragequitVerifier;
     IVerifier delegatedUtxo2x2Verifier;
+    IVerifier batchDelegatedUtxo2x2Verifier;
 
     struct AddVerifierParams {
         uint256   inputs;
         uint256   outputs;
+        IVerifier verifier;
+    }
+
+    struct AddBatchVerifierParams {
+        uint256 batchSize;
+        uint256 inputs;
+        uint256 outputs;
         IVerifier verifier;
     }
     
@@ -48,6 +57,7 @@ contract DeployShieldedPoolScript is Script {
             new ShieldedPoolDelegateBranch{salt: SALT}(IShieldedPool(address(shieldedPool)), msg.sender);
 
         delegatedUtxo2x2Verifier = new DelegatedUTXO2x2Verifier();
+        batchDelegatedUtxo2x2Verifier = new BatchDelegatedUTXO2x2Verifier();
 
         console.log("\nDeployment Results:");
         console.log("\nShieldedPool -->", address(shieldedPool));
@@ -75,6 +85,23 @@ contract DeployShieldedPoolScript is Script {
 
             string memory utxoType = string(bytes.concat(bytes(params[i].inputs.toString()), "x", bytes(params[i].outputs.toString()), " -->"));
             console.log("|--", utxoType, address(params[i].verifier));
+        }
+
+        // add batch delegated branch verifiers
+        AddBatchVerifierParams[] memory batchParams = new AddBatchVerifierParams[](1);
+        batchParams[0] = AddBatchVerifierParams({
+            batchSize: 2,
+            inputs: 2,
+            outputs: 2,
+            verifier: batchDelegatedUtxo2x2Verifier
+        });
+
+        console.log("\nAdding batch delegated branch UTXO verifiers:");
+        for (uint256 i; i < batchParams.length; i++) {
+            shieldedPoolDelegateBranch.addBatchVerifier(batchParams[i].verifier, batchParams[i].batchSize, batchParams[i].inputs, batchParams[i].outputs);
+
+            string memory batchUtxoType = string(bytes.concat(bytes(batchParams[i].batchSize.toString()), "x", bytes(batchParams[i].inputs.toString()), "x", bytes(batchParams[i].outputs.toString()), " -->"));
+            console.log("|--", batchUtxoType, address(batchParams[i].verifier));
         }
 
         // Transfer ownership to governor
