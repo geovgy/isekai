@@ -348,10 +348,10 @@ contract ShieldedPoolDelegateBranchTest is Test {
             0,
             shieldedTx.commitments,
             shieldedTx.nullifiers,
-            shieldedTx.withdrawals,
-            shieldedTx.signerCommitment,
-            shieldedTx.signerNullifier
+            shieldedTx.withdrawals
         );
+        vm.expectEmit(address(branch));
+        emit ShieldedPoolDelegateBranch.ShieldedTransferSigner(0, 0, shieldedTx.signerCommitment, shieldedTx.signerNullifier);
         vm.expectEmit(address(branch));
         emit ShieldedPoolDelegateBranch.ShieldedTreeUpdated(0, uint256(expectedShieldedRoot), block.number, block.timestamp);
         vm.expectEmit(address(branch));
@@ -393,10 +393,10 @@ contract ShieldedPoolDelegateBranchTest is Test {
             0,
             shieldedTx.commitments,
             shieldedTx.nullifiers,
-            shieldedTx.withdrawals,
-            shieldedTx.signerCommitment,
-            shieldedTx.signerNullifier
+            shieldedTx.withdrawals
         );
+        vm.expectEmit(address(branch));
+        emit ShieldedPoolDelegateBranch.ShieldedTransferSigner(0, 0, shieldedTx.signerCommitment, shieldedTx.signerNullifier);
         vm.expectCall(address(wormholeVault), abi.encodeWithSelector(IWormhole.unshield.selector, unshieldTo, 0, 50e18));
 
         branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));

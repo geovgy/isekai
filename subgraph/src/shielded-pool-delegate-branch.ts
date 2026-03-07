@@ -1,25 +1,16 @@
 import {
-  ShieldedTransfer as BranchShieldedTransferEvent,
-  ShieldedTreeUpdated as BranchShieldedTreeUpdatedEvent,
+  ShieldedTransferSigner as BranchShieldedTransferSignerEvent,
   SignerTreeUpdated as SignerTreeUpdatedEvent,
-  VerifierAdded as BranchVerifierAddedEvent,
 } from "../generated/templates/ShieldedPoolDelegateBranch/ShieldedPoolDelegateBranch"
-import {
-  Branch,
-  ShieldedTransfer,
-  ShieldNullifier,
-  Withdrawal,
-  BranchVerifierAdded,
-  BranchShieldedTree,
-  BranchShieldedTreeSnapshot,
-  BranchShieldedTreeUpdate,
-  SignerTree,
-  SignerTreeUpdate,
-} from "../generated/schema"
+import { Branch, ShieldedTransferSigner, SignerTree, SignerTreeUpdate } from "../generated/schema"
 import { BigInt, dataSource } from "@graphprotocol/graph-ts"
 
 function stringId(parts: string[]): string {
   return parts.join(":")
+}
+
+function branchScopedId(branch: Branch, parts: string[]): string {
+  return stringId([branch.address.toHexString(), branch.chainId.toString()].concat(parts))
 }
 
 function loadOrCreateBranch(timestamp: BigInt): Branch {
@@ -38,23 +29,8 @@ function loadOrCreateBranch(timestamp: BigInt): Branch {
   return branch
 }
 
-function loadOrCreateBranchShieldedTree(branch: Branch, treeId: BigInt, timestamp: BigInt): BranchShieldedTree {
-  let id = branch.id.toHexString() + ":" + treeId.toString()
-  let tree = BranchShieldedTree.load(id)
-  if (tree == null) {
-    tree = new BranchShieldedTree(id)
-    tree.branch = branch.id
-    tree.treeId = treeId
-    tree.roots = []
-    tree.size = BigInt.zero()
-    tree.createdAt = timestamp
-  }
-  tree.updatedAt = timestamp
-  return tree
-}
-
 function loadOrCreateSignerTree(branch: Branch, treeId: BigInt, timestamp: BigInt): SignerTree {
-  let id = branch.id.toHexString() + ":" + treeId.toString()
+  let id = branchScopedId(branch, [treeId.toString()])
   let tree = SignerTree.load(id)
   if (tree == null) {
     tree = new SignerTree(id)
@@ -69,40 +45,15 @@ function loadOrCreateSignerTree(branch: Branch, treeId: BigInt, timestamp: BigIn
   return tree
 }
 
-export function handleBranchShieldedTransfer(event: BranchShieldedTransferEvent): void {
+export function handleBranchShieldedTransferSigner(event: BranchShieldedTransferSignerEvent): void {
   let branch = loadOrCreateBranch(event.block.timestamp)
-  let entityId = stringId([
-    branch.address.toHexString(),
+  let shieldedTransferId = branchScopedId(branch, [
     event.params.treeId.toString(),
     event.params.startIndex.toString(),
   ])
-  let entity = new ShieldedTransfer(entityId)
+  let entity = new ShieldedTransferSigner(shieldedTransferId)
   entity.branch = branch.id
-  entity.treeId = event.params.treeId
-  entity.startIndex = event.params.startIndex
-  entity.commitments = event.params.commitments
-
-  for (let i = 0; i < event.params.nullifiers.length; i++) {
-    let nullifier = new ShieldNullifier(event.params.nullifiers[i])
-    nullifier.nullifier = event.params.nullifiers[i]
-    nullifier.save()
-  }
-  entity.nullifiers = event.params.nullifiers
-
-  let baseId = branch.address.toHexString() + ":" + event.params.treeId.toString() + ":" + event.params.startIndex.toString()
-  let withdrawalIds = new Array<string>()
-  for (let i = 0; i < event.params.withdrawals.length; i++) {
-    let withdrawal = new Withdrawal(baseId + ":" + i.toString())
-    withdrawal.to = event.params.withdrawals[i].to
-    withdrawal.token = event.params.withdrawals[i].asset
-    withdrawal.tokenId = event.params.withdrawals[i].id
-    withdrawal.amount = event.params.withdrawals[i].amount
-    withdrawal.confidentialContext = event.params.withdrawals[i].confidentialContext
-    withdrawal.save()
-    withdrawalIds.push(withdrawal.id)
-  }
-  entity.withdrawals = withdrawalIds
-
+  entity.shieldedTransfer = shieldedTransferId
   entity.signerCommitment = event.params.signerCommitment
   entity.signerNullifier = event.params.signerNullifier
   entity.blockNumber = event.block.number
@@ -111,54 +62,12 @@ export function handleBranchShieldedTransfer(event: BranchShieldedTransferEvent)
   entity.save()
 }
 
-export function handleBranchShieldedTreeUpdated(event: BranchShieldedTreeUpdatedEvent): void {
-  let branch = loadOrCreateBranch(event.block.timestamp)
-  let entity = new BranchShieldedTreeUpdate(
-    stringId([
-      branch.address.toHexString(),
-      event.params.shieldedTreeId.toString(),
-      event.params.shieldedRoot.toString(),
-    ])
-  )
-  entity.branch = branch.id
-  entity.treeId = event.params.shieldedTreeId
-  entity.root = event.params.shieldedRoot
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-  entity.save()
-
-  let tree = loadOrCreateBranchShieldedTree(branch, event.params.shieldedTreeId, event.block.timestamp)
-  let roots = tree.roots
-  roots.push(event.params.shieldedRoot)
-  tree.roots = roots
-  tree.size = BigInt.fromI32(roots.length)
-  tree.save()
-
-  let snapshotId = branch.id.toHexString() + ":" + event.params.shieldedTreeId.toString() + ":" + event.params.shieldedRoot.toString()
-  let snapshot = BranchShieldedTreeSnapshot.load(snapshotId)
-  if (snapshot == null) {
-    snapshot = new BranchShieldedTreeSnapshot(snapshotId)
-    snapshot.branch = branch.id
-    snapshot.treeId = event.params.shieldedTreeId
-    snapshot.root = event.params.shieldedRoot
-    snapshot.leaves = tree.roots
-    snapshot.size = tree.size
-    snapshot.blockNumber = event.block.number
-    snapshot.createdAt = event.block.timestamp
-    snapshot.save()
-  }
-}
-
 export function handleSignerTreeUpdated(event: SignerTreeUpdatedEvent): void {
   let branch = loadOrCreateBranch(event.block.timestamp)
-  let entity = new SignerTreeUpdate(
-    stringId([
-      branch.address.toHexString(),
-      event.params.signerTreeId.toString(),
-      event.params.signerRoot.toString(),
-    ])
-  )
+  let entity = new SignerTreeUpdate(branchScopedId(branch, [
+    event.params.signerTreeId.toString(),
+    event.params.signerRoot.toString(),
+  ]))
   entity.branch = branch.id
   entity.treeId = event.params.signerTreeId
   entity.root = event.params.signerRoot
@@ -173,17 +82,4 @@ export function handleSignerTreeUpdated(event: SignerTreeUpdatedEvent): void {
   tree.roots = roots
   tree.size = BigInt.fromI32(roots.length)
   tree.save()
-}
-
-export function handleBranchVerifierAdded(event: BranchVerifierAddedEvent): void {
-  let branch = loadOrCreateBranch(event.block.timestamp)
-  let entity = new BranchVerifierAdded(event.transaction.hash.concatI32(event.logIndex.toI32()))
-  entity.branch = branch.id
-  entity.verifier = event.params.verifier
-  entity.inputs = event.params.inputs
-  entity.outputs = event.params.outputs
-  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-  entity.save()
 }

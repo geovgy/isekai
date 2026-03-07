@@ -1,5 +1,5 @@
-import { SHIELDED_POOL_CONTRACT_ADDRESS } from "@/src/env";
 import { SUPPORTED_CHAINS } from "@/src/chains";
+import { getChainConfig } from "@/src/config";
 import { ShieldedTx, ShieldedTxStringified } from "@/src/types";
 import { NextRequest, NextResponse } from "next/server";
 import { Abi, createWalletClient, getAddress, http, parseAbi } from "viem";
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     console.log("Writing contract");
     const hash = await client.writeContract({
-      address: getAddress(SHIELDED_POOL_CONTRACT_ADDRESS),
+      address: getAddress(getChainConfig(targetChainId).branchContractAddress),
       abi: [...verifierAbi, ...parseAbi([
         "struct Withdrawal { address to; address asset; uint256 id; uint256 amount; }",
         "struct ShieldedTx { uint64 chainId; bytes32 wormholeRoot; bytes32 wormholeNullifier; bytes32 shieldedRoot; bytes32[] nullifiers; uint256[] commitments; Withdrawal[] withdrawals; }",

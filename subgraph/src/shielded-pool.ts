@@ -31,7 +31,10 @@ import {
   MasterWormholeTreeSnapshot
 } from "../generated/schema"
 import { Address, BigInt, Bytes, DataSourceContext } from "@graphprotocol/graph-ts"
-import { ShieldedPoolDelegateBranch as ShieldedPoolDelegateBranchTemplate } from "../generated/templates"
+import {
+  ShieldedPoolBranch as ShieldedPoolBranchTemplate,
+  ShieldedPoolDelegateBranch as ShieldedPoolDelegateBranchTemplate,
+} from "../generated/templates"
 
 function stringId(parts: string[]): string {
   return parts.join(":")
@@ -209,6 +212,7 @@ export function handleBranchAdded(event: BranchAddedEvent): void {
   context.setBigInt("chainId", event.params.chainId)
   context.setBytes("branchAddress", event.params.branch)
   context.setBytes("masterAddress", event.address)
+  ShieldedPoolBranchTemplate.createWithContext(Address.fromBytes(event.params.branch), context)
   ShieldedPoolDelegateBranchTemplate.createWithContext(Address.fromBytes(event.params.branch), context)
 }
 

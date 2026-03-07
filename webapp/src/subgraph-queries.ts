@@ -7,12 +7,14 @@ export async function getMerkleTrees({
   wormholeTreeId,
   shieldedTreeId,
   chainId,
+  branchAddress,
 }: {
   wormholeTreeId: bigint;
   shieldedTreeId: bigint;
   chainId?: number;
+  branchAddress?: Address;
 }) {
-  const commitments = await queryCommitments({ wormholeTreeId, shieldedTreeId, chainId });
+  const commitments = await queryCommitments({ wormholeTreeId, shieldedTreeId, chainId, branchAddress });
   const wormholeLeaves = commitments.wormholeCommitments.map(commitment => BigInt(commitment.commitment));
   const shieldedLeaves = commitments.shieldedTransfers.map(transfer => transfer.commitments.map(commitment => BigInt(commitment))).flat();
   const wormholeTree = getMerkleTree(wormholeLeaves.map(leaf => BigInt(leaf)));
@@ -24,6 +26,7 @@ export async function queryCommitments(args: {
   wormholeTreeId: bigint;
   shieldedTreeId: bigint;
   chainId?: number;
+  branchAddress?: Address;
 }): Promise<{
   wormholeCommitments: {
     treeId: bigint;
@@ -38,10 +41,16 @@ export async function queryCommitments(args: {
     treeId: bigint;
     startIndex: bigint;
     commitments: bigint[];
+    branch: {
+      address: Address;
+    };
   }[];
 }> {
+  const shieldedTransfersWhere = args.branchAddress
+    ? "{ treeId: $shieldedTreeId, branch_: { address: $branchAddress } }"
+    : "{ treeId: $shieldedTreeId }";
   const query = `
-    query Commitments($wormholeTreeId: BigInt!, $shieldedTreeId: BigInt!) {
+    query Commitments($wormholeTreeId: BigInt!, $shieldedTreeId: BigInt!, $branchAddress: Bytes) {
       wormholeCommitments(
         where: { treeId: $wormholeTreeId }
         orderBy: leafIndex
@@ -57,7 +66,7 @@ export async function queryCommitments(args: {
         }
       }
       shieldedTransfers(
-        where: { treeId: $shieldedTreeId }
+        where: ${shieldedTransfersWhere}
         orderBy: startIndex
         orderDirection: asc
         first: 1000
@@ -65,6 +74,9 @@ export async function queryCommitments(args: {
         treeId
         startIndex
         commitments
+        branch {
+          address
+        }
       }
     }
   `;
@@ -82,10 +94,14 @@ export async function queryCommitments(args: {
       treeId: bigint;
       startIndex: bigint;
       commitments: bigint[];
+      branch: {
+        address: Address;
+      };
     }[];
   }>(query, {
     wormholeTreeId: args.wormholeTreeId.toString(),
     shieldedTreeId: args.shieldedTreeId.toString(),
+    branchAddress: args.branchAddress,
   }, args.chainId);
 }
 
@@ -93,6 +109,7 @@ export async function queryTrees(args: {
   wormholeTreeId: number;
   shieldedTreeId: number;
   chainId?: number;
+  branchAddress?: Address;
 }): Promise<{
   wormholeTree: {
     id: number;
@@ -107,12 +124,15 @@ export async function queryTrees(args: {
     size: number;
     createdAt: number;
     updatedAt: number;
+    branchAddress: Address;
   } | null;
 }> {
   const wormholeTreeId = numberToHex(args.wormholeTreeId, { size: 4 });
-  const shieldedTreeId = numberToHex(args.shieldedTreeId, { size: 4 });
+  const branchShieldedTreeWhere = args.branchAddress
+    ? "{ treeId: $shieldedTreeId, branch_: { chainId: $branchChainId, address: $branchAddress } }"
+    : "{ treeId: $shieldedTreeId, branch_: { chainId: $branchChainId } }";
   const query = `
-    query Trees($wormholeTreeId: Bytes!, $shieldedTreeId: Bytes!) {
+    query Trees($wormholeTreeId: Bytes!, $shieldedTreeId: BigInt!, $branchChainId: BigInt, $branchAddress: Bytes) {
       wormholeTree(id: $wormholeTreeId) {
         id
         leaves
@@ -120,16 +140,22 @@ export async function queryTrees(args: {
         createdAt
         updatedAt
       }
-      shieldedTree(id: $shieldedTreeId) {
-        id
-        leaves
+      branchShieldedTrees(
+        where: ${branchShieldedTreeWhere}
+        first: 1
+      ) {
+        treeId
+        roots
         size
         createdAt
         updatedAt
+        branch {
+          address
+        }
       }
     }
   `;
-  return subgraphQuery<{
+  const data = await subgraphQuery<{
     wormholeTree: {
       id: number;
       leaves: bigint[];
@@ -137,14 +163,36 @@ export async function queryTrees(args: {
       createdAt: number;
       updatedAt: number;
     } | null;
-    shieldedTree: {
-      id: number;
-      leaves: bigint[];
+    branchShieldedTrees: {
+      treeId: number;
+      roots: bigint[];
       size: number;
       createdAt: number;
       updatedAt: number;
-    } | null;
-  }>(query, { wormholeTreeId, shieldedTreeId }, args.chainId);
+      branch: {
+        address: Address;
+      };
+    }[];
+  }>(query, {
+    wormholeTreeId,
+    shieldedTreeId: args.shieldedTreeId.toString(),
+    branchChainId: args.chainId?.toString(),
+    branchAddress: args.branchAddress,
+  }, args.chainId);
+  const shieldedTree = data.branchShieldedTrees[0]
+    ? {
+        id: data.branchShieldedTrees[0].treeId,
+        leaves: data.branchShieldedTrees[0].roots,
+        size: data.branchShieldedTrees[0].size,
+        createdAt: data.branchShieldedTrees[0].createdAt,
+        updatedAt: data.branchShieldedTrees[0].updatedAt,
+        branchAddress: data.branchShieldedTrees[0].branch.address,
+      }
+    : null;
+  return {
+    wormholeTree: data.wormholeTree,
+    shieldedTree,
+  };
 }
 
 export async function queryMasterTrees(args: {
@@ -291,7 +339,8 @@ export async function queryWormholeEntriesByEntryIds(args: {
           commitment
           treeId
           leafIndex
-          assetId
+          token
+          tokenId
           from
           to
           amount
@@ -315,7 +364,8 @@ export async function queryWormholeEntriesByEntryIds(args: {
         commitment: bigint;
         treeId: bigint;
         leafIndex: bigint;
-        assetId: Address;
+        token: Address;
+        tokenId: bigint;
         from: Address;
         to: Address;
         amount: bigint;
@@ -335,21 +385,16 @@ export async function queryBranchTreesUpdated(args: {
   blockTimestamp_gte?: string;
 }) {
   const query = `
-    query BranchTreesUpdated($blockTimestamp_gte: BigInt) {
-      branchTreesUpdateds(
-        where: { blockTimestamp_gte: $blockTimestamp_gte }
+    query BranchShieldedTreeUpdates($blockTimestamp_gte: BigInt, $branchChainId: BigInt!) {
+      branchShieldedTreeUpdates(
+        where: { blockTimestamp_gte: $blockTimestamp_gte, branch_: { chainId: $branchChainId } }
         orderBy: blockTimestamp
         orderDirection: asc
         first: 1000
       ) {
         id
-        logIndex
-        shieldedTreeId
-        wormholeTreeId
-        branchShieldedRoot
-        branchWormholeRoot
-        branchBlockNumber
-        branchBlockTimestamp
+        treeId
+        root
         blockNumber
         blockTimestamp
         transactionHash
@@ -357,40 +402,34 @@ export async function queryBranchTreesUpdated(args: {
     }
   `;
   return subgraphQuery<{
-    branchTreesUpdateds: {
+    branchShieldedTreeUpdates: {
       id: string;
-      logIndex: bigint;
-      shieldedTreeId: bigint;
-      wormholeTreeId: bigint;
-      branchShieldedRoot: bigint;
-      branchWormholeRoot: bigint;
-      branchBlockNumber: bigint;
-      branchBlockTimestamp: bigint;
+      treeId: bigint;
+      root: bigint;
       blockNumber: bigint;
       blockTimestamp: bigint;
       transactionHash: Hex;
     }[];
-  }>(query, { blockTimestamp_gte: args.blockTimestamp_gte }, args.chainId);
+  }>(query, {
+    blockTimestamp_gte: args.blockTimestamp_gte,
+    branchChainId: args.chainId.toString(),
+  }, args.chainId);
 }
 
 export async function queryLatestBranchTreesUpdated(args: {
   chainId: number;
 }) {
   const query = `
-    query LatestBranchTreesUpdated {
-      branchTreesUpdateds(
+    query LatestBranchShieldedTreeUpdated($branchChainId: BigInt!) {
+      branchShieldedTreeUpdates(
+        where: { branch_: { chainId: $branchChainId } }
         orderBy: blockTimestamp
         orderDirection: desc
         first: 1
       ) {
         id
-        logIndex
-        shieldedTreeId
-        wormholeTreeId
-        branchShieldedRoot
-        branchWormholeRoot
-        branchBlockNumber
-        branchBlockTimestamp
+        treeId
+        root
         blockNumber
         blockTimestamp
         transactionHash
@@ -398,21 +437,16 @@ export async function queryLatestBranchTreesUpdated(args: {
     }
   `;
   const data = await subgraphQuery<{
-    branchTreesUpdateds: {
+    branchShieldedTreeUpdates: {
       id: string;
-      logIndex: bigint;
-      shieldedTreeId: bigint;
-      wormholeTreeId: bigint;
-      branchShieldedRoot: bigint;
-      branchWormholeRoot: bigint;
-      branchBlockNumber: bigint;
-      branchBlockTimestamp: bigint;
+      treeId: bigint;
+      root: bigint;
       blockNumber: bigint;
       blockTimestamp: bigint;
       transactionHash: Hex;
     }[];
-  }>(query, {}, args.chainId);
-  return data.branchTreesUpdateds[0] ?? null;
+  }>(query, { branchChainId: args.chainId.toString() }, args.chainId);
+  return data.branchShieldedTreeUpdates[0] ?? null;
 }
 
 export async function queryMasterTreesUpdated(args?: {
@@ -451,10 +485,38 @@ export async function queryMasterTreesUpdated(args?: {
 
 export interface MasterTreeLeafResult {
   branchChainId: string;
+  branchAddress: Address | null;
   branchBlockNumber: string;
   branchTimestamp: string;
   blockNumber: string;
   blockTimestamp: string;
+}
+
+async function queryBranchAddressesByChainIds(branchChainIds: number[]): Promise<Record<string, Address | null>> {
+  if (branchChainIds.length === 0) {
+    return {};
+  }
+  const query = `
+    query BranchAddressesByChainIds($branchChainIds: [BigInt!]!) {
+      branches(
+        where: { chainId_in: $branchChainIds }
+        first: 1000
+      ) {
+        chainId
+        address
+      }
+    }
+  `;
+  const data = await subgraphQueryMasterChain<{
+    branches: {
+      chainId: string;
+      address: Address;
+    }[];
+  }>(query, { branchChainIds: branchChainIds.map(String) });
+  return data.branches.reduce<Record<string, Address | null>>((acc, branch) => {
+    acc[branch.chainId] ??= branch.address;
+    return acc;
+  }, {});
 }
 
 export async function queryLatestMasterWormholeTreeLeaves(branchChainIds: number[]) {
@@ -474,9 +536,18 @@ export async function queryLatestMasterWormholeTreeLeaves(branchChainIds: number
       }
     }
   `;
-  return subgraphQueryMasterChain<{
-    masterWormholeTreeLeaves: MasterTreeLeafResult[];
-  }>(query, { branchChainIds: branchChainIds.map(String) });
+  const [data, branchAddresses] = await Promise.all([
+    subgraphQueryMasterChain<{
+      masterWormholeTreeLeaves: Omit<MasterTreeLeafResult, "branchAddress">[];
+    }>(query, { branchChainIds: branchChainIds.map(String) }),
+    queryBranchAddressesByChainIds(branchChainIds),
+  ]);
+  return {
+    masterWormholeTreeLeaves: data.masterWormholeTreeLeaves.map((leaf) => ({
+      ...leaf,
+      branchAddress: branchAddresses[leaf.branchChainId] ?? null,
+    })),
+  };
 }
 
 export async function queryLatestMasterShieldedTreeLeaves(branchChainIds: number[]) {
@@ -496,9 +567,18 @@ export async function queryLatestMasterShieldedTreeLeaves(branchChainIds: number
       }
     }
   `;
-  return subgraphQueryMasterChain<{
-    masterShieldedTreeLeaves: MasterTreeLeafResult[];
-  }>(query, { branchChainIds: branchChainIds.map(String) });
+  const [data, branchAddresses] = await Promise.all([
+    subgraphQueryMasterChain<{
+      masterShieldedTreeLeaves: Omit<MasterTreeLeafResult, "branchAddress">[];
+    }>(query, { branchChainIds: branchChainIds.map(String) }),
+    queryBranchAddressesByChainIds(branchChainIds),
+  ]);
+  return {
+    masterShieldedTreeLeaves: data.masterShieldedTreeLeaves.map((leaf) => ({
+      ...leaf,
+      branchAddress: branchAddresses[leaf.branchChainId] ?? null,
+    })),
+  };
 }
 
 export async function queryMasterTreeLeavesUpToBlock(args: {
@@ -507,11 +587,13 @@ export async function queryMasterTreeLeavesUpToBlock(args: {
   masterShieldedTreeLeaves: {
     branchRoot: string;
     branchChainId: string;
+    branchAddress: Address | null;
     branchBlockNumber: string;
   }[];
   masterWormholeTreeLeaves: {
     branchRoot: string;
     branchChainId: string;
+    branchAddress: Address | null;
     branchBlockNumber: string;
   }[];
 }> {
@@ -539,7 +621,7 @@ export async function queryMasterTreeLeavesUpToBlock(args: {
       }
     }
   `;
-  return subgraphQueryMasterChain<{
+  const data = await subgraphQueryMasterChain<{
     masterShieldedTreeLeaves: {
       branchRoot: string;
       branchChainId: string;
@@ -551,46 +633,114 @@ export async function queryMasterTreeLeavesUpToBlock(args: {
       branchBlockNumber: string;
     }[];
   }>(query, { blockNumber: args.blockNumber.toString() });
+  const branchChainIds = [...new Set([
+    ...data.masterShieldedTreeLeaves.map((leaf) => Number(leaf.branchChainId)),
+    ...data.masterWormholeTreeLeaves.map((leaf) => Number(leaf.branchChainId)),
+  ])];
+  const branchAddresses = await queryBranchAddressesByChainIds(branchChainIds);
+  return {
+    masterShieldedTreeLeaves: data.masterShieldedTreeLeaves.map((leaf) => ({
+      ...leaf,
+      branchAddress: branchAddresses[leaf.branchChainId] ?? null,
+    })),
+    masterWormholeTreeLeaves: data.masterWormholeTreeLeaves.map((leaf) => ({
+      ...leaf,
+      branchAddress: branchAddresses[leaf.branchChainId] ?? null,
+    })),
+  };
 }
 
 export async function queryBranchShieldedTreeSnapshot(args: {
   treeId: number;
   root: string;
   chainId: number;
+  branchAddress?: Address;
 }): Promise<{ leaves: string[]; size: string } | null> {
-  const id = `${args.treeId}:${args.root}`;
-  const query = `
-    query BranchShieldedTreeSnapshot($id: ID!) {
-      branchShieldedTreeSnapshot(id: $id) {
-        leaves
-        size
+  const snapshotWhere = args.branchAddress
+    ? `{ treeId: $treeId, root: $root, branch_: { chainId: $branchChainId, address: $branchAddress } }`
+    : `{ treeId: $treeId, root: $root, branch_: { chainId: $branchChainId } }`;
+  const snapshotQuery = `
+    query BranchShieldedTreeSnapshot($treeId: BigInt!, $root: BigInt!, $branchChainId: BigInt!, $branchAddress: Bytes) {
+      branchShieldedTreeSnapshots(
+        where: ${snapshotWhere}
+        first: 1
+      ) {
+        blockNumber
       }
     }
   `;
-  const data = await subgraphQuery<{
-    branchShieldedTreeSnapshot: { leaves: string[]; size: string } | null;
-  }>(query, { id }, args.chainId);
-  return data.branchShieldedTreeSnapshot;
+  const snapshotData = await subgraphQuery<{
+    branchShieldedTreeSnapshots: { blockNumber: string }[];
+  }>(snapshotQuery, {
+    treeId: args.treeId.toString(),
+    root: args.root,
+    branchChainId: args.chainId.toString(),
+    branchAddress: args.branchAddress,
+  }, args.chainId);
+  const snapshot = snapshotData.branchShieldedTreeSnapshots[0];
+  if (!snapshot) {
+    return null;
+  }
+
+  const transfersWhere = args.branchAddress
+    ? `{ treeId: $treeId, blockNumber_lte: $blockNumber, branch_: { chainId: $branchChainId, address: $branchAddress } }`
+    : `{ treeId: $treeId, blockNumber_lte: $blockNumber, branch_: { chainId: $branchChainId } }`;
+  const transfersQuery = `
+    query BranchShieldedTransfersUpToSnapshot($treeId: BigInt!, $branchChainId: BigInt!, $blockNumber: BigInt!, $branchAddress: Bytes) {
+      shieldedTransfers(
+        where: ${transfersWhere}
+        orderBy: startIndex
+        orderDirection: asc
+        first: 1000
+      ) {
+        commitments
+      }
+    }
+  `;
+  const transfersData = await subgraphQuery<{
+    shieldedTransfers: { commitments: string[] }[];
+  }>(transfersQuery, {
+    treeId: args.treeId.toString(),
+    branchChainId: args.chainId.toString(),
+    blockNumber: snapshot.blockNumber,
+    branchAddress: args.branchAddress,
+  }, args.chainId);
+  const leaves = transfersData.shieldedTransfers.flatMap((transfer) => transfer.commitments);
+  return {
+    leaves,
+    size: leaves.length.toString(),
+  };
 }
 
 export async function queryBranchWormholeTreeSnapshot(args: {
   treeId: number;
   root: string;
   chainId: number;
+  branchAddress?: Address;
 }): Promise<{ leaves: string[]; size: string } | null> {
-  const id = `${args.treeId}:${args.root}`;
+  const whereClause = args.branchAddress
+    ? `{ treeId: $treeId, root: $root, branch_: { chainId: $branchChainId, address: $branchAddress } }`
+    : `{ treeId: $treeId, root: $root }`;
   const query = `
-    query BranchWormholeTreeSnapshot($id: ID!) {
-      branchWormholeTreeSnapshot(id: $id) {
+    query BranchWormholeTreeSnapshot($treeId: BigInt!, $root: BigInt!, $branchChainId: BigInt!, $branchAddress: Bytes) {
+      branchWormholeTreeSnapshots(
+        where: ${whereClause}
+        first: 1
+      ) {
         leaves
         size
       }
     }
   `;
   const data = await subgraphQuery<{
-    branchWormholeTreeSnapshot: { leaves: string[]; size: string } | null;
-  }>(query, { id }, args.chainId);
-  return data.branchWormholeTreeSnapshot;
+    branchWormholeTreeSnapshots: { leaves: string[]; size: string }[];
+  }>(query, {
+    treeId: args.treeId.toString(),
+    root: args.root,
+    branchChainId: args.chainId.toString(),
+    branchAddress: args.branchAddress,
+  }, args.chainId);
+  return data.branchWormholeTreeSnapshots[0] ?? null;
 }
 
 export async function queryLatestMasterTreesUpdatedOnChain(chainId: number) {
@@ -692,6 +842,7 @@ export async function queryMasterShieldedTreeLeavesForBranchChain(args: {
   branchTimestamp_gte?: number;
 }): Promise<{
   branchRoot: string;
+  branchAddress: Address | null;
   branchTimestamp: string;
   blockTimestamp: string;
   treeId: string;
@@ -725,7 +876,11 @@ export async function queryMasterShieldedTreeLeavesForBranchChain(args: {
     branchChainId: args.branchChainId.toString(),
     branchTimestamp_gte: args.branchTimestamp_gte?.toString(),
   });
-  return data.masterShieldedTreeLeaves;
+  const branchAddresses = await queryBranchAddressesByChainIds([args.branchChainId]);
+  return data.masterShieldedTreeLeaves.map((leaf) => ({
+    ...leaf,
+    branchAddress: branchAddresses[args.branchChainId.toString()] ?? null,
+  }));
 }
 
 export async function queryAllMasterWormholeTreeLeaves(args: {
@@ -796,6 +951,7 @@ export async function queryMasterWormholeTreeLeavesForBranchChainWithinTimestamp
   blockTimestamp_lte: number;
 }): Promise<{
   branchRoot: string;
+  branchAddress: Address | null;
   blockTimestamp: string;
   treeId: string;
 }[]> {
@@ -824,7 +980,11 @@ export async function queryMasterWormholeTreeLeavesForBranchChainWithinTimestamp
     blockTimestamp_gte: args.blockTimestamp_gte.toString(),
     blockTimestamp_lte: args.blockTimestamp_lte.toString(),
   });
-  return data.masterWormholeTreeLeaves;
+  const branchAddresses = await queryBranchAddressesByChainIds([args.branchChainId]);
+  return data.masterWormholeTreeLeaves.map((leaf) => ({
+    ...leaf,
+    branchAddress: branchAddresses[args.branchChainId.toString()] ?? null,
+  }));
 }
 
 export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
@@ -832,6 +992,7 @@ export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
   branchTimestamp_gte?: number;
 }): Promise<{
   branchRoot: string;
+  branchAddress: Address | null;
   branchTimestamp: string;
   blockTimestamp: string;
   treeId: string;
@@ -865,7 +1026,11 @@ export async function queryMasterWormholeTreeLeavesForBranchChain(args: {
     branchChainId: args.branchChainId.toString(),
     branchTimestamp_gte: args.branchTimestamp_gte?.toString(),
   });
-  return data.masterWormholeTreeLeaves;
+  const branchAddresses = await queryBranchAddressesByChainIds([args.branchChainId]);
+  return data.masterWormholeTreeLeaves.map((leaf) => ({
+    ...leaf,
+    branchAddress: branchAddresses[args.branchChainId.toString()] ?? null,
+  }));
 }
 
 export async function queryMasterTreesUpdatedOnChain(chainId: number, args?: { first?: number }): Promise<{

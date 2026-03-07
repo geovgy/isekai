@@ -4,6 +4,7 @@ import { WormholeTokenType } from "./types";
 export const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!;
 
 export const SHIELDED_POOL_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_SHIELDED_POOL!;
+export const SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_SHIELDED_POOL_BRANCH!;
 
 // Per-chain RPC URLs
 export const RPC_URL_SEPOLIA = process.env.NEXT_PUBLIC_RPC_URL_SEPOLIA! ?? process.env.RPC_URL_SEPOLIA!;

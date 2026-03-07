@@ -1,6 +1,7 @@
 import { sepolia, arbitrumSepolia, optimismSepolia, baseSepolia, type Chain } from 'wagmi/chains'
 import {
   SHIELDED_POOL_CONTRACT_ADDRESS,
+  SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
   RPC_URL_SEPOLIA,
   RPC_URL_ARB_SEPOLIA,
   RPC_URL_OP_SEPOLIA,
@@ -16,6 +17,7 @@ export interface ChainConfig {
   rpcUrl: string
   subgraphUrl: string
   contractAddress: string
+  branchContractAddress: string
   isMaster: boolean
   label: string
 }
@@ -28,6 +30,7 @@ export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
     rpcUrl: RPC_URL_SEPOLIA,
     subgraphUrl: SUBGRAPH_URL_SEPOLIA,
     contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+    branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
     isMaster: true,
     label: 'Sepolia',
   },
@@ -36,6 +39,7 @@ export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
     rpcUrl: RPC_URL_ARB_SEPOLIA,
     subgraphUrl: SUBGRAPH_URL_ARB_SEPOLIA,
     contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+    branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
     isMaster: false,
     label: 'Arbitrum Sepolia',
   },
@@ -44,6 +48,7 @@ export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
   //   rpcUrl: RPC_URL_OP_SEPOLIA,
   //   subgraphUrl: SUBGRAPH_URL_OP_SEPOLIA,
   //   contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+  //   branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
   //   isMaster: false,
   //   label: 'Optimism Sepolia',
   // },
@@ -52,6 +57,7 @@ export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
   //   rpcUrl: RPC_URL_BASE_SEPOLIA,
   //   subgraphUrl: SUBGRAPH_URL_BASE_SEPOLIA,
   //   contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+  //   branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
   //   isMaster: false,
   //   label: 'Base Sepolia',
   // },

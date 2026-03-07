@@ -111,7 +111,7 @@ type MasterWormholeTreeSnapshot @entity(immutable: true) {
 }
 
 type BranchShieldedTree @entity(immutable: false) {
-  id: ID! # branch:treeId
+  id: ID! # branchAddress:branchChainId:treeId
   branch: Branch!
   treeId: BigInt! # uint256
   roots: [BigInt!]! # uint256[]
@@ -121,7 +121,7 @@ type BranchShieldedTree @entity(immutable: false) {
 }
 
 type BranchShieldedTreeUpdate @entity(immutable: true) {
-  id: ID! # branch:treeId:root
+  id: ID! # branchAddress:branchChainId:treeId:root
   branch: Branch!
   treeId: BigInt! # uint256
   root: BigInt! # uint256
@@ -131,7 +131,7 @@ type BranchShieldedTreeUpdate @entity(immutable: true) {
 }
 
 type SignerTree @entity(immutable: false) {
-  id: ID! # branch:treeId
+  id: ID! # branchAddress:branchChainId:treeId
   branch: Branch!
   branchAddress: Bytes! # address
   treeId: BigInt! # uint256
@@ -142,7 +142,7 @@ type SignerTree @entity(immutable: false) {
 }
 
 type SignerTreeUpdate @entity(immutable: true) {
-  id: ID! # branch:treeId:root
+  id: ID! # branchAddress:branchChainId:treeId:root
   branch: Branch!
   treeId: BigInt! # uint256
   root: BigInt! # uint256
@@ -162,13 +162,22 @@ type WormholeTree @entity(immutable: false) {
 }
 
 type ShieldedTransfer @entity(immutable: true) {
-  id: ID! # branch:treeId:startIndex
+  id: ID! # branchAddress:branchChainId:treeId:startIndex
   branch: Branch!
   treeId: BigInt! # uint256
   startIndex: BigInt! # uint256
   commitments: [BigInt!]! # uint256[]
   nullifiers: [ShieldNullifier!]! # ShieldNullifier[]
   withdrawals: [Withdrawal!]! # Withdrawal[]
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type ShieldedTransferSigner @entity(immutable: true) {
+  id: ID! # branchAddress:branchChainId:treeId:startIndex
+  branch: Branch!
+  shieldedTransfer: ShieldedTransfer!
   signerCommitment: Bytes! # bytes32
   signerNullifier: Bytes! # bytes32
   blockNumber: BigInt!

@@ -74,7 +74,14 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
 
     mapping(uint64 chainId => uint256 lastBlockNumber) internal _lastBlockNumbers;
 
-    event ShieldedTransfer(uint256 indexed treeId, uint256 startIndex, uint256[] commitments, bytes32[] nullifiers, IShieldedPool.Withdrawal[] withdrawals, bytes32 signerCommitment, bytes32 signerNullifier);
+    event ShieldedTransfer(uint256 indexed treeId, uint256 startIndex, uint256[] commitments, bytes32[] nullifiers, IShieldedPool.Withdrawal[] withdrawals);
+
+    event ShieldedTransferSigner(
+        uint256 indexed treeId,
+        uint256 indexed startIndex,
+        bytes32 signerCommitment,
+        bytes32 signerNullifier
+    );
 
     event ShieldedTreeUpdated(
         uint256 indexed shieldedTreeId,
@@ -232,7 +239,9 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         // If withdrawals are present, mint new shares for each withdrawal
         masterShieldedPool.unshield(shieldedTx.withdrawals);
 
-        emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals, shieldedTx.signerCommitment, shieldedTx.signerNullifier);
+        emit ShieldedTransfer(currentShieldedTreeId, startIndex, shieldedTx.commitments, shieldedTx.nullifiers, shieldedTx.withdrawals);
+
+        emit ShieldedTransferSigner(currentShieldedTreeId, startIndex, shieldedTx.signerCommitment, shieldedTx.signerNullifier);
 
         emit ShieldedTreeUpdated(currentShieldedTreeId, root, block.number, block.timestamp);
 

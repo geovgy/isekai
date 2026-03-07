@@ -16,7 +16,6 @@ import { getMerkleTree } from "@/src/merkle"
 import { getAssetId, getCommitment, getNullifier, getRandomBlinding, getWormholeBurnAddress, getWormholeNullifier, getWormholePseudoNullifier, getWormholeBurnCommitment } from "@/src/joinsplits"
 import { readContract, signTypedData, writeContract } from "wagmi/actions"
 import { Config } from "wagmi"
-import { SHIELDED_POOL_CONTRACT_ADDRESS } from "../env"
 import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "../config"
 import { MERKLE_TREE_DEPTH } from "../constants"
 import { InputMap } from "@noir-lang/noir_js"
@@ -375,6 +374,7 @@ export class ShieldedPool {
           treeId: treeNumber,
           root: leaf.branchRoot,
           chainId: noteSrcChainId,
+          branchAddress: leaf.branchAddress ?? undefined,
         })
         if (branchSnap && branchSnap.leaves.length > maxLeafIndex) {
           selectedLeaf = leaf
@@ -388,6 +388,7 @@ export class ShieldedPool {
         treeId: treeNumber,
         root: selectedLeaf.branchRoot,
         chainId: noteSrcChainId,
+        branchAddress: selectedLeaf.branchAddress ?? undefined,
       })
       if (!branchSnapshot || branchSnapshot.leaves.length <= maxLeafIndex) {
         throw new Error(`No branch shielded tree snapshot contains leaf index ${maxLeafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
@@ -450,6 +451,7 @@ export class ShieldedPool {
           treeId: treeNumber,
           root: leaf.branchRoot,
           chainId: noteSrcChainId,
+          branchAddress: leaf.branchAddress ?? undefined,
         })
         if (branchSnap && branchSnap.leaves.length > leafIndex) {
           selectedLeaf = leaf
@@ -463,6 +465,7 @@ export class ShieldedPool {
         treeId: treeNumber,
         root: selectedLeaf.branchRoot,
         chainId: noteSrcChainId,
+        branchAddress: selectedLeaf.branchAddress ?? undefined,
       })
       if (!branchSnapshot) {
         throw new Error(`Branch wormhole tree snapshot not found for tree ${treeNumber} root ${selectedLeaf.branchRoot} on chain ${noteSrcChainId}`)
@@ -555,7 +558,7 @@ export class ShieldedPool {
         name: "ShieldedPool",
         version: "1",
         chainId: args.srcChainId,
-        verifyingContract: getAddress(getChainConfig(args.srcChainId).contractAddress),
+        verifyingContract: getAddress(getChainConfig(args.srcChainId).branchContractAddress),
       },
       types: {
         ShieldedTx: [

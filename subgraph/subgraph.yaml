@@ -69,10 +69,10 @@ dataSources:
       file: ./src/shielded-pool.ts
 templates:
   - kind: ethereum/contract
-    name: ShieldedPoolDelegateBranch
+    name: ShieldedPoolBranch
     network: sepolia
     source:
-      abi: ShieldedPoolDelegateBranch
+      abi: ShieldedPoolBranch
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -85,18 +85,36 @@ templates:
         - BranchShieldedTree
         - BranchShieldedTreeSnapshot
         - BranchShieldedTreeUpdate
+      abis:
+        - name: ShieldedPoolBranch
+          file: ../contracts/out/ShieldedPoolBranch.sol/ShieldedPoolBranch.json
+      eventHandlers:
+        - event: ShieldedTransfer(indexed uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256,bytes32)[])
+          handler: handleBranchShieldedTransfer
+        - event: ShieldedTreeUpdated(indexed uint256,indexed uint256,uint256,uint256)
+          handler: handleBranchShieldedTreeUpdated
+        - event: VerifierAdded(address,uint256,uint256)
+          handler: handleBranchVerifierAdded
+      file: ./src/shielded-pool-branch.ts
+  - kind: ethereum/contract
+    name: ShieldedPoolDelegateBranch
+    network: sepolia
+    source:
+      abi: ShieldedPoolDelegateBranch
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - ShieldedTransferSigner
         - SignerTree
         - SignerTreeUpdate
       abis:
         - name: ShieldedPoolDelegateBranch
-          file: ../contracts/out/ShieldedPoolDelegateBranch.sol/ShieldedPoolBranch.json
+          file: ../contracts/out/ShieldedPoolDelegateBranch.sol/ShieldedPoolDelegateBranch.json
       eventHandlers:
-        - event: ShieldedTransfer(indexed uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256,bytes32)[],bytes32,bytes32)
-          handler: handleBranchShieldedTransfer
-        - event: ShieldedTreeUpdated(indexed uint256,indexed uint256,uint256,uint256)
-          handler: handleBranchShieldedTreeUpdated
+        - event: ShieldedTransferSigner(indexed uint256,indexed uint256,bytes32,bytes32)
+          handler: handleBranchShieldedTransferSigner
         - event: SignerTreeUpdated(indexed uint256,indexed uint256,uint256,uint256)
           handler: handleSignerTreeUpdated
-        - event: VerifierAdded(address,uint256,uint256)
-          handler: handleBranchVerifierAdded
       file: ./src/shielded-pool-delegate-branch.ts
