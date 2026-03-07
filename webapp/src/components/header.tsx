@@ -12,6 +12,7 @@ export function Header() {
   
   const navItems = [
     { href: "/assets", label: "Assets" },
+    { href: "/market", label: "Market" },
     { href: "/wormholes", label: "Wormholes" },
   ]
 
