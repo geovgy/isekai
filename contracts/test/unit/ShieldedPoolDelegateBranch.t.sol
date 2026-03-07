@@ -58,6 +58,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         shieldedPool.addBranch(masterChainId, address(branch));
         shieldedPool.setWormholeApprover(screener, true);
         branch.addVerifier(verifier, 2, 2);
+        branch.addBatchVerifier(verifier, 2, 2, 2);
         vm.stopPrank();
 
         wormholeVault.initialize(abi.encodePacked(address(vault)));
@@ -215,6 +216,98 @@ contract ShieldedPoolDelegateBranchTest is Test {
         });
     }
 
+    function _expectedOutputLength(ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx)
+        internal
+        pure
+        returns (uint256)
+    {
+        return shieldedTx.commitments.length + shieldedTx.withdrawals.length;
+    }
+
+    function _fillExpectedOutputCommitments(
+        ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx,
+        bytes32[] memory inputs,
+        uint256 offset
+    ) internal view {
+        for (uint256 i; i < shieldedTx.commitments.length; i++) {
+            inputs[offset + i] = bytes32(shieldedTx.commitments[i]);
+        }
+
+        for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
+            IShieldedPool.Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
+            inputs[offset + shieldedTx.commitments.length + i] = bytes32(
+                poseidon2.hash_5(
+                    uint256(uint160(withdrawal.to)),
+                    uint256(uint160(withdrawal.asset)),
+                    withdrawal.id,
+                    withdrawal.amount,
+                    2
+                )
+            );
+        }
+    }
+
+    function _expectedBatchPublicInputs(
+        ShieldedPoolDelegateBranch.ShieldedTx[] memory shieldedTxs
+    ) internal view returns (bytes32[] memory inputs) {
+        uint256 batchSize = shieldedTxs.length;
+        uint256 nullifierLength = shieldedTxs[0].nullifiers.length;
+        uint256 outputLength = _expectedOutputLength(shieldedTxs[0]);
+
+        (bytes32 domainHi, bytes32 domainLo) = _splitHash(_domainSeparatorV4());
+        uint256 inputNullifiersOffset = 3 + (9 * batchSize);
+        uint256 outputCommitmentsOffset = inputNullifiersOffset + (batchSize * nullifierLength);
+
+        inputs = new bytes32[](outputCommitmentsOffset + (batchSize * outputLength));
+        inputs[0] = domainLo;
+        inputs[1] = domainHi;
+        inputs[2] = bytes32(block.chainid);
+
+        for (uint256 i; i < batchSize; i++) {
+            _fillExpectedBatchPublicInputs(
+                shieldedTxs[i],
+                inputs,
+                i,
+                batchSize,
+                nullifierLength,
+                outputLength,
+                inputNullifiersOffset,
+                outputCommitmentsOffset
+            );
+        }
+    }
+
+    function _fillExpectedBatchPublicInputs(
+        ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx,
+        bytes32[] memory inputs,
+        uint256 batchIndex,
+        uint256 batchSize,
+        uint256 nullifierLength,
+        uint256 outputLength,
+        uint256 inputNullifiersOffset,
+        uint256 outputCommitmentsOffset
+    ) internal view {
+        (bytes32 messageHashHi, bytes32 messageHashLo) = _splitHash(_hashTypedData(shieldedTx));
+        uint256 columnOffset = 3 + batchIndex;
+
+        inputs[columnOffset] = bytes32(block.timestamp);
+        inputs[columnOffset + batchSize] = shieldedTx.shieldedRoot;
+        inputs[columnOffset + (2 * batchSize)] = shieldedTx.wormholeRoot;
+        inputs[columnOffset + (3 * batchSize)] = shieldedTx.signerRoot;
+        inputs[columnOffset + (4 * batchSize)] = messageHashHi;
+        inputs[columnOffset + (5 * batchSize)] = messageHashLo;
+        inputs[columnOffset + (6 * batchSize)] = shieldedTx.signerCommitment;
+        inputs[columnOffset + (7 * batchSize)] = shieldedTx.signerNullifier;
+        inputs[columnOffset + (8 * batchSize)] = shieldedTx.wormholeNullifier;
+
+        uint256 nullifierOffset = inputNullifiersOffset + (batchIndex * nullifierLength);
+        for (uint256 i; i < nullifierLength; i++) {
+            inputs[nullifierOffset + i] = shieldedTx.nullifiers[i];
+        }
+
+        _fillExpectedOutputCommitments(shieldedTx, inputs, outputCommitmentsOffset + (batchIndex * outputLength));
+    }
+
     function test_shieldedTransfer_revert_invalidSignerRoot() public {
         (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
 
@@ -364,6 +457,64 @@ contract ShieldedPoolDelegateBranchTest is Test {
         assertTrue(branch.signerNullifierUsed(secondTx.signerNullifier), "Second signer nullifier should be marked used");
         assertTrue(branch.isSignerRoot(firstTx.signerCommitment), "First signer root should remain valid");
         assertTrue(branch.isSignerRoot(expectedSecondSignerRoot), "Second signer tree root should become valid");
+    }
+
+    function test_batchShieldedTransfers_formatsRecursivePublicInputsForVerifier() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx[] memory shieldedTxs = new ShieldedPoolDelegateBranch.ShieldedTx[](2);
+        shieldedTxs[0] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1].wormholeNullifier = keccak256("batch wormhole nullifier 2");
+        shieldedTxs[1].signerNullifier = keccak256("batch signer nullifier 2");
+        shieldedTxs[1].nullifiers[0] = keccak256("batch nullifier 3");
+        shieldedTxs[1].nullifiers[1] = keccak256("batch nullifier 4");
+        shieldedTxs[1].commitments[0] = uint256(keccak256("batch commitment 3")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].commitments[1] = uint256(keccak256("batch commitment 4")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].signerCommitment = bytes32(uint256(keccak256("batch signer commitment 2")) % SNARK_SCALAR_FIELD);
+
+        bytes memory proof = abi.encodePacked("mock recursive proof");
+        bytes32[] memory expectedInputs = _expectedBatchPublicInputs(shieldedTxs);
+
+        vm.expectCall(address(verifier), abi.encodeCall(IVerifier.verify, (proof, expectedInputs)));
+        branch.batchShieldedTransfers(shieldedTxs, proof);
+    }
+
+    function test_batchShieldedTransfers_updatesStateForEachTransfer() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx[] memory shieldedTxs = new ShieldedPoolDelegateBranch.ShieldedTx[](2);
+        shieldedTxs[0] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1].wormholeNullifier = keccak256("state wormhole nullifier 2");
+        shieldedTxs[1].signerNullifier = keccak256("state signer nullifier 2");
+        shieldedTxs[1].nullifiers[0] = keccak256("state nullifier 3");
+        shieldedTxs[1].nullifiers[1] = keccak256("state nullifier 4");
+        shieldedTxs[1].commitments[0] = uint256(keccak256("state commitment 3")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].commitments[1] = uint256(keccak256("state commitment 4")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].signerCommitment = bytes32(uint256(keccak256("state signer commitment 2")) % SNARK_SCALAR_FIELD);
+
+        branch.batchShieldedTransfers(shieldedTxs, abi.encodePacked("mock recursive proof"));
+
+        (bytes32 branchShieldedRoot, uint256 shieldedSize,) = branch.branchShieldedTree(0);
+        bytes32 expectedLeft = bytes32(poseidon2.hash_2(shieldedTxs[0].commitments[0], shieldedTxs[0].commitments[1]));
+        bytes32 expectedRight = bytes32(poseidon2.hash_2(shieldedTxs[1].commitments[0], shieldedTxs[1].commitments[1]));
+        bytes32 expectedBranchRoot = bytes32(poseidon2.hash_2(uint256(expectedLeft), uint256(expectedRight)));
+        bytes32 expectedSecondSignerRoot = bytes32(
+            poseidon2.hash_2(uint256(shieldedTxs[0].signerCommitment), uint256(shieldedTxs[1].signerCommitment))
+        );
+
+        assertEq(branchShieldedRoot, expectedBranchRoot, "Batch shielded root should include both transfers");
+        assertEq(shieldedSize, 4, "Shielded tree should contain four leaves after batched transfer");
+
+        assertTrue(branch.signerNullifierUsed(shieldedTxs[0].signerNullifier), "First signer nullifier should be used");
+        assertTrue(branch.signerNullifierUsed(shieldedTxs[1].signerNullifier), "Second signer nullifier should be used");
+        assertTrue(shieldedPool.wormholeNullifierUsed(shieldedTxs[0].wormholeNullifier), "First wormhole nullifier should be used");
+        assertTrue(shieldedPool.wormholeNullifierUsed(shieldedTxs[1].wormholeNullifier), "Second wormhole nullifier should be used");
+        assertTrue(shieldedPool.nullifierUsed(shieldedTxs[0].nullifiers[0]), "First batch nullifier should be used");
+        assertTrue(shieldedPool.nullifierUsed(shieldedTxs[1].nullifiers[1]), "Last batch nullifier should be used");
+        assertTrue(branch.isSignerRoot(shieldedTxs[0].signerCommitment), "First signer root should remain valid");
+        assertTrue(branch.isSignerRoot(expectedSecondSignerRoot), "Final batched signer root should be valid");
     }
 
     function _encodeBranchTreesUpdatedTopics(uint256 shieldedTreeId, bytes32 shieldedTreeRoot)

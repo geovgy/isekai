@@ -40,6 +40,7 @@ import {
 const MERKLE_TREE_DEPTH = 20;
 const RECURSIVE_INNER_TARGET = "noir-recursive-no-zk" as const;
 const OUTER_TARGET = "evm" as const;
+const BATCH_PUBLIC_INPUT_COUNT = 29;
 
 const owner = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
 const delegate = privateKeyToAccount("0x1000000000000000000000000000000000000000000000000000000000000001");
@@ -645,7 +646,7 @@ describe("batch delegated utxo recursive proof", () => {
     const fixtureB = await createNoWormholeFixture(1001n, 1999n, 96n, [123123123n, 321321321n], [333333333n, 444444444n]);
 
     const batchProof = await proveBatch([fixtureA, fixtureB]);
-    expect(batchProof.publicInputs.length).toBeGreaterThan(900);
+    expect(batchProof.publicInputs).toHaveLength(BATCH_PUBLIC_INPUT_COUNT);
   }, { timeout: 120000 });
 
   it("aggregates delegated proofs with mixed wormhole handling", async () => {
@@ -653,6 +654,7 @@ describe("batch delegated utxo recursive proof", () => {
     const fixtureB = await createIncludedWormholeFixture(1002n);
 
     const batchProof = await proveBatch([fixtureA, fixtureB]);
+    expect(batchProof.publicInputs).toHaveLength(BATCH_PUBLIC_INPUT_COUNT);
     expect(bytesToHex(batchProof.proof).length).toBeGreaterThan(2);
   }, { timeout: 120000 });
 });

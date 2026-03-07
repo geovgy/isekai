@@ -65,6 +65,7 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
     mapping(bytes32 nullifier => bool) public signerNullifierUsed;
 
     mapping(uint256 inputs => mapping(uint256 outputs => IVerifier)) internal _utxoVerifiers;
+    mapping(uint256 batchSize => mapping(uint256 inputs => mapping(uint256 outputs => IVerifier))) internal _batchUtxoVerifiers;
     
     mapping(uint256 treeId => LeanIMTData) internal _branchShieldedTrees; // chain-specific whose root appends to master shielded tree
 
@@ -90,6 +91,7 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
     );
 
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
+    event BatchVerifierAdded(address verifier, uint256 batchSize, uint256 inputs, uint256 outputs);
 
     constructor(IShieldedPool masterShieldedPool_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         masterShieldedPool = masterShieldedPool_;
@@ -118,10 +120,63 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         emit VerifierAdded(address(verifier), inputs, outputs);
     }
 
+    function addBatchVerifier(IVerifier verifier, uint256 batchSize, uint256 inputs, uint256 outputs) external onlyOwner {
+        require(address(verifier) != address(0), "ShieldedPool: verifier is zero address");
+        require(batchSize > 0 && inputs > 0 && outputs > 0, "ShieldedPool: invalid batch size, inputs or outputs");
+        _batchUtxoVerifiers[batchSize][inputs][outputs] = verifier;
+        emit BatchVerifierAdded(address(verifier), batchSize, inputs, outputs);
+    }
+
     function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof) external {
         bytes32 messageHash = _hashTypedData(shieldedTx);
-        
-        // Validate roots
+        _validateShieldedTx(shieldedTx);
+
+        // Get verifier
+        IVerifier verifier = _utxoVerifiers[shieldedTx.nullifiers.length][_outputCommitmentLength(shieldedTx)];
+        require(address(verifier) != address(0), "ShieldedPool: verifier is not registered");
+
+        // Get public inputs
+        bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash);
+
+        // Verify proof
+        require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
+
+        _applyShieldedTransfer(shieldedTx);
+    }
+
+    function batchShieldedTransfers(
+        ShieldedTx[] memory shieldedTxs,
+        bytes calldata proof
+    ) external {
+        uint256 batchSize = shieldedTxs.length;
+        require(batchSize > 0, "ShieldedPool: batch is empty");
+
+        uint256 nullifierLength = shieldedTxs[0].nullifiers.length;
+        uint256 commitmentLength = _outputCommitmentLength(shieldedTxs[0]);
+        bytes32[] memory messageHashes = new bytes32[](batchSize);
+
+        for (uint256 i; i < batchSize; i++) {
+            ShieldedTx memory shieldedTx = shieldedTxs[i];
+            require(shieldedTx.nullifiers.length == nullifierLength, "ShieldedPool: inconsistent nullifier length");
+            require(_outputCommitmentLength(shieldedTx) == commitmentLength, "ShieldedPool: inconsistent commitment length");
+
+            messageHashes[i] = _hashTypedData(shieldedTx);
+            _validateShieldedTx(shieldedTx);
+            _validateBatchUniqueness(shieldedTxs, i);
+        }
+
+        IVerifier verifier = _batchUtxoVerifiers[batchSize][nullifierLength][commitmentLength];
+        require(address(verifier) != address(0), "ShieldedPool: batch verifier is not registered");
+
+        bytes32[] memory inputs = _formatBatchPublicInputs(shieldedTxs, messageHashes);
+        require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
+
+        for (uint256 i; i < batchSize; i++) {
+            _applyShieldedTransfer(shieldedTxs[i]);
+        }
+    }
+
+    function _validateShieldedTx(ShieldedTx memory shieldedTx) internal view {
         require(masterShieldedPool.isMasterWormholeRoot(shieldedTx.wormholeRoot), "ShieldedPool: wormhole root is not valid");
         require(masterShieldedPool.isMasterShieldedRoot(shieldedTx.shieldedRoot), "ShieldedPool: shielded root is not valid");
         require(isSignerRoot[shieldedTx.signerRoot], "ShieldedPool: signer root is not valid");
@@ -132,17 +187,25 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         for (uint256 i = 0; i < shieldedTx.nullifiers.length; i++) {
             require(!masterShieldedPool.nullifierUsed(shieldedTx.nullifiers[i]), "ShieldedPool: nullifier is already used");
         }
+    }
 
-        // Get verifier
-        IVerifier verifier = _utxoVerifiers[shieldedTx.nullifiers.length][shieldedTx.commitments.length + shieldedTx.withdrawals.length];
-        require(address(verifier) != address(0), "ShieldedPool: verifier is not registered");
+    function _validateBatchUniqueness(ShieldedTx[] memory shieldedTxs, uint256 currentIndex) internal pure {
+        ShieldedTx memory current = shieldedTxs[currentIndex];
 
-        // Get public inputs
-        bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash);
+        for (uint256 i; i < currentIndex; i++) {
+            ShieldedTx memory previous = shieldedTxs[i];
+            require(previous.signerNullifier != current.signerNullifier, "ShieldedPool: signer nullifier is duplicated in batch");
+            require(previous.wormholeNullifier != current.wormholeNullifier, "ShieldedPool: wormhole nullifier is duplicated in batch");
 
-        // Verify proof
-        require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
+            for (uint256 j; j < current.nullifiers.length; j++) {
+                for (uint256 k; k < previous.nullifiers.length; k++) {
+                    require(previous.nullifiers[k] != current.nullifiers[j], "ShieldedPool: nullifier is duplicated in batch");
+                }
+            }
+        }
+    }
 
+    function _applyShieldedTransfer(ShieldedTx memory shieldedTx) internal {
         // Mark nullifiers as used
         signerNullifierUsed[shieldedTx.signerNullifier] = true;
         masterShieldedPool.markWormholeNullifierUsed(shieldedTx.wormholeNullifier);
@@ -245,8 +308,9 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         // - wormhole_nullifier
         // - nullifiers[]
         // - commitments[]
+        uint256 commitmentLength = _outputCommitmentLength(shieldedTx);
         uint256 offset = 12 + shieldedTx.nullifiers.length;
-        inputs = new bytes32[](offset + shieldedTx.commitments.length + shieldedTx.withdrawals.length);
+        inputs = new bytes32[](offset + commitmentLength);
         inputs[0] = _eip712DomainHashLo;
         inputs[1] = _eip712DomainHashHi;
         inputs[2] = bytes32(block.chainid);
@@ -262,20 +326,90 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         for (uint256 i; i < shieldedTx.nullifiers.length; i++) {
             inputs[12 + i] = shieldedTx.nullifiers[i];
         }
+        _fillOutputCommitments(shieldedTx, inputs, offset);
+    }
+
+    function _formatBatchPublicInputs(
+        ShieldedTx[] memory shieldedTxs,
+        bytes32[] memory messageHashes
+    ) internal view returns (bytes32[] memory inputs) {
+        uint256 batchSize = shieldedTxs.length;
+        uint256 nullifierLength = shieldedTxs[0].nullifiers.length;
+        uint256 commitmentLength = _outputCommitmentLength(shieldedTxs[0]);
+        uint256 inputNullifiersOffset = 3 + (9 * batchSize);
+        uint256 outputCommitmentsOffset = inputNullifiersOffset + (batchSize * nullifierLength);
+        inputs = new bytes32[](outputCommitmentsOffset + (batchSize * commitmentLength));
+
+        inputs[0] = _eip712DomainHashLo;
+        inputs[1] = _eip712DomainHashHi;
+        inputs[2] = bytes32(block.chainid);
+
+        for (uint256 i; i < batchSize; i++) {
+            _fillBatchPublicInputs(
+                shieldedTxs[i],
+                messageHashes[i],
+                inputs,
+                i,
+                batchSize,
+                nullifierLength,
+                commitmentLength,
+                inputNullifiersOffset,
+                outputCommitmentsOffset
+            );
+        }
+    }
+
+    function _fillBatchPublicInputs(
+        ShieldedTx memory shieldedTx,
+        bytes32 messageHash,
+        bytes32[] memory inputs,
+        uint256 batchIndex,
+        uint256 batchSize,
+        uint256 nullifierLength,
+        uint256 commitmentLength,
+        uint256 inputNullifiersOffset,
+        uint256 outputCommitmentsOffset
+    ) internal view {
+        (bytes32 messageHashHi, bytes32 messageHashLo) = _splitHash(messageHash);
+        uint256 columnOffset = 3 + batchIndex;
+
+        inputs[columnOffset] = bytes32(block.timestamp);
+        inputs[columnOffset + batchSize] = shieldedTx.shieldedRoot;
+        inputs[columnOffset + (2 * batchSize)] = shieldedTx.wormholeRoot;
+        inputs[columnOffset + (3 * batchSize)] = shieldedTx.signerRoot;
+        inputs[columnOffset + (4 * batchSize)] = messageHashHi;
+        inputs[columnOffset + (5 * batchSize)] = messageHashLo;
+        inputs[columnOffset + (6 * batchSize)] = shieldedTx.signerCommitment;
+        inputs[columnOffset + (7 * batchSize)] = shieldedTx.signerNullifier;
+        inputs[columnOffset + (8 * batchSize)] = shieldedTx.wormholeNullifier;
+
+        uint256 nullifierOffset = inputNullifiersOffset + (batchIndex * nullifierLength);
+        for (uint256 i; i < nullifierLength; i++) {
+            inputs[nullifierOffset + i] = shieldedTx.nullifiers[i];
+        }
+
+        _fillOutputCommitments(shieldedTx, inputs, outputCommitmentsOffset + (batchIndex * commitmentLength));
+    }
+
+    function _fillOutputCommitments(ShieldedTx memory shieldedTx, bytes32[] memory inputs, uint256 offset) internal view {
         for (uint256 i; i < shieldedTx.commitments.length; i++) {
             inputs[offset + i] = bytes32(shieldedTx.commitments[i]);
         }
         for (uint256 i; i < shieldedTx.withdrawals.length; i++) {
             IShieldedPool.Withdrawal memory withdrawal = shieldedTx.withdrawals[i];
             uint256 commitment = _getCommitment(
-                uint256(uint160(withdrawal.to)), 
+                uint256(uint160(withdrawal.to)),
                 uint256(uint160(withdrawal.asset)),
                 withdrawal.id,
-                withdrawal.amount, 
+                withdrawal.amount,
                 2 // Transfer Type: WITHDRAWAL
             );
             inputs[offset + shieldedTx.commitments.length + i] = bytes32(commitment);
         }
+    }
+
+    function _outputCommitmentLength(ShieldedTx memory shieldedTx) internal pure returns (uint256) {
+        return shieldedTx.commitments.length + shieldedTx.withdrawals.length;
     }
 
     function _splitHash(bytes32 value) internal pure returns (bytes32 hi, bytes32 lo) {

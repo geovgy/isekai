@@ -19,7 +19,7 @@ fn main(
     wormhole_nullifiers: pub [Field; B], // pub
     input_nullifiers: pub [[Field; N]; B], // pub
     output_commitments: pub [[Field; C]; B], // pub
-    proofs: [UltraHonkProof; B], // pub
+    proofs: [UltraHonkProof; B],
     verification_key: UltraHonkVerificationKey,
     key_hash: Field,
 ) {
