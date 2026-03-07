@@ -231,8 +231,6 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         // Public params:
         // - eip712_domain_lo
         // - eip712_domain_hi
-        // - hashed_message_hi
-        // - hashed_message_lo
         // - chain_id
         // - timestamp
         // - shielded_root
@@ -247,24 +245,22 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         // - wormhole_nullifier
         // - nullifiers[]
         // - commitments[]
-        uint256 offset = 14 + shieldedTx.nullifiers.length;
+        uint256 offset = 12 + shieldedTx.nullifiers.length;
         inputs = new bytes32[](offset + shieldedTx.commitments.length + shieldedTx.withdrawals.length);
         inputs[0] = _eip712DomainHashLo;
         inputs[1] = _eip712DomainHashHi;
-        inputs[2] = messageHashHi;
-        inputs[3] = messageHashLo;
-        inputs[4] = bytes32(block.chainid);
-        inputs[5] = bytes32(block.timestamp);
-        inputs[6] = shieldedTx.shieldedRoot;
-        inputs[7] = shieldedTx.wormholeRoot;
-        inputs[8] = shieldedTx.signerRoot;
-        inputs[9] = messageHashHi;
-        inputs[10] = messageHashLo;
-        inputs[11] = shieldedTx.signerCommitment;
-        inputs[12] = shieldedTx.signerNullifier;
-        inputs[13] = shieldedTx.wormholeNullifier;
+        inputs[2] = bytes32(block.chainid);
+        inputs[3] = bytes32(block.timestamp);
+        inputs[4] = shieldedTx.shieldedRoot;
+        inputs[5] = shieldedTx.wormholeRoot;
+        inputs[6] = shieldedTx.signerRoot;
+        inputs[7] = messageHashHi;
+        inputs[8] = messageHashLo;
+        inputs[9] = shieldedTx.signerCommitment;
+        inputs[10] = shieldedTx.signerNullifier;
+        inputs[11] = shieldedTx.wormholeNullifier;
         for (uint256 i; i < shieldedTx.nullifiers.length; i++) {
-            inputs[14 + i] = shieldedTx.nullifiers[i];
+            inputs[12 + i] = shieldedTx.nullifiers[i];
         }
         for (uint256 i; i < shieldedTx.commitments.length; i++) {
             inputs[offset + i] = bytes32(shieldedTx.commitments[i]);

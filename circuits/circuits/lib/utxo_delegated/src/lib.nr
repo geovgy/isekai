@@ -92,8 +92,8 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
 }
 
 pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
-    eip712_domain_lo: [u8; 16],
-    eip712_domain_hi: [u8; 16],
+    eip712_domain_lo: Field,
+    eip712_domain_hi: Field,
     pub_key_x: [u8; 32],
     pub_key_y: [u8; 32],
     signature: [u8; 64],
@@ -120,7 +120,9 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
     let delegate_address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
     assert(delegate_address == delegation.delegate, "delegation signer is not delegate address");
     
-    let eip712_domain: [u8; 32] = eip712_domain_hi.concat(eip712_domain_lo);
+    let eip712_domain_lo_bytes: [u8; 16] = eip712_domain_lo.to_be_bytes();
+    let eip712_domain_hi_bytes: [u8; 16] = eip712_domain_hi.to_be_bytes();
+    let eip712_domain: [u8; 32] = eip712_domain_hi_bytes.concat(eip712_domain_lo_bytes);
 
     let delegation_hash = hash_signer_delegation(eip712_domain, delegation_typehash, delegation);
     let owner_address = ecrecover(owner_pub_key_x, owner_pub_key_y, delegation_signature, delegation_hash);

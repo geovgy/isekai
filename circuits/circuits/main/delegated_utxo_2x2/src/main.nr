@@ -7,12 +7,12 @@ use delegated_utxo::{
 use joinsplit::notes::{InputNote, OutputNote, WormholeNote};
 
 fn main(
-    eip712_domain_lo: pub [u8; 16],
-    eip712_domain_hi: pub [u8; 16],
+    eip712_domain_lo: pub Field,
+    eip712_domain_hi: pub Field,
     pub_key_x: [u8; 32],
     pub_key_y: [u8; 32],
     signature: [u8; 64],
-    hashed_message: pub [u8; 32], // Full 256-bit EIP-712 message hash
+    hashed_message: [u8; 32], // Full 256-bit EIP-712 message hash
     chain_id: pub Field, // pub
     timestamp: pub u64, // pub
     shielded_root: pub Field, // pub

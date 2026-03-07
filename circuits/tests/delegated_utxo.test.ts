@@ -5,7 +5,7 @@ import { getDelegatedPublicInputHashes, getShieldedPoolDomain, getShieldedPoolDo
 import { Prover } from "../src/prover";
 import { privateKeyToAccount } from "viem/accounts";
 import { ConfidentialType, TransferType, type InputNote, type OutputNote, type SignerDelegation, type SignerNote, type WormholeNote } from "../src/types";
-import { bytesToHex, createPublicClient, getAddress, hashTypedData, hexToBytes, http, keccak256, recoverPublicKey, toHex, type Abi, type Address } from "viem";
+import { createPublicClient, getAddress, hashTypedData, hexToBytes, http, keccak256, recoverPublicKey, toHex, type Abi, type Address } from "viem";
 import type { ProofData } from "@aztec/bb.js";
 import { sepolia } from "viem/chains";
 
@@ -86,23 +86,21 @@ const shieldedTxTypes = {
 } as const
 
 function extractPublicInputs(result: string[], inputLength: number, outputLength: number) {
-  const decodeByteArray = (values: string[]) => bytesToHex(Uint8Array.from(values.map(value => Number(BigInt(value)))))
   return {
-    eip712DomainLo: decodeByteArray(result.slice(0, 16)),
-    eip712DomainHi: decodeByteArray(result.slice(16, 32)),
-    hashedMessage: decodeByteArray(result.slice(32, 64)),
-    chainId: result[64]!,
-    timestamp: result[65]!,
-    shieldedRoot: result[66]!,
-    wormholeRoot: result[67]!,
-    signerRoot: result[68]!,
-    returnedHashedMessageHi: result[69]!,
-    returnedHashedMessageLo: result[70]!,
-    signerCommitment: result[71]!,
-    signerNullifier: result[72]!,
-    wormholeNullifier: result[73]!,
-    inputNullifiers: result.slice(74, 74 + inputLength),
-    outputCommitments: result.slice(74 + inputLength, 74 + inputLength + outputLength),
+    eip712DomainLo: result[0]!,
+    eip712DomainHi: result[1]!,
+    chainId: result[2]!,
+    timestamp: result[3]!,
+    shieldedRoot: result[4]!,
+    wormholeRoot: result[5]!,
+    signerRoot: result[6]!,
+    returnedHashedMessageHi: result[7]!,
+    returnedHashedMessageLo: result[8]!,
+    signerCommitment: result[9]!,
+    signerNullifier: result[10]!,
+    wormholeNullifier: result[11]!,
+    inputNullifiers: result.slice(12, 12 + inputLength),
+    outputCommitments: result.slice(12 + inputLength, 12 + inputLength + outputLength),
   }
 }
 
@@ -380,8 +378,8 @@ describe("delegated utxo", () => {
 
     const prover = new Prover("delegated_utxo_2x2")
     const circuitInputs = {
-      eip712_domain_lo: [...hexToBytes(toHex(publicHashes.eip712DomainLo, { size: 16 }))],
-      eip712_domain_hi: [...hexToBytes(toHex(publicHashes.eip712DomainHi, { size: 16 }))],
+      eip712_domain_lo: publicHashes.eip712DomainLo.toString(),
+      eip712_domain_hi: publicHashes.eip712DomainHi.toString(),
       pub_key_x: [...hexToBytes(publicKey).slice(1, 33)],
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
       signature: [...hexToBytes(signature).slice(0, 64)],
@@ -417,11 +415,8 @@ describe("delegated utxo", () => {
 
     const expectedOutputCommitments = outputNotes.map(note => getCommitment(token, tokenId, note))
     const actual = extractPublicInputs(result.publicInputs, inputNotes.length, outputNotes.length)
-    const domainBytes = hexToBytes(domainSeparator)
-
-    expect(actual.eip712DomainLo, "eip712 domain lo public input mismatch").toBe(bytesToHex(domainBytes.slice(16, 32)))
-    expect(actual.eip712DomainHi, "eip712 domain hi public input mismatch").toBe(bytesToHex(domainBytes.slice(0, 16)))
-    expect(actual.hashedMessage, "hashed message public input mismatch").toBe(messageHash)
+    expect(actual.eip712DomainLo, "eip712 domain lo public input mismatch").toBe(toHex(publicHashes.eip712DomainLo, { size: 32 }))
+    expect(actual.eip712DomainHi, "eip712 domain hi public input mismatch").toBe(toHex(publicHashes.eip712DomainHi, { size: 32 }))
     expect(actual.chainId, "chain id public input mismatch").toBe(toHex(chainId, { size: 32 }))
     expect(actual.timestamp, "timestamp public input mismatch").toBe(toHex(timestamp, { size: 32 }))
     expect(actual.shieldedRoot, "shielded root public input mismatch").toBe(toHex(utxoMasterTree.root, { size: 32 }))
@@ -580,8 +575,8 @@ describe("delegated utxo", () => {
 
     const prover = new Prover("delegated_utxo_2x2")
     const circuitInputs = {
-      eip712_domain_lo: [...hexToBytes(toHex(publicHashes.eip712DomainLo, { size: 16 }))],
-      eip712_domain_hi: [...hexToBytes(toHex(publicHashes.eip712DomainHi, { size: 16 }))],
+      eip712_domain_lo: publicHashes.eip712DomainLo.toString(),
+      eip712_domain_hi: publicHashes.eip712DomainHi.toString(),
       pub_key_x: [...hexToBytes(publicKey).slice(1, 33)],
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
       signature: [...hexToBytes(signature).slice(0, 64)],
@@ -617,11 +612,8 @@ describe("delegated utxo", () => {
 
     const expectedOutputCommitments = outputNotes.map(note => getCommitment(token, tokenId, note))
     const actual = extractPublicInputs(result.publicInputs, inputNotes.length, outputNotes.length)
-    const domainBytes = hexToBytes(domainSeparator)
-
-    expect(actual.eip712DomainLo).toBe(bytesToHex(domainBytes.slice(16, 32)))
-    expect(actual.eip712DomainHi).toBe(bytesToHex(domainBytes.slice(0, 16)))
-    expect(actual.hashedMessage).toBe(messageHash)
+    expect(actual.eip712DomainLo).toBe(toHex(publicHashes.eip712DomainLo, { size: 32 }))
+    expect(actual.eip712DomainHi).toBe(toHex(publicHashes.eip712DomainHi, { size: 32 }))
     expect(actual.chainId).toBe(toHex(chainId, { size: 32 }))
     expect(actual.timestamp).toBe(toHex(timestamp, { size: 32 }))
     expect(actual.shieldedRoot).toBe(toHex(utxoMasterTree.root, { size: 32 }))
@@ -755,8 +747,8 @@ describe("delegated utxo", () => {
 
     const prover = new Prover("delegated_utxo_2x2")
     const circuitInputs = {
-      eip712_domain_lo: [...hexToBytes(toHex(publicHashes.eip712DomainLo, { size: 16 }))],
-      eip712_domain_hi: [...hexToBytes(toHex(publicHashes.eip712DomainHi, { size: 16 }))],
+      eip712_domain_lo: publicHashes.eip712DomainLo.toString(),
+      eip712_domain_hi: publicHashes.eip712DomainHi.toString(),
       pub_key_x: [...hexToBytes(publicKey).slice(1, 33)],
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
       signature: [...hexToBytes(signature).slice(0, 64)],
