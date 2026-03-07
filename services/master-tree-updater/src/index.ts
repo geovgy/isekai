@@ -1,4 +1,4 @@
-import { parseEventLogs, type Hex, type TransactionReceipt } from "viem"
+import { parseAbi, parseEventLogs, type Hex, type TransactionReceipt } from "viem"
 import { CONTRACT_ADDRESS } from "./env"
 import { MASTER_CHAIN_ID, BRANCH_CHAIN_IDS, getChain } from "./config"
 // import { updateMasterTreesAbi, masterTreesUpdatedEventAbi } from "./abis"
@@ -6,6 +6,14 @@ import { abi as ShieldedPoolAbi } from "../../../contracts/out/ShieldedPool.sol/
 import { account, getPublicClient, getWalletClient } from "./clients"
 import { queryLatestBranchTreesUpdated } from "./subgraph"
 import { getPolymerProofHex } from "./polymer"
+
+const branchShieldedTreeUpdatedAbi = parseAbi([
+  "event ShieldedTreeUpdated(uint256 indexed shieldedTreeId, uint256 indexed shieldedRoot, uint256 blockNumber, uint256 blockTimestamp)",
+])
+
+const masterTreesUpdatedAbi = parseAbi([
+  "event MasterTreesUpdated(uint256 shieldedTreeId, uint256 wormholeTreeId, uint256 indexed masterShieldedRoot, uint256 indexed masterWormholeRoot, uint256 blockNumber, uint256 blockTimestamp)",
+])
 
 async function sendUpdateMasterTrees(targetChainId: number, proof: Hex): Promise<TransactionReceipt> {
   const wallet = getWalletClient(targetChainId)
@@ -42,15 +50,32 @@ async function main() {
 
   for (const branchChainId of BRANCH_CHAIN_IDS) {
     const label = getChain(branchChainId).label
-    console.log(`[${label}] Querying latest BranchTreesUpdated event...`)
+    console.log(`[${label}] Querying latest BranchShieldedTreeUpdate event...`)
 
     const event = await queryLatestBranchTreesUpdated(branchChainId)
     if (!event) {
-      console.log(`[${label}] No BranchTreesUpdated events found, skipping.\n`)
+      console.log(`[${label}] No BranchShieldedTreeUpdate events found, skipping.\n`)
       continue
     }
 
-    console.log(`[${label}] Found at block ${event.blockNumber} (branch block: ${event.branchBlockNumber}), logIndex ${event.logIndex}`)
+    const branchPublicClient = getPublicClient(branchChainId)
+    const sourceReceipt = await branchPublicClient.getTransactionReceipt({
+      hash: event.transactionHash as Hex,
+    })
+    const sourceLogs = parseEventLogs({
+      abi: branchShieldedTreeUpdatedAbi,
+      eventName: "ShieldedTreeUpdated",
+      logs: sourceReceipt.logs,
+    })
+    const sourceLog = sourceLogs.find((log) =>
+      log.args.shieldedTreeId === BigInt(event.treeId) && log.args.shieldedRoot === BigInt(event.root)
+    )
+    if (!sourceLog || sourceLog.logIndex == null) {
+      console.log(`[${label}] Could not resolve ShieldedTreeUpdated log index from receipt, skipping.\n`)
+      continue
+    }
+
+    console.log(`[${label}] Found at block ${event.blockNumber} (treeId: ${event.treeId}, root: ${event.root}, logIndex: ${sourceLog.logIndex})`)
 
     const lastSyncedBlock = await masterPublicClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -59,7 +84,7 @@ async function main() {
       args: [BigInt(branchChainId)],
     }) as bigint
 
-    if (BigInt(event.branchBlockNumber) <= lastSyncedBlock) {
+    if (BigInt(event.blockNumber) <= lastSyncedBlock) {
       console.log(`[${label}] Already synced (master last block: ${lastSyncedBlock}), skipping.\n`)
       continue
     }
@@ -69,7 +94,7 @@ async function main() {
     const proof = await getPolymerProofHex({
       sourceChainId: branchChainId,
       blockNumber: Number(event.blockNumber),
-      logIndex: Number(event.logIndex),
+      logIndex: Number(sourceLog.logIndex),
     })
 
     console.log(`[${label}] Polymer proof received (${proof.length} hex chars)`)
@@ -90,7 +115,7 @@ async function main() {
   console.log("\n=== Step 2: Sync master root to branch chains ===\n")
 
   const masterUpdatedLogs = parseEventLogs({
-    abi: ShieldedPoolAbi,
+    abi: masterTreesUpdatedAbi,
     eventName: "MasterTreesUpdated",
     logs: lastMasterReceipt.logs,
   })

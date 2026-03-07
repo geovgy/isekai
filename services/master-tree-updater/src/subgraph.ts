@@ -14,33 +14,33 @@ async function subgraphQuery<T>(query: string, variables: Record<string, unknown
   return json.data
 }
 
-export interface BranchTreesUpdatedEvent {
+export interface BranchShieldedTreeUpdateEvent {
   id: string
-  logIndex: string
-  branchShieldedRoot: string
-  branchWormholeRoot: string
-  branchBlockNumber: string
-  branchBlockTimestamp: string
+  treeId: string
+  root: string
   blockNumber: string
   blockTimestamp: string
   transactionHash: string
+  branch: {
+    address: string
+  }
 }
 
-export async function queryLatestBranchTreesUpdated(chainId: number): Promise<BranchTreesUpdatedEvent | null> {
-  const data = await subgraphQuery<{ branchTreesUpdateds: BranchTreesUpdatedEvent[] }>(`
+export async function queryLatestBranchTreesUpdated(chainId: number): Promise<BranchShieldedTreeUpdateEvent | null> {
+  const data = await subgraphQuery<{ branchShieldedTreeUpdates: BranchShieldedTreeUpdateEvent[] }>(`
     query {
-      branchTreesUpdateds(orderBy: blockTimestamp, orderDirection: desc, first: 1) {
+      branchShieldedTreeUpdates(orderBy: blockTimestamp, orderDirection: desc, first: 1) {
         id
-        logIndex
-        branchShieldedRoot
-        branchWormholeRoot
-        branchBlockNumber
-        branchBlockTimestamp
+        treeId
+        root
         blockNumber
         blockTimestamp
         transactionHash
+        branch {
+          address
+        }
       }
     }
   `, {}, chainId)
-  return data.branchTreesUpdateds[0] ?? null
+  return data.branchShieldedTreeUpdates[0] ?? null
 }
