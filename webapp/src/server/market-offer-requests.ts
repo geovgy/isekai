@@ -1,10 +1,8 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, sql as drizzleSql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import postgres from "postgres";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { ConvexHttpClient } from "convex/browser";
 import type { Address, Hex } from "viem";
 
 interface MarketOfferItem {
@@ -21,7 +19,6 @@ export interface MarketOffer {
   [key: string]: unknown;
 }
 
-// Matches the EIP-712 SignerDelegation shape used in `contracts` and `circuits`.
 export interface MarketSignerDelegation {
   chainId: string;
   owner: Address;
@@ -39,8 +36,6 @@ export interface MarketSignerDelegation {
   [key: string]: unknown;
 }
 
-// String-friendly versions of the note payloads used in `circuits/src/types.ts`
-// and `webapp/src/types.ts`.
 export interface MarketInputNote {
   chain_id: string;
   blinding: string;
@@ -67,16 +62,13 @@ export interface MarketWormholeNote {
   recipient: Address;
   wormhole_secret: string;
   amount: string;
-  // `webapp/src/types.ts`
   asset_id?: string;
   sender?: Address;
-  // `circuits/src/types.ts`
   token?: string;
   token_id?: string;
   to?: Address;
   from?: Address;
   confidential_type?: number;
-  // Present when a deposit/proof-oriented shape is sent instead of the base note.
   master_root?: string;
   branch_root?: string;
   branch_index?: string;
@@ -116,7 +108,7 @@ export interface SaveMarketOfferRequestInput {
 
 export interface MarketOfferRequestRecord {
   id: string;
-  makerAddress: Address;
+  makerAddress: Address | null;
   offer: MarketOffer;
   offerStatus: string;
   signerDelegation: MarketSignerDelegation | null;
@@ -125,156 +117,36 @@ export interface MarketOfferRequestRecord {
   inputNotes: MarketInputNote[] | null;
   outputNotes: MarketOutputNote[] | null;
   wormholeNote: MarketWormholeNote | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function getDatabaseUrl() {
-  const databaseUrl =
-    process.env.MARKET_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    process.env.POSTGRES_URL;
+function getConvexUrl() {
+  const convexUrl =
+    process.env.CONVEX_URL ??
+    process.env.NEXT_PUBLIC_CONVEX_URL;
 
-  if (!databaseUrl) {
+  if (!convexUrl) {
     throw new Error(
-      "Database connection not configured. Set MARKET_DATABASE_URL, DATABASE_URL, or POSTGRES_URL.",
+      "Convex connection not configured. Set CONVEX_URL or NEXT_PUBLIC_CONVEX_URL.",
     );
   }
 
-  return databaseUrl;
+  return convexUrl;
 }
 
-export const marketOfferRequests = pgTable("market_offer_requests", {
-  id: text("id").primaryKey(),
-  makerAddress: text("maker_address").$type<Address>().notNull(),
-  offer: jsonb("offer").$type<MarketOffer>().notNull(),
-  offerStatus: text("offer_status").notNull(),
-  signerDelegation: jsonb("signer_delegation").$type<MarketSignerDelegation | null>(),
-  signature: text("signature"),
-  shieldedMasterRoot: text("shielded_master_root"),
-  inputNotes: jsonb("input_notes").$type<MarketInputNote[] | null>(),
-  outputNotes: jsonb("output_notes").$type<MarketOutputNote[] | null>(),
-  wormholeNote: jsonb("wormhole_note").$type<MarketWormholeNote | null>(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdateFn(() => drizzleSql`now()`),
-});
+let convexClient: ConvexHttpClient | undefined;
 
-let sqlClient: ReturnType<typeof postgres> | undefined;
-let db: ReturnType<typeof createDb> | undefined;
-
-function getSql() {
-  if (!sqlClient) {
-    const databaseSslMode = process.env.DATABASE_SSL ?? process.env.PGSSLMODE;
-    sqlClient = postgres(getDatabaseUrl(), {
-      ssl: databaseSslMode && databaseSslMode !== "disable" ? "require" : undefined,
-    });
+function getConvexClient() {
+  if (!convexClient) {
+    convexClient = new ConvexHttpClient(getConvexUrl());
   }
 
-  return sqlClient;
-}
-
-function createDb() {
-  return drizzle(getSql(), {
-    schema: {
-      marketOfferRequests,
-    },
-  });
-}
-
-function getDb() {
-  if (!db) {
-    db = createDb();
-  }
-
-  return db;
-}
-
-let ensureDatabasePromise: Promise<void> | undefined;
-
-export function ensureMarketOfferRequestsTable() {
-  if (!ensureDatabasePromise) {
-    ensureDatabasePromise = (async () => {
-      const sql = getSql();
-
-      await sql.unsafe(`
-        CREATE TABLE IF NOT EXISTS market_offer_requests (
-          id text PRIMARY KEY,
-          maker_address text NOT NULL,
-          offer jsonb NOT NULL,
-          offer_status text NOT NULL,
-          signer_delegation jsonb,
-          signature text,
-          shielded_master_root text,
-          input_notes jsonb,
-          output_notes jsonb,
-          wormhole_note jsonb,
-          created_at timestamptz NOT NULL DEFAULT now(),
-          updated_at timestamptz NOT NULL DEFAULT now()
-        )
-      `);
-
-      await sql.unsafe(`
-        ALTER TABLE market_offer_requests
-        ADD COLUMN IF NOT EXISTS maker_address text
-      `);
-
-      await sql.unsafe(`
-        UPDATE market_offer_requests
-        SET maker_address = signer_delegation->>'owner'
-        WHERE maker_address IS NULL
-      `);
-
-      await sql.unsafe(`
-        ALTER TABLE market_offer_requests
-        ADD COLUMN IF NOT EXISTS shielded_master_root text
-      `);
-
-      await sql.unsafe(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_name = 'market_offer_requests'
-              AND column_name = 'input_notes_master_root'
-          ) THEN
-            EXECUTE '
-              UPDATE market_offer_requests
-              SET shielded_master_root = COALESCE(shielded_master_root, input_notes_master_root)
-            ';
-          END IF;
-        END
-        $$;
-      `);
-
-      await sql.unsafe(`
-        ALTER TABLE market_offer_requests
-        ALTER COLUMN signer_delegation DROP NOT NULL,
-        ALTER COLUMN signature DROP NOT NULL,
-        ALTER COLUMN input_notes DROP NOT NULL,
-        ALTER COLUMN output_notes DROP NOT NULL
-      `);
-
-      await sql.unsafe(`
-        CREATE INDEX IF NOT EXISTS market_offer_requests_offer_status_idx
-          ON market_offer_requests (offer_status)
-      `);
-
-      await sql.unsafe(`
-        CREATE INDEX IF NOT EXISTS market_offer_requests_created_at_idx
-          ON market_offer_requests (created_at DESC)
-      `);
-    })();
-  }
-
-  return ensureDatabasePromise;
+  return convexClient;
 }
 
 function toMarketOrderStatus(status: string): MarketOrderStatus | null {
@@ -294,6 +166,37 @@ function toMarketOrderStatus(status: string): MarketOrderStatus | null {
     default:
       return null;
   }
+}
+
+function mapRecord(record: {
+  _id?: string;
+  id?: string;
+  makerAddress?: Address | null;
+  offer: MarketOffer;
+  offerStatus: string;
+  signerDelegation: MarketSignerDelegation | null;
+  signature: string | null;
+  shieldedMasterRoot: string | null;
+  inputNotes: MarketInputNote[] | null;
+  outputNotes: MarketOutputNote[] | null;
+  wormholeNote: MarketWormholeNote | null;
+  createdAt: number;
+  updatedAt: number;
+}): MarketOfferRequestRecord {
+  return {
+    id: record.id ?? record._id ?? "",
+    makerAddress: record.makerAddress ?? null,
+    offer: record.offer,
+    offerStatus: record.offerStatus,
+    signerDelegation: record.signerDelegation,
+    signature: record.signature,
+    shieldedMasterRoot: record.shieldedMasterRoot,
+    inputNotes: record.inputNotes,
+    outputNotes: record.outputNotes,
+    wormholeNote: record.wormholeNote,
+    createdAt: new Date(record.createdAt).toISOString(),
+    updatedAt: new Date(record.updatedAt).toISOString(),
+  };
 }
 
 export function normalizeOfferStatus(body: unknown, offer: MarketOffer): MarketOrderStatus {
@@ -371,105 +274,51 @@ export function parseMarketOrderStatusFilters(
 }
 
 export async function saveMarketOfferRequest(input: SaveMarketOfferRequestInput) {
-  await ensureMarketOfferRequestsTable();
+  const record = await getConvexClient().mutation(api.marketOffers.createOffer, {
+    makerAddress: input.makerAddress,
+    offer: input.offer,
+    offerStatus: input.offerStatus,
+    signerDelegation: input.signerDelegation,
+    signature: String(input.signature),
+    shieldedMasterRoot: input.shieldedMasterRoot,
+    inputNotes: input.inputNotes,
+    outputNotes: input.outputNotes,
+    wormholeNote: input.wormholeNote,
+  });
 
-  const [record] = await getDb()
-    .insert(marketOfferRequests)
-    .values({
-      id: randomUUID(),
-      makerAddress: input.makerAddress,
-      offer: input.offer,
-      offerStatus: input.offerStatus,
-      signerDelegation: input.signerDelegation,
-      signature: input.signature,
-      shieldedMasterRoot: input.shieldedMasterRoot,
-      inputNotes: input.inputNotes,
-      outputNotes: input.outputNotes,
-      wormholeNote: input.wormholeNote,
-    })
-    .returning({
-      id: marketOfferRequests.id,
-      makerAddress: marketOfferRequests.makerAddress,
-      offerStatus: marketOfferRequests.offerStatus,
-      createdAt: marketOfferRequests.createdAt,
-    });
-
-  return record;
+  return mapRecord(record as Parameters<typeof mapRecord>[0]);
 }
 
 export async function listMarketOfferRequests(
   filters?: MarketOrderStatus[],
 ): Promise<MarketOfferRequestRecord[]> {
-  await ensureMarketOfferRequestsTable();
+  const records = await getConvexClient().query(api.marketOffers.listOffers, {
+    filters: filters ?? [],
+  });
 
-  const query = getDb()
-    .select({
-      id: marketOfferRequests.id,
-      makerAddress: marketOfferRequests.makerAddress,
-      offer: marketOfferRequests.offer,
-      offerStatus: marketOfferRequests.offerStatus,
-      signerDelegation: marketOfferRequests.signerDelegation,
-      signature: marketOfferRequests.signature,
-      shieldedMasterRoot: marketOfferRequests.shieldedMasterRoot,
-      inputNotes: marketOfferRequests.inputNotes,
-      outputNotes: marketOfferRequests.outputNotes,
-      wormholeNote: marketOfferRequests.wormholeNote,
-      createdAt: marketOfferRequests.createdAt,
-      updatedAt: marketOfferRequests.updatedAt,
-    })
-    .from(marketOfferRequests)
-    .orderBy(desc(marketOfferRequests.createdAt));
-
-  if (filters && filters.length > 0) {
-    return await query.where(inArray(marketOfferRequests.offerStatus, filters));
-  }
-
-  return await query;
+  return (records as Parameters<typeof mapRecord>[0][]).map(mapRecord);
 }
 
 export async function cancelOpenMarketOfferRequest(id: string) {
-  await ensureMarketOfferRequestsTable();
+  const record = await getConvexClient().mutation(api.marketOffers.cancelOpenOffer, {
+    id: id as Id<"marketOrders">,
+  });
 
-  const [record] = await getDb()
-    .update(marketOfferRequests)
-    .set({
-      offerStatus: "cancelled",
-      signerDelegation: null,
-      signature: null,
-      shieldedMasterRoot: null,
-      inputNotes: null,
-      outputNotes: null,
-      wormholeNote: null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(marketOfferRequests.id, id),
-        eq(marketOfferRequests.offerStatus, "open"),
-      ),
-    )
-    .returning({
-      id: marketOfferRequests.id,
-      makerAddress: marketOfferRequests.makerAddress,
-      offerStatus: marketOfferRequests.offerStatus,
-      updatedAt: marketOfferRequests.updatedAt,
-    });
-
-  return record ?? null;
+  return record ? mapRecord(record as Parameters<typeof mapRecord>[0]) : null;
 }
 
 export async function getMarketOfferRequestStatus(id: string) {
-  await ensureMarketOfferRequestsTable();
+  const record = await getConvexClient().query(api.marketOffers.getOfferStatus, {
+    id: id as Id<"marketOrders">,
+  });
 
-  const [record] = await getDb()
-    .select({
-      id: marketOfferRequests.id,
-      makerAddress: marketOfferRequests.makerAddress,
-      offerStatus: marketOfferRequests.offerStatus,
-    })
-    .from(marketOfferRequests)
-    .where(eq(marketOfferRequests.id, id))
-    .limit(1);
+  if (!record) {
+    return null;
+  }
 
-  return record ?? null;
+  return {
+    id: record.id,
+    makerAddress: record.makerAddress,
+    offerStatus: record.offerStatus,
+  };
 }
