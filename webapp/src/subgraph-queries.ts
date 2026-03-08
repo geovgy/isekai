@@ -1,7 +1,7 @@
 import { Address, Hex, numberToHex } from "viem";
 import { subgraphQuery, subgraphQueryAllChains, subgraphQueryMasterChain } from "./subgraph";
 import { getMerkleTree } from "./merkle";
-import { MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./config";
+import { MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./chains";
 
 export async function getMerkleTrees({
   wormholeTreeId,
@@ -710,6 +710,77 @@ export async function queryBranchShieldedTreeSnapshot(args: {
     leaves,
     size: leaves.length.toString(),
   };
+}
+
+export async function queryBranchShieldedTransferSigners(args: {
+  chainId: number;
+  branchAddress?: Address;
+  blockNumber_lte?: bigint;
+  first?: number;
+}): Promise<{
+  signerCommitment: string;
+  signerNullifier: string;
+  blockNumber: string;
+  blockTimestamp: string;
+  transactionHash: string;
+  treeId: string;
+  startIndex: string;
+}[]> {
+  const whereClause = args.branchAddress
+    ? args.blockNumber_lte !== undefined
+      ? `{ blockNumber_lte: $blockNumber_lte, branch_: { chainId: $branchChainId, address: $branchAddress } }`
+      : `{ branch_: { chainId: $branchChainId, address: $branchAddress } }`
+    : args.blockNumber_lte !== undefined
+      ? `{ blockNumber_lte: $blockNumber_lte, branch_: { chainId: $branchChainId } }`
+      : `{ branch_: { chainId: $branchChainId } }`;
+  const query = `
+    query BranchShieldedTransferSigners($branchChainId: BigInt!, $branchAddress: Bytes, $blockNumber_lte: BigInt, $first: Int!) {
+      shieldedTransferSigners(
+        where: ${whereClause}
+        orderBy: blockNumber
+        orderDirection: asc
+        first: $first
+      ) {
+        signerCommitment
+        signerNullifier
+        blockNumber
+        blockTimestamp
+        transactionHash
+        shieldedTransfer {
+          treeId
+          startIndex
+        }
+      }
+    }
+  `;
+  const data = await subgraphQuery<{
+    shieldedTransferSigners: {
+      signerCommitment: string;
+      signerNullifier: string;
+      blockNumber: string;
+      blockTimestamp: string;
+      transactionHash: string;
+      shieldedTransfer: {
+        treeId: string;
+        startIndex: string;
+      };
+    }[];
+  }>(query, {
+    branchChainId: args.chainId.toString(),
+    branchAddress: args.branchAddress,
+    blockNumber_lte: args.blockNumber_lte?.toString(),
+    first: args.first ?? 1000,
+  }, args.chainId);
+
+  return data.shieldedTransferSigners.map((entry) => ({
+    signerCommitment: entry.signerCommitment,
+    signerNullifier: entry.signerNullifier,
+    blockNumber: entry.blockNumber,
+    blockTimestamp: entry.blockTimestamp,
+    transactionHash: entry.transactionHash,
+    treeId: entry.shieldedTransfer.treeId,
+    startIndex: entry.shieldedTransfer.startIndex,
+  }));
 }
 
 export async function queryBranchWormholeTreeSnapshot(args: {

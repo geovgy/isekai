@@ -58,6 +58,12 @@ export const createOffer = mutation({
       fulfillerInputNotes: null,
       fulfillerOutputNotes: null,
       fulfillerWormholeNote: null,
+      executionTxHash: null,
+      executionBlockNumber: null,
+      makerSignerStateBefore: null,
+      makerSignerStateAfter: null,
+      fulfillerSignerStateBefore: null,
+      fulfillerSignerStateAfter: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -74,6 +80,7 @@ export const createOffer = mutation({
 export const attachMakerBundle = mutation({
   args: {
     id: v.id("marketOrders"),
+    makerOutputNotes: v.union(v.array(v.any()), v.null()),
     signerDelegation: signerDelegation,
     signature: v.string(),
     shieldedMasterRoot: v.union(v.string(), v.null()),
@@ -200,5 +207,52 @@ export const getOfferStatus = query({
       makerAddress: record.makerAddress,
       offerStatus: record.offerStatus,
     };
+  },
+});
+
+export const completeFulfillment = mutation({
+  args: {
+    id: v.id("marketOrders"),
+    makerOutputNotes: v.union(v.array(v.any()), v.null()),
+    signerDelegation: signerDelegation,
+    signature: v.string(),
+    shieldedMasterRoot: v.union(v.string(), v.null()),
+    inputNotes: v.union(v.array(v.any()), v.null()),
+    outputNotes: v.union(v.array(v.any()), v.null()),
+    wormholeNote: v.union(v.any(), v.null()),
+    executionTxHash: v.string(),
+    executionBlockNumber: v.string(),
+    makerSignerStateBefore: v.any(),
+    makerSignerStateAfter: v.any(),
+    fulfillerSignerStateBefore: v.any(),
+    fulfillerSignerStateAfter: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.id);
+    if (!record) {
+      return null;
+    }
+
+    const updatedAt = Date.now();
+    await ctx.db.patch(args.id, {
+      offerStatus: "fulfilled",
+      outputNotes: args.makerOutputNotes,
+      fulfillerSignerDelegation: args.signerDelegation,
+      fulfillerSignature: args.signature,
+      fulfillerShieldedMasterRoot: args.shieldedMasterRoot,
+      fulfillerInputNotes: args.inputNotes,
+      fulfillerOutputNotes: args.outputNotes,
+      fulfillerWormholeNote: args.wormholeNote,
+      executionTxHash: args.executionTxHash,
+      executionBlockNumber: args.executionBlockNumber,
+      makerSignerStateBefore: args.makerSignerStateBefore,
+      makerSignerStateAfter: args.makerSignerStateAfter,
+      fulfillerSignerStateBefore: args.fulfillerSignerStateBefore,
+      fulfillerSignerStateAfter: args.fulfillerSignerStateAfter,
+      updatedAt,
+    });
+
+    const updated = await ctx.db.get(args.id);
+    return updated ? { ...updated, id: updated._id } : null;
   },
 });

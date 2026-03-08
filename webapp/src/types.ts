@@ -154,12 +154,58 @@ export interface MarketOutputNotePayload {
   transfer_type: TransferType;
 }
 
+export interface MarketSignerNoteStatePayload {
+  totalAmount: string;
+  nonce: string;
+  timestamp: string;
+  blinding: string;
+  commitment: Hex;
+  signerRoot: Hex;
+  txHash: Hex;
+  blockNumber: string;
+}
+
+export interface MarketFulfillmentExecutionPayload {
+  txHash: Hex;
+  blockNumber: string;
+  makerSignerStateBefore: MarketSignerNoteStatePayload;
+  makerSignerStateAfter: MarketSignerNoteStatePayload;
+  fulfillerSignerStateBefore: MarketSignerNoteStatePayload;
+  fulfillerSignerStateAfter: MarketSignerNoteStatePayload;
+}
+
+export interface MarketSignerDelegationPayload {
+  chainId: string;
+  owner: Address;
+  delegate: Address;
+  startTime: string;
+  endTime: string;
+  token: Address;
+  tokenId: string;
+  amount: string;
+  amountType: number;
+  maxCumulativeAmount: string;
+  maxNonce: string;
+  timeInterval: string;
+  transferType: number;
+}
+
+export interface MarketSignerNoteMembershipPayload {
+  index: string;
+  siblings: string[];
+  total_amount: string;
+  nonce: string;
+  timestamp: string;
+  blinding: string;
+}
+
 // Contract Types
 export interface Withdrawal {
   to: Address;
   asset: Address;
   id: bigint;
   amount: bigint;
+  confidentialContext?: Hex;
 }
 
 export interface ShieldedTx {
@@ -170,6 +216,12 @@ export interface ShieldedTx {
   nullifiers: Hex[];
   commitments: bigint[];
   withdrawals: Withdrawal[];
+}
+
+export interface DelegatedShieldedTx extends ShieldedTx {
+  signerRoot: Hex;
+  signerCommitment: Hex;
+  signerNullifier: Hex;
 }
 
 export interface ShieldedTxStringified {
@@ -184,7 +236,55 @@ export interface ShieldedTxStringified {
     asset: Address;
     id: string;
     amount: string;
+      confidentialContext?: Hex;
   }[];
+}
+
+export interface DelegatedShieldedTxStringified extends ShieldedTxStringified {
+  signerRoot: Hex;
+  signerCommitment: Hex;
+  signerNullifier: Hex;
+}
+
+export interface MarketFulfillmentProofFixtureRequest {
+  role: "maker" | "fulfiller";
+  chainId: number;
+  verifyingContract: Address;
+  sender: Address;
+  delegation: MarketSignerDelegationPayload;
+  delegationSignature: Hex;
+  inputNotes: MarketInputNotePayload[];
+  outputNotes: MarketOutputNotePayload[];
+  wormholeNote: MarketWormholeNotePayload | null;
+  shieldedRoot: string;
+  timestamp: string;
+  signerRoot: string;
+  signerBlinding: string;
+  signerNote: MarketSignerNoteMembershipPayload;
+  stateBefore: MarketSignerNoteStatePayload;
+  stateAfter: MarketSignerNoteStatePayload;
+}
+
+export interface MarketFulfillmentProofServiceRequest {
+  fixtures: [
+    MarketFulfillmentProofFixtureRequest,
+    MarketFulfillmentProofFixtureRequest,
+  ];
+}
+
+export interface MarketFulfillmentProofFixtureResponse {
+  role: "maker" | "fulfiller";
+  shieldedTx: DelegatedShieldedTxStringified;
+  stateBefore: MarketSignerNoteStatePayload;
+  stateAfter: MarketSignerNoteStatePayload;
+}
+
+export interface MarketFulfillmentProofServiceResponse {
+  proof: Hex;
+  fixtures: [
+    MarketFulfillmentProofFixtureResponse,
+    MarketFulfillmentProofFixtureResponse,
+  ];
 }
 
 export interface RagequitTx {

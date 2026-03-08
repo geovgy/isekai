@@ -121,6 +121,7 @@ const signerDelegationTypes = {
 
 const tokenOptions = WORMHOLE_TOKENS.map(token => getAddress(token));
 const fallbackToken = tokenOptions[0] ?? getAddress("0x0000000000000000000000000000000000000000");
+const MARKET_DELEGATION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 function statusBadgeClass(status: string) {
   switch (status) {
@@ -349,7 +350,7 @@ function CreateOfferDialog({
         owner: connectedAddress,
         delegate: delegateAddress,
         startTime: String(now),
-        endTime: String(now + 60 * 60),
+        endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: requireValidAddress(forToken, "For token address"),
         tokenId: "0",
         amount: forAmountUnits.toString(),
@@ -586,7 +587,7 @@ function FulfillOrderDialog({
         owner: connectedAddress,
         delegate: getAddress(relayerAddress),
         startTime: String(now),
-        endTime: String(now + 60 * 60),
+        endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: askToken,
         tokenId: order.offer.ask.tokenId,
         amount: askAmountUnits.toString(),
