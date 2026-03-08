@@ -342,41 +342,22 @@ function CreateOfferDialog({
     setIsSubmitting(true);
     try {
       const forAmountUnits = parseMarketAmountToUnits(forAmount, selectedForTokenMetadata?.decimals ?? 18);
-
-      const response = await fetch("/api/market/offer", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          makerAddress: connectedAddress,
-          offer: {
-            ask: {
-              dstChainId: askDstChainId,
-              token: askToken,
-              tokenId: "0",
-              amount: askAmount.trim(),
-            },
-            for: {
-              srcChainId: forSourceChainId,
-              dstChainId: forDstChainId,
-              token: forToken,
-              tokenId: "0",
-              amount: forAmount.trim(),
-            },
-          } satisfies MarketOffer,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(errorBody?.error ?? "Failed to create market offer");
-      }
-
-      const created = (await response.json()) as {
-        id: string;
-      };
       const delegateAddress = requireValidAddress(relayerAddress, "Relayer address");
+      const offer = {
+        ask: {
+          dstChainId: askDstChainId,
+          token: askToken,
+          tokenId: "0",
+          amount: askAmount.trim(),
+        },
+        for: {
+          srcChainId: forSourceChainId,
+          dstChainId: forDstChainId,
+          token: forToken,
+          tokenId: "0",
+          amount: forAmount.trim(),
+        },
+      } satisfies MarketOffer;
 
       const notes = await shieldedPool.prepareMarketOfferNotes({
         srcChainId: Number(forSourceChainId),
@@ -429,22 +410,23 @@ function CreateOfferDialog({
         },
       });
 
-      const attachResponse = await fetch("/api/market/offer", {
+      const response = await fetch("/api/market/offer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          id: created.id,
+          makerAddress: connectedAddress,
+          offer,
           signerDelegation: delegationPreview,
           signature,
           notes,
         }),
       });
 
-      if (!attachResponse.ok) {
-        const errorBody = (await attachResponse.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(errorBody?.error ?? "Failed to attach maker bundle");
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorBody?.error ?? "Failed to create market offer");
       }
 
       toast.success("Market offer created");
