@@ -15,12 +15,12 @@ export interface ChainConfig {
 }
 
 export const CHAINS: Record<number, ChainConfig> = {
-  [sepolia.id]: {
-    chain: sepolia,
-    rpcUrl: RPC_URL_SEPOLIA,
-    subgraphUrl: SUBGRAPH_URL_SEPOLIA,
-    label: "Sepolia",
-  },
+  // [sepolia.id]: {
+  //   chain: sepolia,
+  //   rpcUrl: RPC_URL_SEPOLIA,
+  //   subgraphUrl: SUBGRAPH_URL_SEPOLIA,
+  //   label: "Sepolia",
+  // },
   [arbitrumSepolia.id]: {
     chain: arbitrumSepolia,
     rpcUrl: RPC_URL_ARB_SEPOLIA,

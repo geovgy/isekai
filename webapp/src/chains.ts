@@ -22,18 +22,18 @@ export interface ChainConfig {
   label: string
 }
 
-export const MASTER_CHAIN_ID = sepolia.id
+export const MASTER_CHAIN_ID = arbitrumSepolia.id
 
 export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
-  [sepolia.id]: {
-    chain: sepolia,
-    rpcUrl: RPC_URL_SEPOLIA,
-    subgraphUrl: SUBGRAPH_URL_SEPOLIA,
-    contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
-    branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
-    isMaster: true,
-    label: 'Sepolia',
-  },
+  // [sepolia.id]: {
+  //   chain: sepolia,
+  //   rpcUrl: RPC_URL_SEPOLIA,
+  //   subgraphUrl: SUBGRAPH_URL_SEPOLIA,
+  //   contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
+  //   branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
+  //   isMaster: true,
+  //   label: 'Sepolia',
+  // },
   [arbitrumSepolia.id]: {
     chain: arbitrumSepolia,
     rpcUrl: RPC_URL_ARB_SEPOLIA,

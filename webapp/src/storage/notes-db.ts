@@ -37,7 +37,7 @@ export class NoteDB {
   // Open a connection to the IndexedDB
   private async openDB(accountId: string): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(`IsekaiNotesDB-${accountId}`, 4);
+      const request = indexedDB.open(`IsekaiNotesDB2-${accountId}`, 4);
 
       request.onupgradeneeded = event => {
         const db = (event.target as IDBOpenDBRequest).result;

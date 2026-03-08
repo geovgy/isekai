@@ -39,6 +39,7 @@ const wormholeEntryEventAbi = [{
     { name: "to", type: "address", indexed: false },
     { name: "id", type: "uint256", indexed: false },
     { name: "amount", type: "uint256", indexed: false },
+    { name: "confidentialContext", type: "bytes32", indexed: false },
   ],
 }] as const
 
@@ -125,7 +126,7 @@ export class ShieldedPool {
     wormholeSecret: bigint,
     receipt: TransactionReceipt,
   }) {
-    const { entryId, token, from, to, id, amount } = this.parseWormholeEntryLogFromReceipt(args.receipt)
+    const { entryId, token, from, id, amount } = this.parseWormholeEntryLogFromReceipt(args.receipt)
     const wormholeEntry: NoteDBWormholeEntry = {
       id: `${args.srcChainId}:${entryId}`,
       entryId: entryId.toString(),

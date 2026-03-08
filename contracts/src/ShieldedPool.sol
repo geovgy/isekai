@@ -46,7 +46,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     uint8 public constant ROLLBACK_TREE_DEPTH = 32;
 
-    uint64 public constant MASTER_CHAIN_ID = 11155111;
+    uint64 public constant MASTER_CHAIN_ID = 421614;
 
     IPoseidon2 public immutable poseidon2;
     IVerifier public immutable ragequitVerifier;

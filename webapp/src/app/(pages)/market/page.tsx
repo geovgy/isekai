@@ -729,7 +729,6 @@ function OrdersTable({
         <TableHeader>
           <TableRow>
             <TableHead>Order</TableHead>
-            <TableHead>Maker</TableHead>
             <TableHead>Ask</TableHead>
             <TableHead>For</TableHead>
             <TableHead>Status</TableHead>
@@ -740,7 +739,7 @@ function OrdersTable({
         <TableBody>
           {orders.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+              <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -752,11 +751,6 @@ function OrdersTable({
               return (
                 <TableRow key={order.id}>
                   <TableCell className="font-mono text-xs">{order.id}</TableCell>
-                  <TableCell>
-                    {getOrderMakerAddress(order)
-                      ? formatAddress(getOrderMakerAddress(order)!)
-                      : "-"}
-                  </TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="font-medium">{ask.title}</div>
                     <div className="text-xs text-muted-foreground">{ask.token}</div>

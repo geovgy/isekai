@@ -6,11 +6,11 @@ schema:
 dataSources:
   - kind: ethereum
     name: ShieldedPool
-    network: sepolia
+    network: arbitrum-sepolia
     source:
       abi: ShieldedPool
-      address: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
-      startBlock: 0
+      address: "0x8C390ec72e72b68A5099f95B09E88c4dD869eafc"
+      startBlock: 247977406
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -70,7 +70,7 @@ dataSources:
 templates:
   - kind: ethereum/contract
     name: ShieldedPoolBranch
-    network: sepolia
+    network: arbitrum-sepolia
     source:
       abi: ShieldedPoolBranch
     mapping:
@@ -89,7 +89,8 @@ templates:
         - name: ShieldedPoolBranch
           file: ../contracts/out/ShieldedPoolBranch.sol/ShieldedPoolBranch.json
       eventHandlers:
-        - event: ShieldedTransfer(indexed uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256,bytes32)[])
+        - event: ShieldedTransfer(indexed
+            uint256,uint256,uint256[],bytes32[],(address,address,uint256,uint256,bytes32)[])
           handler: handleBranchShieldedTransfer
         - event: ShieldedTreeUpdated(indexed uint256,indexed uint256,uint256,uint256)
           handler: handleBranchShieldedTreeUpdated
@@ -98,7 +99,7 @@ templates:
       file: ./src/shielded-pool-branch.ts
   - kind: ethereum/contract
     name: ShieldedPoolDelegateBranch
-    network: sepolia
+    network: arbitrum-sepolia
     source:
       abi: ShieldedPoolDelegateBranch
     mapping:
