@@ -1,5 +1,4 @@
 import { WormholesTable } from "@/src/components/wormhole-table";
-import { SyncMasterTree } from "@/src/components/sync-master-tree";
 
 export default function WormholesPage() {
   return (
