@@ -39,6 +39,12 @@ export default defineSchema({
     inputNotes: v.union(v.array(v.any()), v.null()),
     outputNotes: v.union(v.array(v.any()), v.null()),
     wormholeNote: v.union(v.any(), v.null()),
+    fulfillerSignerDelegation: v.optional(v.union(signerDelegation, v.null())),
+    fulfillerSignature: v.optional(v.union(v.string(), v.null())),
+    fulfillerShieldedMasterRoot: v.optional(v.union(v.string(), v.null())),
+    fulfillerInputNotes: v.optional(v.union(v.array(v.any()), v.null())),
+    fulfillerOutputNotes: v.optional(v.union(v.array(v.any()), v.null())),
+    fulfillerWormholeNote: v.optional(v.union(v.any(), v.null())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

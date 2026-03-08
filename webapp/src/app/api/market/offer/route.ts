@@ -1,4 +1,6 @@
 import {
+  attachMakerOfferBundle,
+  getMarketOfferRequestStatus,
   normalizeNotes,
   normalizeOfferStatus,
   saveMarketOfferRequest,
@@ -23,7 +25,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const requestId = body.id ?? body.orderId ?? body.marketOfferId;
     const { offer, makerAddress, signerDelegation, signature, notes } = body;
+
+    if (typeof requestId === "string" && requestId.length > 0) {
+      if (!isRecord(signerDelegation)) {
+        return NextResponse.json(
+          { error: "Missing or invalid `signerDelegation` object" },
+          { status: 400 },
+        );
+      }
+      if (typeof signature !== "string" || signature.length === 0) {
+        return NextResponse.json(
+          { error: "Missing or invalid `signature`" },
+          { status: 400 },
+        );
+      }
+
+      const normalizedNotes = normalizeNotes(notes);
+      const updated = await attachMakerOfferBundle({
+        id: requestId,
+        signerDelegation: signerDelegation as MarketSignerDelegation,
+        signature,
+        shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
+        inputNotes: normalizedNotes.inputNotes,
+        outputNotes: normalizedNotes.outputNotes,
+        wormholeNote: normalizedNotes.wormholeNote,
+      });
+
+      if (!updated) {
+        const existing = await getMarketOfferRequestStatus(requestId);
+        return NextResponse.json(
+          { error: existing ? "Failed to attach maker bundle" : "Order not found" },
+          { status: existing ? 409 : 404 },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          id: updated.id,
+          offerStatus: updated.offerStatus,
+          updatedAt: updated.updatedAt,
+        },
+        { status: 200 },
+      );
+    }
 
     if (!isRecord(offer)) {
       return NextResponse.json(
@@ -39,33 +85,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (signerDelegation !== undefined && signerDelegation !== null && !isRecord(signerDelegation)) {
-      return NextResponse.json(
-        { error: "Invalid `signerDelegation` object" },
-        { status: 400 },
-      );
-    }
-
-    if (signature !== undefined && signature !== null && typeof signature !== "string") {
-      return NextResponse.json(
-        { error: "Invalid `signature`" },
-        { status: 400 },
-      );
-    }
-
-    const normalizedNotes = normalizeNotes(notes);
     const record = await saveMarketOfferRequest({
       offer: offer as MarketOffer,
       offerStatus: normalizeOfferStatus(body, offer as MarketOffer),
       makerAddress: makerAddress as `0x${string}`,
-      signerDelegation: isRecord(signerDelegation)
-        ? (signerDelegation as MarketSignerDelegation)
-        : null,
-      signature: typeof signature === "string" ? signature : null,
-      shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
-      inputNotes: normalizedNotes.inputNotes,
-      outputNotes: normalizedNotes.outputNotes,
-      wormholeNote: normalizedNotes.wormholeNote,
+      signerDelegation: null,
+      signature: null,
+      shieldedMasterRoot: null,
+      inputNotes: null,
+      outputNotes: null,
+      wormholeNote: null,
     });
 
     return NextResponse.json(

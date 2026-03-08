@@ -37,7 +37,7 @@ import { Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Address } from "viem";
-import { erc20Abi, getAddress, isAddress, isAddressEqual } from "viem";
+import { erc20Abi, getAddress, isAddress, isAddressEqual, parseUnits } from "viem";
 import {
   useChainId,
   useConfig as useWagmiConfig,
@@ -233,17 +233,31 @@ function formatMarketItem(item: MarketOfferItem, metadata: TokenMetadata[]) {
   };
 }
 
+function parseMarketAmountToUnits(value: string, decimals: number) {
+  return parseUnits(value.trim(), decimals);
+}
+
+function requireValidAddress(value: string | null | undefined, label: string): Address {
+  if (!value || !isAddress(value)) {
+    throw new Error(`${label} is not configured`);
+  }
+  return getAddress(value);
+}
+
 function CreateOfferDialog({
   open,
   onOpenChange,
   connectedAddress,
+  relayerAddress,
   onSubmitted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   connectedAddress?: Address;
+  relayerAddress?: Address | null;
   onSubmitted: () => Promise<void>;
 }) {
+  const wagmiConfig = useWagmiConfig();
   const { data: shieldedPool } = useShieldedPool();
   const walletChainId = useChainId();
   const defaultChainId = SUPPORTED_CHAIN_IDS[0] ?? walletChainId;
@@ -316,9 +330,19 @@ function CreateOfferDialog({
       toast.error("Enter both ask and for amounts");
       return;
     }
+    if (!shieldedPool) {
+      toast.error("Shielded pool not available");
+      return;
+    }
+    if (!relayerAddress || !isAddress(relayerAddress)) {
+      toast.error("Relayer address not configured");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
+      const forAmountUnits = parseMarketAmountToUnits(forAmount, selectedForTokenMetadata?.decimals ?? 18);
+
       const response = await fetch("/api/market/offer", {
         method: "POST",
         headers: {
@@ -347,6 +371,80 @@ function CreateOfferDialog({
       if (!response.ok) {
         const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(errorBody?.error ?? "Failed to create market offer");
+      }
+
+      const created = (await response.json()) as {
+        id: string;
+      };
+      const delegateAddress = requireValidAddress(relayerAddress, "Relayer address");
+
+      const notes = await shieldedPool.prepareMarketOfferNotes({
+        srcChainId: Number(forSourceChainId),
+        token: forToken,
+        tokenId: 0n,
+        amount: forAmountUnits,
+      });
+
+      const now = Math.floor(Date.now() / 1000);
+      const delegationPreview = {
+        chainId: forSourceChainId,
+        owner: connectedAddress,
+        delegate: delegateAddress,
+        startTime: String(now),
+        endTime: String(now + 60 * 60),
+        token: requireValidAddress(forToken, "For token address"),
+        tokenId: "0",
+        amount: forAmountUnits.toString(),
+        amountType: 0,
+        maxCumulativeAmount: forAmountUnits.toString(),
+        maxNonce: "1",
+        timeInterval: "0",
+        transferType: 0,
+      } satisfies MarketSignerDelegation;
+      const chainConfig = getChainConfig(Number(forSourceChainId));
+      const verifyingContract = requireValidAddress(
+        chainConfig.branchContractAddress,
+        `${chainConfig.label} branch contract address`,
+      );
+      const signature = await signTypedData(wagmiConfig, {
+        account: connectedAddress,
+        domain: {
+          name: "ShieldedPool",
+          version: "1",
+          chainId: BigInt(forSourceChainId),
+          verifyingContract,
+        },
+        primaryType: "SignerDelegation",
+        types: signerDelegationTypes,
+        message: {
+          ...delegationPreview,
+          chainId: BigInt(delegationPreview.chainId),
+          startTime: BigInt(delegationPreview.startTime),
+          endTime: BigInt(delegationPreview.endTime),
+          tokenId: BigInt(delegationPreview.tokenId),
+          amount: BigInt(delegationPreview.amount),
+          maxCumulativeAmount: BigInt(delegationPreview.maxCumulativeAmount),
+          maxNonce: BigInt(delegationPreview.maxNonce),
+          timeInterval: BigInt(delegationPreview.timeInterval),
+        },
+      });
+
+      const attachResponse = await fetch("/api/market/offer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: created.id,
+          signerDelegation: delegationPreview,
+          signature,
+          notes,
+        }),
+      });
+
+      if (!attachResponse.ok) {
+        const errorBody = (await attachResponse.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorBody?.error ?? "Failed to attach maker bundle");
       }
 
       toast.success("Market offer created");
@@ -493,12 +591,14 @@ function FulfillOrderDialog({
   onOpenChange,
   order,
   connectedAddress,
+  relayerAddress,
   onSubmitted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: MarketOfferRow | null;
   connectedAddress?: Address;
+  relayerAddress?: Address | null;
   onSubmitted: () => Promise<void>;
 }) {
   const wagmiConfig = useWagmiConfig();
@@ -519,33 +619,39 @@ function FulfillOrderDialog({
   }, [open, order?.id]);
 
   const delegationPreview = useMemo(() => {
-    if (!order || !connectedAddress) {
+    if (!order || !connectedAddress || !relayerAddress || !isAddress(relayerAddress)) {
       return null;
     }
 
     const askChainId = Number(order.offer.ask.dstChainId);
-    const delegate = getOrderMakerAddress(order);
-    if (!delegate || !isAddress(delegate)) {
+    const askToken = isAddress(order.offer.ask.token) ? getAddress(order.offer.ask.token) : null;
+    if (!askToken) {
       return null;
     }
+    const askTokenInfo = metadata.find(token => token.address === askToken);
 
-    const now = Math.floor(Date.now() / 1000);
-    return {
-      chainId: String(askChainId),
-      owner: connectedAddress,
-      delegate: getAddress(delegate),
-      startTime: String(now),
-      endTime: String(now + 60 * 60),
-      token: getAddress(order.offer.ask.token),
-      tokenId: order.offer.ask.tokenId,
-      amount: order.offer.ask.amount,
-      amountType: 0,
-      maxCumulativeAmount: order.offer.ask.amount,
-      maxNonce: "1",
-      timeInterval: "0",
-      transferType: 0,
-    } satisfies MarketSignerDelegation;
-  }, [connectedAddress, order]);
+    try {
+      const askAmountUnits = parseMarketAmountToUnits(order.offer.ask.amount, askTokenInfo?.decimals ?? 18);
+      const now = Math.floor(Date.now() / 1000);
+      return {
+        chainId: String(askChainId),
+        owner: connectedAddress,
+        delegate: getAddress(relayerAddress),
+        startTime: String(now),
+        endTime: String(now + 60 * 60),
+        token: askToken,
+        tokenId: order.offer.ask.tokenId,
+        amount: askAmountUnits.toString(),
+        amountType: 0,
+        maxCumulativeAmount: askAmountUnits.toString(),
+        maxNonce: "1",
+        timeInterval: "0",
+        transferType: 0,
+      } satisfies MarketSignerDelegation;
+    } catch {
+      return null;
+    }
+  }, [connectedAddress, metadata, order, relayerAddress]);
 
   async function handleConfirm() {
     if (!order) {
@@ -564,13 +670,17 @@ function FulfillOrderDialog({
     try {
       const askChainId = Number(order.offer.ask.dstChainId);
       const chainConfig = getChainConfig(askChainId);
+      const verifyingContract = requireValidAddress(
+        chainConfig.branchContractAddress,
+        `${chainConfig.label} branch contract address`,
+      );
       const signature = await signTypedData(wagmiConfig, {
         account: connectedAddress,
         domain: {
           name: "ShieldedPool",
           version: "1",
           chainId: BigInt(askChainId),
-          verifyingContract: getAddress(chainConfig.branchContractAddress),
+          verifyingContract,
         },
         primaryType: "SignerDelegation",
         types: signerDelegationTypes,
@@ -600,9 +710,11 @@ function FulfillOrderDialog({
           marketOfferId: order.id,
           signerDelegation: delegationPreview,
           signature,
-          inputNotes,
-          outputNotes,
-          wormholeNote,
+          notes: {
+            inputNotes,
+            outputNotes,
+            wormholeNote,
+          },
         }),
       });
 
@@ -809,8 +921,20 @@ export default function MarketPage() {
       return (await response.json()) as MarketOffersResponse;
     },
   });
+  const { data: delegateAddressResponse } = useQuery({
+    queryKey: ["delegateAddress"],
+    queryFn: async () => {
+      const response = await fetch("/api/delegate-address");
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Failed to load delegate address");
+      }
+      return (await response.json()) as { address: Address };
+    },
+  });
 
   const allOrders = offersResponse?.orders ?? [];
+  const relayerAddress = delegateAddressResponse?.address ?? null;
   const openOrders = useMemo(
     () => allOrders.filter(order => order.offerStatus === "open"),
     [allOrders],
@@ -927,6 +1051,7 @@ export default function MarketPage() {
       <CreateOfferDialog
         open={isCreateDialogOpen}
         connectedAddress={address}
+        relayerAddress={relayerAddress}
         onOpenChange={setIsCreateDialogOpen}
         onSubmitted={async () => {
           await refetch();
@@ -938,6 +1063,7 @@ export default function MarketPage() {
         open={!!selectedOrder}
         order={selectedOrder}
         connectedAddress={address}
+        relayerAddress={relayerAddress}
         onOpenChange={open => {
           if (!open) {
             setSelectedOrder(null);

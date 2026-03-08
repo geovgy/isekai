@@ -117,6 +117,35 @@ export interface WormholeDeposit extends WormholeNote {
   is_approved: boolean;
 }
 
+export interface MarketInputNotePayload {
+  chain_id: string;
+  blinding: string;
+  amount: string;
+  branch_index: string;
+  branch_siblings: string[];
+  branch_root: string;
+  master_index: string;
+  master_siblings: string[];
+}
+
+export interface MarketWormholeNotePayload {
+  dst_chain_id: string;
+  src_chain_id: string;
+  entry_id: string;
+  recipient: Address;
+  wormhole_secret: string;
+  asset_id: string;
+  sender: Address;
+  amount: string;
+  master_root: string;
+  branch_root: string;
+  branch_index: string;
+  branch_siblings: string[];
+  master_index: string;
+  master_siblings: string[];
+  is_approved: boolean;
+}
+
 // Contract Types
 export interface Withdrawal {
   to: Address;

@@ -117,6 +117,12 @@ export interface MarketOfferRequestRecord {
   inputNotes: MarketInputNote[] | null;
   outputNotes: MarketOutputNote[] | null;
   wormholeNote: MarketWormholeNote | null;
+  fulfillerSignerDelegation?: MarketSignerDelegation | null;
+  fulfillerSignature?: string | null;
+  fulfillerShieldedMasterRoot?: string | null;
+  fulfillerInputNotes?: MarketInputNote[] | null;
+  fulfillerOutputNotes?: MarketOutputNote[] | null;
+  fulfillerWormholeNote?: MarketWormholeNote | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -180,6 +186,12 @@ function mapRecord(record: {
   inputNotes: MarketInputNote[] | null;
   outputNotes: MarketOutputNote[] | null;
   wormholeNote: MarketWormholeNote | null;
+  fulfillerSignerDelegation?: MarketSignerDelegation | null;
+  fulfillerSignature?: string | null;
+  fulfillerShieldedMasterRoot?: string | null;
+  fulfillerInputNotes?: MarketInputNote[] | null;
+  fulfillerOutputNotes?: MarketOutputNote[] | null;
+  fulfillerWormholeNote?: MarketWormholeNote | null;
   createdAt: number;
   updatedAt: number;
 }): MarketOfferRequestRecord {
@@ -194,6 +206,12 @@ function mapRecord(record: {
     inputNotes: record.inputNotes,
     outputNotes: record.outputNotes,
     wormholeNote: record.wormholeNote,
+    fulfillerSignerDelegation: record.fulfillerSignerDelegation ?? null,
+    fulfillerSignature: record.fulfillerSignature ?? null,
+    fulfillerShieldedMasterRoot: record.fulfillerShieldedMasterRoot ?? null,
+    fulfillerInputNotes: record.fulfillerInputNotes ?? null,
+    fulfillerOutputNotes: record.fulfillerOutputNotes ?? null,
+    fulfillerWormholeNote: record.fulfillerWormholeNote ?? null,
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   };
@@ -287,6 +305,50 @@ export async function saveMarketOfferRequest(input: SaveMarketOfferRequestInput)
   });
 
   return mapRecord(record as Parameters<typeof mapRecord>[0]);
+}
+
+export async function attachMakerOfferBundle(input: {
+  id: string;
+  signerDelegation: MarketSignerDelegation;
+  signature: Hex | string;
+  shieldedMasterRoot: string | null;
+  inputNotes: MarketInputNote[] | null;
+  outputNotes: MarketOutputNote[] | null;
+  wormholeNote: MarketWormholeNote | null;
+}) {
+  const record = await getConvexClient().mutation(api.marketOffers.attachMakerBundle, {
+    id: input.id as Id<"marketOrders">,
+    signerDelegation: input.signerDelegation,
+    signature: String(input.signature),
+    shieldedMasterRoot: input.shieldedMasterRoot,
+    inputNotes: input.inputNotes,
+    outputNotes: input.outputNotes,
+    wormholeNote: input.wormholeNote,
+  });
+
+  return record ? mapRecord(record as Parameters<typeof mapRecord>[0]) : null;
+}
+
+export async function attachFulfillerOfferBundle(input: {
+  id: string;
+  signerDelegation: MarketSignerDelegation;
+  signature: Hex | string;
+  shieldedMasterRoot: string | null;
+  inputNotes: MarketInputNote[] | null;
+  outputNotes: MarketOutputNote[] | null;
+  wormholeNote: MarketWormholeNote | null;
+}) {
+  const record = await getConvexClient().mutation(api.marketOffers.attachFulfillerBundle, {
+    id: input.id as Id<"marketOrders">,
+    signerDelegation: input.signerDelegation,
+    signature: String(input.signature),
+    shieldedMasterRoot: input.shieldedMasterRoot,
+    inputNotes: input.inputNotes,
+    outputNotes: input.outputNotes,
+    wormholeNote: input.wormholeNote,
+  });
+
+  return record ? mapRecord(record as Parameters<typeof mapRecord>[0]) : null;
 }
 
 export async function listMarketOfferRequests(

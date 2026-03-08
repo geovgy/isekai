@@ -52,6 +52,12 @@ export const createOffer = mutation({
       inputNotes: args.inputNotes,
       outputNotes: args.outputNotes,
       wormholeNote: args.wormholeNote,
+      fulfillerSignerDelegation: null,
+      fulfillerSignature: null,
+      fulfillerShieldedMasterRoot: null,
+      fulfillerInputNotes: null,
+      fulfillerOutputNotes: null,
+      fulfillerWormholeNote: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -62,6 +68,70 @@ export const createOffer = mutation({
     }
 
     return { ...record, id: record._id };
+  },
+});
+
+export const attachMakerBundle = mutation({
+  args: {
+    id: v.id("marketOrders"),
+    signerDelegation: signerDelegation,
+    signature: v.string(),
+    shieldedMasterRoot: v.union(v.string(), v.null()),
+    inputNotes: v.union(v.array(v.any()), v.null()),
+    outputNotes: v.union(v.array(v.any()), v.null()),
+    wormholeNote: v.union(v.any(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.id);
+    if (!record) {
+      return null;
+    }
+
+    const updatedAt = Date.now();
+    await ctx.db.patch(args.id, {
+      signerDelegation: args.signerDelegation,
+      signature: args.signature,
+      shieldedMasterRoot: args.shieldedMasterRoot,
+      inputNotes: args.inputNotes,
+      outputNotes: args.outputNotes,
+      wormholeNote: args.wormholeNote,
+      updatedAt,
+    });
+
+    const updated = await ctx.db.get(args.id);
+    return updated ? { ...updated, id: updated._id } : null;
+  },
+});
+
+export const attachFulfillerBundle = mutation({
+  args: {
+    id: v.id("marketOrders"),
+    signerDelegation: signerDelegation,
+    signature: v.string(),
+    shieldedMasterRoot: v.union(v.string(), v.null()),
+    inputNotes: v.union(v.array(v.any()), v.null()),
+    outputNotes: v.union(v.array(v.any()), v.null()),
+    wormholeNote: v.union(v.any(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.id);
+    if (!record) {
+      return null;
+    }
+
+    const updatedAt = Date.now();
+    await ctx.db.patch(args.id, {
+      fulfillerSignerDelegation: args.signerDelegation,
+      fulfillerSignature: args.signature,
+      fulfillerShieldedMasterRoot: args.shieldedMasterRoot,
+      fulfillerInputNotes: args.inputNotes,
+      fulfillerOutputNotes: args.outputNotes,
+      fulfillerWormholeNote: args.wormholeNote,
+      updatedAt,
+    });
+
+    const updated = await ctx.db.get(args.id);
+    return updated ? { ...updated, id: updated._id } : null;
   },
 });
 

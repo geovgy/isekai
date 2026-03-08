@@ -1,7 +1,7 @@
 import { Abi, Address, bytesToBigInt, erc20Abi, erc721Abi, getAddress, hashTypedData, Hex, hexToBytes, isAddressEqual, parseEventLogs, recoverPublicKey, toHex, TransactionReceipt, TypedData } from "viem"
 import { publicKeyToAddress } from "viem/accounts"
 import { NoteDB } from "@/src/storage/notes-db"
-import { InputNote, NoteDBShieldedEntry, NoteDBWormholeEntry, OutputNote, ShieldedTx, TransferType, Withdrawal, WormholeDeposit } from "@/src/types"
+import { InputNote, MarketInputNotePayload, MarketWormholeNotePayload, NoteDBShieldedEntry, NoteDBWormholeEntry, OutputNote, ShieldedTx, TransferType, Withdrawal, WormholeDeposit } from "@/src/types"
 import { createShieldedTransferOutputNotes, getShieldedTransferInputEntries } from "./utils"
 import {
   queryLatestMasterTreesUpdatedOnChain,
@@ -231,6 +231,202 @@ export class ShieldedPool {
       throw new Error(`Wormhole entry with id ${id} not found or already updated`)
     }
     return result
+  }
+
+  async prepareMarketOfferNotes(args: {
+    srcChainId: number,
+    token: Address,
+    tokenId?: bigint,
+    amount: bigint,
+  }) {
+    const assetId = getAssetId(args.token, args.tokenId);
+    const { wormhole, shielded } = await getShieldedTransferInputEntries(this._db, {
+      chainId: args.srcChainId,
+      sender: this.account,
+      receiver: this.account,
+      token: args.token,
+      tokenId: args.tokenId,
+      amount: args.amount,
+    })
+
+    const latestMasterUpdate = await queryLatestMasterTreesUpdatedOnChain(args.srcChainId)
+    if (!latestMasterUpdate) {
+      throw new Error(`No master tree update found on chain ${args.srcChainId}. Wait for the master tree to sync.`)
+    }
+    const masterBlockTimestamp = Number(latestMasterUpdate.masterBlockTimestamp)
+
+    const [masterShieldedSnapshot, masterWormholeSnapshot] = await Promise.all([
+      shielded.length > 0
+        ? queryMasterShieldedTreeSnapshot({
+            treeId: Number(latestMasterUpdate.masterShieldedTreeId),
+            root: latestMasterUpdate.masterShieldedRoot,
+          })
+        : Promise.resolve(null),
+      wormhole
+        ? queryMasterWormholeTreeSnapshot({
+            treeId: Number(latestMasterUpdate.masterWormholeTreeId),
+            root: latestMasterUpdate.masterWormholeRoot,
+          })
+        : Promise.resolve(null),
+    ])
+
+    let inputNotes: MarketInputNotePayload[] | null = null
+    let shieldedMasterRoot: string | null = null
+
+    if (shielded.length > 0) {
+      if (!masterShieldedSnapshot) {
+        throw new Error(`Master shielded tree snapshot not found for treeId ${latestMasterUpdate.masterShieldedTreeId}, root ${latestMasterUpdate.masterShieldedRoot}`)
+      }
+      const noteSrcChainId = shielded[0].srcChainId
+      const treeNumber = shielded[0].treeNumber
+      const maxLeafIndex = Math.max(...shielded.map(s => s.leafIndex))
+
+      const masterShieldedLeaves = await queryMasterShieldedTreeLeavesForBranchChain({
+        branchChainId: noteSrcChainId,
+      })
+      let selectedLeaf: typeof masterShieldedLeaves[0] | undefined
+      for (const leaf of masterShieldedLeaves) {
+        if (Number(leaf.blockTimestamp) > masterBlockTimestamp) continue
+        const branchSnap = await queryBranchShieldedTreeSnapshot({
+          treeId: treeNumber,
+          root: leaf.branchRoot,
+          chainId: noteSrcChainId,
+          branchAddress: leaf.branchAddress ?? undefined,
+        })
+        if (branchSnap && branchSnap.leaves.length > maxLeafIndex) {
+          selectedLeaf = leaf
+          break
+        }
+      }
+      if (!selectedLeaf) {
+        throw new Error(`No master shielded tree leaf found for notes from chain ${noteSrcChainId} with timestamp <= ${masterBlockTimestamp}`)
+      }
+      const branchSnapshot = await queryBranchShieldedTreeSnapshot({
+        treeId: treeNumber,
+        root: selectedLeaf.branchRoot,
+        chainId: noteSrcChainId,
+        branchAddress: selectedLeaf.branchAddress ?? undefined,
+      })
+      if (!branchSnapshot || branchSnapshot.leaves.length <= maxLeafIndex) {
+        throw new Error(`No branch shielded tree snapshot contains leaf index ${maxLeafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
+      }
+      const shieldedTree = getMerkleTree(branchSnapshot.leaves.map(l => BigInt(l)))
+
+      for (const input of shielded) {
+        const expectedCommitment = getCommitment(assetId, {
+          chain_id: BigInt(input.dstChainId),
+          recipient: input.note.account,
+          blinding: BigInt(input.note.blinding),
+          amount: BigInt(input.note.amount),
+          transfer_type: input.note.transferType,
+        })
+        const actualLeaf = BigInt(branchSnapshot.leaves[input.leafIndex])
+        if (actualLeaf !== expectedCommitment) {
+          throw new Error(`Commitment mismatch at leaf index ${input.leafIndex}. Expected ${expectedCommitment}, got ${actualLeaf}`)
+        }
+      }
+
+      const branchRoot = BigInt(selectedLeaf.branchRoot)
+      const uniqueShieldedMasterLeaves = deduplicateLeaves(masterShieldedSnapshot.leaves)
+      const masterIndex = uniqueShieldedMasterLeaves.findIndex(l => l === branchRoot)
+      if (masterIndex === -1) {
+        throw new Error(`Branch shielded root ${branchRoot} not found in master shielded tree snapshot`)
+      }
+      const shieldedMasterTree = getMerkleTree(uniqueShieldedMasterLeaves)
+      const masterShieldedProof = shieldedMasterTree.generateProof(masterIndex)
+
+      inputNotes = shielded.map(input => {
+        const proof = shieldedTree.generateProof(input.leafIndex)
+        return stringifyMarketInputNote({
+          chain_id: BigInt(input.dstChainId),
+          blinding: BigInt(input.note.blinding),
+          amount: BigInt(input.note.amount),
+          branch_index: BigInt(proof.index),
+          branch_siblings: proof.siblings,
+          branch_root: shieldedTree.root,
+          master_index: BigInt(masterShieldedProof.index),
+          master_siblings: masterShieldedProof.siblings,
+        })
+      })
+      shieldedMasterRoot = latestMasterUpdate.masterShieldedRoot
+    }
+
+    let wormholeNote: MarketWormholeNotePayload | null = null
+
+    if (wormhole) {
+      if (!masterWormholeSnapshot) {
+        throw new Error(`Master wormhole tree snapshot not found for treeId ${latestMasterUpdate.masterWormholeTreeId}, root ${latestMasterUpdate.masterWormholeRoot}`)
+      }
+      const noteSrcChainId = wormhole.srcChainId
+      const treeNumber = wormhole.treeNumber
+      const leafIndex = wormhole.leafIndex
+
+      const masterWormholeLeaves = await queryMasterWormholeTreeLeavesForBranchChain({
+        branchChainId: noteSrcChainId,
+      })
+      let selectedLeaf: typeof masterWormholeLeaves[0] | undefined
+      for (const leaf of masterWormholeLeaves) {
+        if (Number(leaf.blockTimestamp) > masterBlockTimestamp) continue
+        const branchSnap = await queryBranchWormholeTreeSnapshot({
+          treeId: treeNumber,
+          root: leaf.branchRoot,
+          chainId: noteSrcChainId,
+          branchAddress: leaf.branchAddress ?? undefined,
+        })
+        if (branchSnap && branchSnap.leaves.length > leafIndex) {
+          selectedLeaf = leaf
+          break
+        }
+      }
+      if (!selectedLeaf) {
+        throw new Error(`No master wormhole tree leaf covers leafIndex ${leafIndex} for tree ${treeNumber} on chain ${noteSrcChainId}`)
+      }
+      const branchSnapshot = await queryBranchWormholeTreeSnapshot({
+        treeId: treeNumber,
+        root: selectedLeaf.branchRoot,
+        chainId: noteSrcChainId,
+        branchAddress: selectedLeaf.branchAddress ?? undefined,
+      })
+      if (!branchSnapshot) {
+        throw new Error(`Branch wormhole tree snapshot not found for tree ${treeNumber} root ${selectedLeaf.branchRoot} on chain ${noteSrcChainId}`)
+      }
+      const wormholeTree = getMerkleTree(branchSnapshot.leaves.map(l => BigInt(l)))
+
+      const branchRoot = BigInt(selectedLeaf.branchRoot)
+      const uniqueWormholeMasterLeaves = deduplicateLeaves(masterWormholeSnapshot.leaves)
+      const masterIndex = uniqueWormholeMasterLeaves.findIndex(l => l === branchRoot)
+      if (masterIndex === -1) {
+        throw new Error(`Branch wormhole root ${branchRoot} not found in master wormhole tree snapshot`)
+      }
+      const wormholeMasterTree = getMerkleTree(uniqueWormholeMasterLeaves)
+      const masterWormholeProof = wormholeMasterTree.generateProof(masterIndex)
+      const wormholeProof = wormholeTree.generateProof(wormhole.leafIndex)
+
+      const wormholeDeposit: WormholeDeposit = {
+        dst_chain_id: BigInt(wormhole.dstChainId),
+        src_chain_id: BigInt(wormhole.srcChainId),
+        entry_id: BigInt(wormhole.entryId),
+        recipient: wormhole.entry.to,
+        wormhole_secret: BigInt(wormhole.entry.wormhole_secret),
+        asset_id: assetId,
+        sender: wormhole.entry.from,
+        amount: BigInt(wormhole.entry.amount),
+        master_root: wormholeMasterTree.root,
+        branch_root: wormholeTree.root,
+        branch_index: BigInt(wormholeProof.index),
+        branch_siblings: wormholeProof.siblings,
+        master_index: BigInt(masterWormholeProof.index),
+        master_siblings: masterWormholeProof.siblings,
+        is_approved: wormhole.status === "approved",
+      }
+      wormholeNote = stringifyMarketWormholeNote(wormholeDeposit)
+    }
+
+    return {
+      shieldedMasterRoot,
+      inputNotes,
+      wormholeNote,
+    }
   }
 
   async parseAndSaveShieldedTransfer(args: {
@@ -681,6 +877,39 @@ function deduplicateLeaves(leaves: string[]): bigint[] {
     }
   }
   return unique
+}
+
+function stringifyMarketInputNote(note: InputNote): MarketInputNotePayload {
+  return {
+    chain_id: note.chain_id.toString(),
+    blinding: note.blinding.toString(),
+    amount: note.amount.toString(),
+    branch_index: note.branch_index.toString(),
+    branch_siblings: note.branch_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - note.branch_siblings.length).fill("0")),
+    branch_root: note.branch_root.toString(),
+    master_index: note.master_index.toString(),
+    master_siblings: note.master_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - note.master_siblings.length).fill("0")),
+  }
+}
+
+function stringifyMarketWormholeNote(wormholeDeposit: WormholeDeposit): MarketWormholeNotePayload {
+  return {
+    dst_chain_id: wormholeDeposit.dst_chain_id.toString(),
+    src_chain_id: wormholeDeposit.src_chain_id.toString(),
+    entry_id: wormholeDeposit.entry_id.toString(),
+    recipient: wormholeDeposit.recipient,
+    wormhole_secret: wormholeDeposit.wormhole_secret.toString(),
+    asset_id: wormholeDeposit.asset_id.toString(),
+    sender: wormholeDeposit.sender,
+    amount: wormholeDeposit.amount.toString(),
+    master_root: wormholeDeposit.master_root.toString(),
+    branch_root: wormholeDeposit.branch_root.toString(),
+    branch_index: wormholeDeposit.branch_index.toString(),
+    branch_siblings: wormholeDeposit.branch_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeDeposit.branch_siblings.length).fill("0")),
+    master_index: wormholeDeposit.master_index.toString(),
+    master_siblings: wormholeDeposit.master_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeDeposit.master_siblings.length).fill("0")),
+    is_approved: wormholeDeposit.is_approved,
+  }
 }
 
 export function toShieldedTxStruct(args: {
