@@ -28,7 +28,6 @@ import {
   TableRow,
 } from "@/src/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
-import { Textarea } from "@/src/components/ui/textarea";
 import { getChainConfig, SUPPORTED_CHAINS, SUPPORTED_CHAIN_IDS } from "@/src/config";
 import { WORMHOLE_TOKENS } from "@/src/env";
 import { cn, formatBalance } from "@/src/lib/utils";
@@ -127,6 +126,8 @@ function statusBadgeClass(status: string) {
   switch (status) {
     case "open":
       return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
+    case "pending":
+      return "bg-amber-500/15 text-amber-600 dark:text-amber-400";
     case "fulfilled":
       return "bg-sky-500/15 text-sky-600 dark:text-sky-400";
     case "cancelled":
@@ -138,30 +139,6 @@ function statusBadgeClass(status: string) {
 
 function getOrderMakerAddress(order: MarketOfferRow) {
   return order.makerAddress ?? order.signerDelegation?.owner ?? null;
-}
-
-function parseOptionalJson(input: string, fieldName: string) {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    throw new Error(`Invalid JSON in ${fieldName}`);
-  }
-}
-
-function parseOptionalJsonArray(input: string, fieldName: string) {
-  const parsed = parseOptionalJson(input, fieldName);
-  if (parsed === null) {
-    return null;
-  }
-  if (!Array.isArray(parsed)) {
-    throw new Error(`${fieldName} must be a JSON array`);
-  }
-  return parsed;
 }
 
 function useTokenMetadata(chainId: number) {
@@ -584,21 +561,10 @@ function FulfillOrderDialog({
   onSubmitted: () => Promise<void>;
 }) {
   const wagmiConfig = useWagmiConfig();
+  const { data: shieldedPool } = useShieldedPool();
   const walletChainId = useChainId();
   const metadata = useTokenMetadata(walletChainId || SUPPORTED_CHAIN_IDS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [inputNotesJson, setInputNotesJson] = useState("");
-  const [outputNotesJson, setOutputNotesJson] = useState("");
-  const [wormholeNoteJson, setWormholeNoteJson] = useState("");
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    setInputNotesJson("");
-    setOutputNotesJson("");
-    setWormholeNoteJson("");
-  }, [open, order?.id]);
 
   const delegationPreview = useMemo(() => {
     if (!order || !connectedAddress || !relayerAddress || !isAddress(relayerAddress)) {
@@ -643,6 +609,10 @@ function FulfillOrderDialog({
       toast.error("Connect your wallet to fulfill an order");
       return;
     }
+    if (!shieldedPool) {
+      toast.error("Shielded pool not available");
+      return;
+    }
     if (!delegationPreview) {
       toast.error("Unable to build signer delegation for this order");
       return;
@@ -651,6 +621,21 @@ function FulfillOrderDialog({
     setIsSubmitting(true);
     try {
       const askChainId = Number(order.offer.ask.dstChainId);
+      const makerAddress = getOrderMakerAddress(order);
+      if (!makerAddress || !isAddress(makerAddress)) {
+        throw new Error("Maker address not available for this order");
+      }
+      const askToken = requireValidAddress(order.offer.ask.token, "Ask token address");
+      const askTokenInfo = metadata.find(token => token.address === askToken);
+      const askAmountUnits = parseMarketAmountToUnits(order.offer.ask.amount, askTokenInfo?.decimals ?? 18);
+      const notes = await shieldedPool.prepareMarketFulfillNotes({
+        srcChainId: askChainId,
+        dstChainId: askChainId,
+        receiver: getAddress(makerAddress),
+        token: askToken,
+        tokenId: 0n,
+        amount: askAmountUnits,
+      })
       const chainConfig = getChainConfig(askChainId);
       const verifyingContract = requireValidAddress(
         chainConfig.branchContractAddress,
@@ -679,10 +664,6 @@ function FulfillOrderDialog({
         },
       });
 
-      const inputNotes = parseOptionalJsonArray(inputNotesJson, "input notes");
-      const outputNotes = parseOptionalJsonArray(outputNotesJson, "output notes");
-      const wormholeNote = parseOptionalJson(wormholeNoteJson, "wormhole note");
-
       const response = await fetch("/api/market/fulfill-order", {
         method: "POST",
         headers: {
@@ -692,11 +673,7 @@ function FulfillOrderDialog({
           marketOfferId: order.id,
           signerDelegation: delegationPreview,
           signature,
-          notes: {
-            inputNotes,
-            outputNotes,
-            wormholeNote,
-          },
+          notes,
         }),
       });
 
@@ -750,40 +727,10 @@ function FulfillOrderDialog({
             </div>
 
             <div className="rounded-xl border-2 border-border bg-muted/30 p-4">
-              <div className="text-sm font-medium">Delegation To Sign</div>
-              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-background p-3 text-xs text-muted-foreground">
-                {JSON.stringify(delegationPreview, null, 2)}
-              </pre>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Input Notes JSON</label>
-                <Textarea
-                  value={inputNotesJson}
-                  onChange={event => setInputNotesJson(event.target.value)}
-                  placeholder='[{"chain_id":"...","amount":"..."}]'
-                  className="min-h-28"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Output Notes JSON</label>
-                <Textarea
-                  value={outputNotesJson}
-                  onChange={event => setOutputNotesJson(event.target.value)}
-                  placeholder='[{"chain_id":"...","amount":"..."}]'
-                  className="min-h-28"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Wormhole Note JSON</label>
-                <Textarea
-                  value={wormholeNoteJson}
-                  onChange={event => setWormholeNoteJson(event.target.value)}
-                  placeholder='{"src_chain_id":"...","entry_id":"..."}'
-                  className="min-h-24"
-                />
-              </div>
+              <div className="text-sm font-medium">Next Step</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Confirm to prepare the required notes behind the scenes and then sign the EIP-712 delegation for this market order.
+              </p>
             </div>
           </div>
         ) : (
@@ -918,7 +865,7 @@ export default function MarketPage() {
   const allOrders = offersResponse?.orders ?? [];
   const relayerAddress = delegateAddressResponse?.address ?? null;
   const openOrders = useMemo(
-    () => allOrders.filter(order => order.offerStatus === "open"),
+    () => allOrders.filter(order => order.offerStatus === "open" || order.offerStatus === "pending"),
     [allOrders],
   );
   const myOrders = useMemo(() => {
@@ -931,17 +878,6 @@ export default function MarketPage() {
       return maker ? isAddressEqual(maker, address) : false;
     });
   }, [address, allOrders]);
-
-  const openOrdersForFulfillment = useMemo(() => {
-    if (!address) {
-      return openOrders;
-    }
-
-    return openOrders.filter(order => {
-      const maker = getOrderMakerAddress(order);
-      return maker ? !isAddressEqual(maker, address) : true;
-    });
-  }, [address, openOrders]);
 
   return (
     <div className="w-full max-w-7xl mx-auto py-12 px-6">
@@ -988,14 +924,13 @@ export default function MarketPage() {
                 </div>
               ) : (
                 <OrdersTable
-                  orders={openOrdersForFulfillment}
+                  orders={openOrders}
                   metadata={metadata}
-                  emptyMessage="No open market offers available."
+                  emptyMessage="No open or pending market offers available."
                   action={order => (
                     <Button
                       size="sm"
                       onClick={() => setSelectedOrder(order)}
-                      disabled={!address}
                     >
                       Fulfill Order
                     </Button>

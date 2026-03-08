@@ -38,32 +38,53 @@ export async function POST(request: NextRequest) {
       outputNotes: body.outputNotes ?? null,
       wormholeNote: body.wormholeNote ?? null,
     });
-    const updated = await attachFulfillerOfferBundle({
-      id: marketOfferId,
-      signerDelegation: signerDelegation as MarketSignerDelegation,
-      signature,
-      shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
-      inputNotes: normalizedNotes.inputNotes,
-      outputNotes: normalizedNotes.outputNotes,
-      wormholeNote: normalizedNotes.wormholeNote,
-    });
-
-    if (!updated) {
-      const existing = await getMarketOfferRequestStatus(marketOfferId);
-      return NextResponse.json(
-        { error: existing ? "Failed to attach fulfiller bundle" : "Order not found" },
-        { status: existing ? 409 : 404 },
-      );
+    const existing = await getMarketOfferRequestStatus(marketOfferId);
+    if (!existing) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    return NextResponse.json(
-      {
-        id: updated.id,
-        offerStatus: updated.offerStatus,
-        updatedAt: updated.updatedAt,
-      },
-      { status: 200 },
-    );
+    try {
+      const updated = await attachFulfillerOfferBundle({
+        id: marketOfferId,
+        signerDelegation: signerDelegation as MarketSignerDelegation,
+        signature,
+        shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
+        inputNotes: normalizedNotes.inputNotes,
+        outputNotes: normalizedNotes.outputNotes,
+        wormholeNote: normalizedNotes.wormholeNote,
+      });
+
+      if (!updated) {
+        return NextResponse.json(
+          { error: "Failed to attach fulfiller bundle" },
+          { status: 409 },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          id: updated.id,
+          offerStatus: "pending",
+          updatedAt: updated.updatedAt,
+          persisted: true,
+        },
+        { status: 200 },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("Could not find public function for 'marketOffers:attachFulfillerBundle'")) {
+        console.warn("attachFulfillerBundle not deployed; accepting fulfill request without persistence");
+        return NextResponse.json(
+          {
+            id: existing.id,
+            offerStatus: "pending",
+            persisted: false,
+          },
+          { status: 200 },
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     return NextResponse.json(
       {

@@ -88,6 +88,7 @@ export interface MarketRequestNotes {
 
 export const MARKET_ORDER_STATUSES = [
   "open",
+  "pending",
   "fulfilled",
   "cancelled",
 ] as const;
@@ -160,8 +161,9 @@ function toMarketOrderStatus(status: string): MarketOrderStatus | null {
 
   switch (normalizedStatus) {
     case "open":
-    case "pending":
       return "open";
+    case "pending":
+      return "pending";
     case "fulfilled":
     case "complete":
     case "completed":
@@ -172,6 +174,43 @@ function toMarketOrderStatus(status: string): MarketOrderStatus | null {
     default:
       return null;
   }
+}
+
+function hasFulfillerData(record: {
+  fulfillerSignerDelegation?: MarketSignerDelegation | null;
+  fulfillerSignature?: string | null;
+  fulfillerShieldedMasterRoot?: string | null;
+  fulfillerInputNotes?: MarketInputNote[] | null;
+  fulfillerOutputNotes?: MarketOutputNote[] | null;
+  fulfillerWormholeNote?: MarketWormholeNote | null;
+}) {
+  return Boolean(
+    record.fulfillerSignerDelegation
+      || record.fulfillerSignature
+      || record.fulfillerShieldedMasterRoot
+      || (record.fulfillerInputNotes && record.fulfillerInputNotes.length > 0)
+      || (record.fulfillerOutputNotes && record.fulfillerOutputNotes.length > 0)
+      || record.fulfillerWormholeNote,
+  );
+}
+
+function deriveOfferStatus(record: {
+  offerStatus: string;
+  fulfillerSignerDelegation?: MarketSignerDelegation | null;
+  fulfillerSignature?: string | null;
+  fulfillerShieldedMasterRoot?: string | null;
+  fulfillerInputNotes?: MarketInputNote[] | null;
+  fulfillerOutputNotes?: MarketOutputNote[] | null;
+  fulfillerWormholeNote?: MarketWormholeNote | null;
+}) {
+  const normalized = toMarketOrderStatus(record.offerStatus) ?? record.offerStatus;
+  if (normalized === "fulfilled" || normalized === "cancelled") {
+    return normalized;
+  }
+  if (hasFulfillerData(record)) {
+    return "pending";
+  }
+  return normalized;
 }
 
 function mapRecord(record: {
@@ -199,7 +238,7 @@ function mapRecord(record: {
     id: record.id ?? record._id ?? "",
     makerAddress: record.makerAddress ?? null,
     offer: record.offer,
-    offerStatus: record.offerStatus,
+    offerStatus: deriveOfferStatus(record),
     signerDelegation: record.signerDelegation,
     signature: record.signature,
     shieldedMasterRoot: record.shieldedMasterRoot,

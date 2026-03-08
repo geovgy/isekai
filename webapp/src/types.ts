@@ -146,6 +146,14 @@ export interface MarketWormholeNotePayload {
   is_approved: boolean;
 }
 
+export interface MarketOutputNotePayload {
+  chain_id: string;
+  recipient: string;
+  blinding: string;
+  amount: string;
+  transfer_type: TransferType;
+}
+
 // Contract Types
 export interface Withdrawal {
   to: Address;

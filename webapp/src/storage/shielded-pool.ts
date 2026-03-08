@@ -1,7 +1,7 @@
 import { Abi, Address, bytesToBigInt, erc20Abi, erc721Abi, getAddress, hashTypedData, Hex, hexToBytes, isAddressEqual, parseEventLogs, recoverPublicKey, toHex, TransactionReceipt, TypedData } from "viem"
 import { publicKeyToAddress } from "viem/accounts"
 import { NoteDB } from "@/src/storage/notes-db"
-import { InputNote, MarketInputNotePayload, MarketWormholeNotePayload, NoteDBShieldedEntry, NoteDBWormholeEntry, OutputNote, ShieldedTx, TransferType, Withdrawal, WormholeDeposit } from "@/src/types"
+import { InputNote, MarketInputNotePayload, MarketOutputNotePayload, MarketWormholeNotePayload, NoteDBShieldedEntry, NoteDBWormholeEntry, OutputNote, ShieldedTx, TransferType, Withdrawal, WormholeDeposit } from "@/src/types"
 import { createShieldedTransferOutputNotes, getShieldedTransferInputEntries } from "./utils"
 import {
   queryLatestMasterTreesUpdatedOnChain,
@@ -426,6 +426,44 @@ export class ShieldedPool {
       shieldedMasterRoot,
       inputNotes,
       wormholeNote,
+    }
+  }
+
+  async prepareMarketFulfillNotes(args: {
+    srcChainId: number,
+    dstChainId: number,
+    receiver: Address,
+    token: Address,
+    tokenId?: bigint,
+    amount: bigint,
+  }) {
+    const preparedInputs = await this.prepareMarketOfferNotes({
+      srcChainId: args.srcChainId,
+      token: args.token,
+      tokenId: args.tokenId,
+      amount: args.amount,
+    })
+    const { wormhole, shielded } = await getShieldedTransferInputEntries(this._db, {
+      chainId: args.srcChainId,
+      sender: this.account,
+      receiver: args.receiver,
+      token: args.token,
+      tokenId: args.tokenId,
+      amount: args.amount,
+    })
+    const outputNotes = createShieldedTransferOutputNotes({
+      dstChainId: BigInt(args.dstChainId),
+      srcChainId: BigInt(args.srcChainId),
+      sender: this.account,
+      receiver: args.receiver,
+      amount: args.amount,
+      transferType: TransferType.TRANSFER,
+      notes: { wormhole, shielded },
+    })
+
+    return {
+      ...preparedInputs,
+      outputNotes: outputNotes.map(stringifyMarketOutputNote),
     }
   }
 
@@ -909,6 +947,16 @@ function stringifyMarketWormholeNote(wormholeDeposit: WormholeDeposit): MarketWo
     master_index: wormholeDeposit.master_index.toString(),
     master_siblings: wormholeDeposit.master_siblings.map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - wormholeDeposit.master_siblings.length).fill("0")),
     is_approved: wormholeDeposit.is_approved,
+  }
+}
+
+function stringifyMarketOutputNote(note: OutputNote): MarketOutputNotePayload {
+  return {
+    chain_id: note.chain_id.toString(),
+    recipient: typeof note.recipient === "bigint" ? note.recipient.toString() : note.recipient,
+    blinding: note.blinding.toString(),
+    amount: note.amount.toString(),
+    transfer_type: note.transfer_type,
   }
 }
 
