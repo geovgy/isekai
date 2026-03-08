@@ -2,7 +2,7 @@
 
 Isekai is a cross-chain privacy protocol inspired by EIP-7503 and combines shielded UTXO transfers, zk-wormholes, chain abstraction, and delegated execution for any asset.
 
-All commits prior to Arbitrum Founder House can be found on `pre-arbfh` branch.
+All commits prior to Arbitrum Open House NYC can be found on `pre-arbfh` branch.
 
 ## What This Repo Contains
 
