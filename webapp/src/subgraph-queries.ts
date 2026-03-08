@@ -1,7 +1,7 @@
 import { Address, Hex, numberToHex } from "viem";
 import { subgraphQuery, subgraphQueryAllChains, subgraphQueryMasterChain } from "./subgraph";
 import { getMerkleTree } from "./merkle";
-import { MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./config";
+import { MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./chains";
 
 export async function getMerkleTrees({
   wormholeTreeId,

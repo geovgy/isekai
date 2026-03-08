@@ -1,4 +1,4 @@
-import { sepolia, arbitrumSepolia, optimismSepolia, baseSepolia, type Chain } from 'wagmi/chains'
+import { sepolia, arbitrumSepolia, optimismSepolia, baseSepolia, type Chain, curtis } from 'wagmi/chains'
 import {
   SHIELDED_POOL_CONTRACT_ADDRESS,
   SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
@@ -40,7 +40,7 @@ export const SUPPORTED_CHAINS: Record<number, ChainConfig> = {
     subgraphUrl: SUBGRAPH_URL_ARB_SEPOLIA,
     contractAddress: SHIELDED_POOL_CONTRACT_ADDRESS,
     branchContractAddress: SHIELDED_POOL_BRANCH_CONTRACT_ADDRESS,
-    isMaster: false,
+    isMaster: true,
     label: 'Arbitrum Sepolia',
   },
   // [optimismSepolia.id]: {

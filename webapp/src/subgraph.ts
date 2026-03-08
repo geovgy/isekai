@@ -1,4 +1,4 @@
-import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./config";
+import { getChainConfig, MASTER_CHAIN_ID, SUPPORTED_CHAIN_IDS } from "./chains";
 
 export async function subgraphQuery<T>(
   queryString: string,

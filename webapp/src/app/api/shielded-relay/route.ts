@@ -1,5 +1,4 @@
-import { SUPPORTED_CHAINS } from "@/src/chains";
-import { getChainConfig } from "@/src/config";
+import { SUPPORTED_CHAINS, getChainConfig } from "@/src/chains";
 import { ShieldedTx, ShieldedTxStringified } from "@/src/types";
 import { NextRequest, NextResponse } from "next/server";
 import { Abi, createWalletClient, getAddress, http, parseAbi } from "viem";
