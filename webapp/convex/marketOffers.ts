@@ -121,6 +121,7 @@ export const attachFulfillerBundle = mutation({
 
     const updatedAt = Date.now();
     await ctx.db.patch(args.id, {
+      offerStatus: "pending",
       fulfillerSignerDelegation: args.signerDelegation,
       fulfillerSignature: args.signature,
       fulfillerShieldedMasterRoot: args.shieldedMasterRoot,

@@ -94,6 +94,7 @@ export const MARKET_ORDER_STATUSES = [
 ] as const;
 
 export type MarketOrderStatus = (typeof MARKET_ORDER_STATUSES)[number];
+const FULFILL_LINK_PREFIX = "fulfill:";
 
 export interface SaveMarketOfferRequestInput {
   offer: MarketOffer;
@@ -213,6 +214,21 @@ function deriveOfferStatus(record: {
   return normalized;
 }
 
+function getFulfillSourceOrderId(record: {
+  offer: MarketOffer;
+  offerStatus: string;
+}) {
+  if (record.offerStatus !== "pending") {
+    return null;
+  }
+  const marker = typeof record.offer.status === "string" ? record.offer.status : null;
+  if (!marker?.startsWith(FULFILL_LINK_PREFIX)) {
+    return null;
+  }
+  const sourceId = marker.slice(FULFILL_LINK_PREFIX.length).trim();
+  return sourceId.length > 0 ? sourceId : null;
+}
+
 function mapRecord(record: {
   _id?: string;
   id?: string;
@@ -254,6 +270,43 @@ function mapRecord(record: {
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   };
+}
+
+function mergeLinkedPendingOrders(records: Parameters<typeof mapRecord>[0][]) {
+  const pendingBySourceId = new Map<string, Parameters<typeof mapRecord>[0]>();
+
+  for (const record of records) {
+    const sourceId = getFulfillSourceOrderId(record);
+    if (!sourceId) continue;
+    const current = pendingBySourceId.get(sourceId);
+    if (!current || record.updatedAt > current.updatedAt) {
+      pendingBySourceId.set(sourceId, record);
+    }
+  }
+
+  return records.flatMap(record => {
+    const sourceId = getFulfillSourceOrderId(record);
+    if (sourceId) {
+      return [];
+    }
+
+    const pendingChild = pendingBySourceId.get(record.id ?? record._id ?? "");
+    if (!pendingChild) {
+      return [record];
+    }
+
+    return [{
+      ...record,
+      offerStatus: "pending",
+      fulfillerSignerDelegation: pendingChild.signerDelegation,
+      fulfillerSignature: pendingChild.signature,
+      fulfillerShieldedMasterRoot: pendingChild.shieldedMasterRoot,
+      fulfillerInputNotes: pendingChild.inputNotes,
+      fulfillerOutputNotes: pendingChild.outputNotes,
+      fulfillerWormholeNote: pendingChild.wormholeNote,
+      updatedAt: pendingChild.updatedAt,
+    }];
+  });
 }
 
 export function normalizeOfferStatus(body: unknown, offer: MarketOffer): MarketOrderStatus {
@@ -397,7 +450,39 @@ export async function listMarketOfferRequests(
     filters: filters ?? [],
   });
 
-  return (records as Parameters<typeof mapRecord>[0][]).map(mapRecord);
+  return mergeLinkedPendingOrders(records as Parameters<typeof mapRecord>[0][]).map(mapRecord);
+}
+
+export async function getMarketOfferRequest(id: string) {
+  const records = await listMarketOfferRequests();
+  return records.find(record => record.id === id) ?? null;
+}
+
+export async function createPendingFulfillMarketOffer(input: {
+  sourceOrderId: string;
+  makerAddress: Address;
+  offer: MarketOffer;
+  signerDelegation: MarketSignerDelegation;
+  signature: Hex | string;
+  shieldedMasterRoot: string | null;
+  inputNotes: MarketInputNote[] | null;
+  outputNotes: MarketOutputNote[] | null;
+  wormholeNote: MarketWormholeNote | null;
+}) {
+  return saveMarketOfferRequest({
+    makerAddress: input.makerAddress,
+    offer: {
+      ...input.offer,
+      status: `${FULFILL_LINK_PREFIX}${input.sourceOrderId}`,
+    },
+    offerStatus: "pending",
+    signerDelegation: input.signerDelegation,
+    signature: input.signature,
+    shieldedMasterRoot: input.shieldedMasterRoot,
+    inputNotes: input.inputNotes,
+    outputNotes: input.outputNotes,
+    wormholeNote: input.wormholeNote,
+  });
 }
 
 export async function cancelOpenMarketOfferRequest(id: string) {

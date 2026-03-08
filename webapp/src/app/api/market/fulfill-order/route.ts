@@ -1,6 +1,6 @@
 import {
-  attachFulfillerOfferBundle,
-  getMarketOfferRequestStatus,
+  createPendingFulfillMarketOffer,
+  getMarketOfferRequest,
   normalizeNotes,
   type MarketSignerDelegation,
 } from "@/src/server/market-offer-requests";
@@ -38,60 +38,50 @@ export async function POST(request: NextRequest) {
       outputNotes: body.outputNotes ?? null,
       wormholeNote: body.wormholeNote ?? null,
     });
-    const existing = await getMarketOfferRequestStatus(marketOfferId);
+    const existing = await getMarketOfferRequest(marketOfferId);
     if (!existing) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    try {
-      const updated = await attachFulfillerOfferBundle({
-        id: marketOfferId,
-        signerDelegation: signerDelegation as MarketSignerDelegation,
-        signature,
-        shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
-        inputNotes: normalizedNotes.inputNotes,
-        outputNotes: normalizedNotes.outputNotes,
-        wormholeNote: normalizedNotes.wormholeNote,
-      });
-
-      if (!updated) {
-        return NextResponse.json(
-          { error: "Failed to attach fulfiller bundle" },
-          { status: 409 },
-        );
-      }
-
-      return NextResponse.json(
-        {
-          id: updated.id,
-          offerStatus: "pending",
-          updatedAt: updated.updatedAt,
-          persisted: true,
-        },
-        { status: 200 },
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("Could not find public function for 'marketOffers:attachFulfillerBundle'")) {
-        console.warn("attachFulfillerBundle not deployed; accepting fulfill request without persistence");
-        return NextResponse.json(
-          {
-            id: existing.id,
-            offerStatus: "pending",
-            persisted: false,
-          },
-          { status: 200 },
-        );
-      }
-      throw error;
+    if (!existing.makerAddress) {
+      return NextResponse.json({ error: "Order maker address not found" }, { status: 409 });
     }
-  } catch (error) {
+
+    const updated = await createPendingFulfillMarketOffer({
+      sourceOrderId: marketOfferId,
+      makerAddress: existing.makerAddress,
+      offer: existing.offer,
+      signerDelegation: signerDelegation as MarketSignerDelegation,
+      signature,
+      shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
+      inputNotes: normalizedNotes.inputNotes,
+      outputNotes: normalizedNotes.outputNotes,
+      wormholeNote: normalizedNotes.wormholeNote,
+    });
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Failed to attach fulfiller bundle" },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Invalid fulfill order request",
+        id: updated.id,
+        offerStatus: "pending",
+        updatedAt: updated.updatedAt,
+        persisted: true,
+      },
+      { status: 200 },
+    );
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : "Invalid fulfill order request";
+    return NextResponse.json(
+      {
+        error: message,
       },
       { status: 400 },
     );
