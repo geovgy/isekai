@@ -98,8 +98,8 @@ export interface SaveMarketOfferRequestInput {
   offer: MarketOffer;
   offerStatus: MarketOrderStatus;
   makerAddress: Address;
-  signerDelegation: MarketSignerDelegation;
-  signature: Hex | string;
+  signerDelegation: MarketSignerDelegation | null;
+  signature: Hex | string | null;
   shieldedMasterRoot: string | null;
   inputNotes: MarketInputNote[] | null;
   outputNotes: MarketOutputNote[] | null;
@@ -279,7 +279,7 @@ export async function saveMarketOfferRequest(input: SaveMarketOfferRequestInput)
     offer: input.offer,
     offerStatus: input.offerStatus,
     signerDelegation: input.signerDelegation,
-    signature: String(input.signature),
+    signature: input.signature ? String(input.signature) : null,
     shieldedMasterRoot: input.shieldedMasterRoot,
     inputNotes: input.inputNotes,
     outputNotes: input.outputNotes,

@@ -1,6 +1,7 @@
 "use client";
 
 import { formatAddress } from "@/src/components/address";
+import { useShieldedPool } from "@/src/hooks/use-shieldedpool";
 import { Button } from "@/src/components/ui/button";
 import {
   Dialog,
@@ -10,6 +11,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
+import { Input } from "@/src/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/components/ui/select";
 import {
   Table,
   TableBody,
@@ -20,18 +29,25 @@ import {
 } from "@/src/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { Textarea } from "@/src/components/ui/textarea";
-import { getChainConfig, SUPPORTED_CHAINS } from "@/src/config";
-import { cn } from "@/src/lib/utils";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { getChainConfig, SUPPORTED_CHAINS, SUPPORTED_CHAIN_IDS } from "@/src/config";
+import { WORMHOLE_TOKENS } from "@/src/env";
+import { cn, formatBalance } from "@/src/lib/utils";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Address } from "viem";
-import { getAddress, isAddress, isAddressEqual } from "viem";
-import { useChainId, useConfig as useWagmiConfig, useConnection } from "wagmi";
+import { erc20Abi, getAddress, isAddress, isAddressEqual } from "viem";
+import {
+  useChainId,
+  useConfig as useWagmiConfig,
+  useConnection,
+  useReadContracts,
+} from "wagmi";
 import { signTypedData } from "wagmi/actions";
 
 interface MarketOfferItem {
+  srcChainId?: string | null;
   dstChainId: string;
   token: string;
   tokenId: string;
@@ -80,6 +96,12 @@ interface MarketOffersResponse {
   orders: MarketOfferRow[];
 }
 
+interface TokenMetadata {
+  address: Address;
+  symbol: string;
+  decimals: number;
+}
+
 const signerDelegationTypes = {
   SignerDelegation: [
     { name: "chainId", type: "uint64" },
@@ -98,6 +120,9 @@ const signerDelegationTypes = {
   ],
 } as const;
 
+const tokenOptions = WORMHOLE_TOKENS.map(token => getAddress(token));
+const fallbackToken = tokenOptions[0] ?? getAddress("0x0000000000000000000000000000000000000000");
+
 function statusBadgeClass(status: string) {
   switch (status) {
     case "open":
@@ -109,15 +134,6 @@ function statusBadgeClass(status: string) {
     default:
       return "bg-muted text-muted-foreground";
   }
-}
-
-function formatMarketItem(item: MarketOfferItem) {
-  const chainLabel = SUPPORTED_CHAINS[Number(item.dstChainId)]?.label ?? `Chain ${item.dstChainId}`;
-  return {
-    title: `${item.amount} @ ${chainLabel}`,
-    token: isAddress(item.token) ? formatAddress(getAddress(item.token)) : item.token,
-    tokenId: item.tokenId,
-  };
 }
 
 function getOrderMakerAddress(order: MarketOfferRow) {
@@ -148,6 +164,330 @@ function parseOptionalJsonArray(input: string, fieldName: string) {
   return parsed;
 }
 
+function useTokenMetadata(chainId: number) {
+  const contracts = useMemo(
+    () =>
+      tokenOptions.flatMap(token => [
+        {
+          address: token,
+          abi: erc20Abi,
+          functionName: "symbol" as const,
+          chainId,
+        },
+        {
+          address: token,
+          abi: erc20Abi,
+          functionName: "decimals" as const,
+          chainId,
+        },
+      ]),
+    [chainId],
+  );
+
+  const { data } = useReadContracts({
+    allowFailure: true,
+    contracts,
+    query: {
+      enabled: tokenOptions.length > 0,
+      select: results =>
+        tokenOptions.map((address, index) => {
+          const offset = index * 2;
+          return {
+            address,
+            symbol: (results[offset]?.result as string | undefined) ?? formatAddress(address),
+            decimals: Number((results[offset + 1]?.result as number | bigint | undefined) ?? 18),
+          } satisfies TokenMetadata;
+        }),
+    },
+  });
+
+  return (
+    data ??
+    tokenOptions.map(address => ({
+      address,
+      symbol: formatAddress(address),
+      decimals: 18,
+    }))
+  );
+}
+
+function formatTokenOption(address: Address, metadata: TokenMetadata[]) {
+  const token = metadata.find(option => option.address === address);
+  return token ? `${token.symbol} (${formatAddress(address)})` : formatAddress(address);
+}
+
+function formatMarketItem(item: MarketOfferItem, metadata: TokenMetadata[]) {
+  const chainLabel = SUPPORTED_CHAINS[Number(item.dstChainId)]?.label ?? `Chain ${item.dstChainId}`;
+  const sourceChainLabel =
+    item.srcChainId && SUPPORTED_CHAINS[Number(item.srcChainId)]
+      ? SUPPORTED_CHAINS[Number(item.srcChainId)].label
+      : null;
+
+  return {
+    title: `${item.amount} @ ${chainLabel}`,
+    token: isAddress(item.token)
+      ? formatTokenOption(getAddress(item.token), metadata)
+      : item.token,
+    tokenId: item.tokenId,
+    sourceChainLabel,
+  };
+}
+
+function CreateOfferDialog({
+  open,
+  onOpenChange,
+  connectedAddress,
+  onSubmitted,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  connectedAddress?: Address;
+  onSubmitted: () => Promise<void>;
+}) {
+  const { data: shieldedPool } = useShieldedPool();
+  const walletChainId = useChainId();
+  const defaultChainId = SUPPORTED_CHAIN_IDS[0] ?? walletChainId;
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [askToken, setAskToken] = useState<Address>(fallbackToken);
+  const [askAmount, setAskAmount] = useState("");
+  const [askDstChainId, setAskDstChainId] = useState(String(defaultChainId));
+  const [forToken, setForToken] = useState<Address>(fallbackToken);
+  const [forAmount, setForAmount] = useState("");
+  const [forDstChainId, setForDstChainId] = useState(String(defaultChainId));
+  const [forSourceChainId, setForSourceChainId] = useState(String(defaultChainId));
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const initialChainId = String(defaultChainId);
+    setAskToken(fallbackToken);
+    setAskAmount("");
+    setAskDstChainId(initialChainId);
+    setForToken(fallbackToken);
+    setForAmount("");
+    setForDstChainId(initialChainId);
+    setForSourceChainId(initialChainId);
+  }, [defaultChainId, open]);
+
+  const askTokenMetadata = useTokenMetadata(Number(askDstChainId || defaultChainId));
+  const forTokenMetadata = useTokenMetadata(Number(forSourceChainId || defaultChainId));
+
+  const privateBalanceQueries = useQueries({
+    queries: SUPPORTED_CHAIN_IDS.map(chainId => ({
+      queryKey: ["marketPrivateBalance", shieldedPool?.account, chainId, forToken],
+      queryFn: async () => {
+        if (!shieldedPool) {
+          return 0n;
+        }
+        return shieldedPool.getShieldedBalance({
+          chainId,
+          token: forToken,
+          excludeWormholes: false,
+        });
+      },
+      enabled: !!shieldedPool,
+    })),
+  });
+
+  const privateBalancesByChain = useMemo(
+    () =>
+      Object.fromEntries(
+        SUPPORTED_CHAIN_IDS.map((chainId, index) => [
+          chainId,
+          privateBalanceQueries[index]?.data ?? 0n,
+        ]),
+      ),
+    [privateBalanceQueries],
+  );
+
+  const selectedForTokenMetadata = useMemo(
+    () => forTokenMetadata.find(token => token.address === forToken),
+    [forToken, forTokenMetadata],
+  );
+
+  async function handleCreate() {
+    if (!connectedAddress) {
+      toast.error("Connect your wallet to create a market offer");
+      return;
+    }
+    if (!askAmount.trim() || !forAmount.trim()) {
+      toast.error("Enter both ask and for amounts");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/market/offer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          makerAddress: connectedAddress,
+          offer: {
+            ask: {
+              dstChainId: askDstChainId,
+              token: askToken,
+              tokenId: "0",
+              amount: askAmount.trim(),
+            },
+            for: {
+              srcChainId: forSourceChainId,
+              dstChainId: forDstChainId,
+              token: forToken,
+              tokenId: "0",
+              amount: forAmount.trim(),
+            },
+          } satisfies MarketOffer,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorBody?.error ?? "Failed to create market offer");
+      }
+
+      toast.success("Market offer created");
+      onOpenChange(false);
+      await onSubmitted();
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Failed to create market offer");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Create Market Offer</DialogTitle>
+          <DialogDescription>
+            Define what you are asking for and what you are offering in return.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3 rounded-xl border-2 border-border bg-muted/30 p-4">
+            <div className="text-sm font-medium">Ask</div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Token</label>
+              <Select value={askToken} onValueChange={value => setAskToken(getAddress(value))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select token" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tokenOptions.map(token => (
+                    <SelectItem key={token} value={token}>
+                      {formatTokenOption(token, askTokenMetadata)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Amount</label>
+              <Input
+                value={askAmount}
+                onChange={event => setAskAmount(event.target.value)}
+                placeholder="Amount"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Receive On Chain</label>
+              <Select value={askDstChainId} onValueChange={setAskDstChainId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select chain" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORTED_CHAIN_IDS.map(chainId => (
+                    <SelectItem key={chainId} value={String(chainId)}>
+                      {SUPPORTED_CHAINS[chainId].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border-2 border-border bg-muted/30 p-4">
+            <div className="text-sm font-medium">For</div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Source Chain</label>
+              <Select value={forSourceChainId} onValueChange={setForSourceChainId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source chain" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORTED_CHAIN_IDS.map(chainId => (
+                    <SelectItem key={chainId} value={String(chainId)}>
+                      {SUPPORTED_CHAINS[chainId].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Token</label>
+              <Select value={forToken} onValueChange={value => setForToken(getAddress(value))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select token" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tokenOptions.map(token => (
+                    <SelectItem key={token} value={token}>
+                      {formatTokenOption(token, forTokenMetadata)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Amount</label>
+              <Input
+                value={forAmount}
+                onChange={event => setForAmount(event.target.value)}
+                placeholder="Amount"
+              />
+            </div>
+
+            <div className="rounded-lg bg-background p-3 text-sm">
+              <div className="font-medium text-foreground">Available Private Balance Per Chain</div>
+              <div className="mt-2 space-y-1 text-muted-foreground">
+                {SUPPORTED_CHAIN_IDS.map(chainId => (
+                  <div key={chainId} className="flex items-center justify-between">
+                    <span>{SUPPORTED_CHAINS[chainId].label}</span>
+                    <span className={cn(chainId === Number(forSourceChainId) ? "font-medium text-foreground" : "")}>
+                      {formatBalance(
+                        privateBalancesByChain[chainId] ?? 0n,
+                        selectedForTokenMetadata?.decimals ?? 18,
+                      )}{" "}
+                      {selectedForTokenMetadata?.symbol ?? ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreate} disabled={!connectedAddress || isSubmitting}>
+            {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
+            Confirm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function FulfillOrderDialog({
   open,
   onOpenChange,
@@ -163,17 +503,19 @@ function FulfillOrderDialog({
 }) {
   const wagmiConfig = useWagmiConfig();
   const walletChainId = useChainId();
+  const metadata = useTokenMetadata(walletChainId || SUPPORTED_CHAIN_IDS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputNotesJson, setInputNotesJson] = useState("");
   const [outputNotesJson, setOutputNotesJson] = useState("");
   const [wormholeNoteJson, setWormholeNoteJson] = useState("");
 
   useEffect(() => {
-    if (open) {
-      setInputNotesJson("");
-      setOutputNotesJson("");
-      setWormholeNoteJson("");
+    if (!open) {
+      return;
     }
+    setInputNotesJson("");
+    setOutputNotesJson("");
+    setWormholeNoteJson("");
   }, [open, order?.id]);
 
   const delegationPreview = useMemo(() => {
@@ -297,14 +639,17 @@ function FulfillOrderDialog({
               <div className="mt-2 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
                 <div>
                   <div className="font-medium text-foreground">Ask</div>
-                  <div>{formatMarketItem(order.offer.ask).title}</div>
-                  <div>{formatMarketItem(order.offer.ask).token}</div>
+                  <div>{formatMarketItem(order.offer.ask, metadata).title}</div>
+                  <div>{formatMarketItem(order.offer.ask, metadata).token}</div>
                   <div>Token ID: {order.offer.ask.tokenId}</div>
                 </div>
                 <div>
                   <div className="font-medium text-foreground">For</div>
-                  <div>{formatMarketItem(order.offer.for).title}</div>
-                  <div>{formatMarketItem(order.offer.for).token}</div>
+                  <div>{formatMarketItem(order.offer.for, metadata).title}</div>
+                  <div>{formatMarketItem(order.offer.for, metadata).token}</div>
+                  {formatMarketItem(order.offer.for, metadata).sourceChainLabel ? (
+                    <div>Source: {formatMarketItem(order.offer.for, metadata).sourceChainLabel}</div>
+                  ) : null}
                   <div>Token ID: {order.offer.for.tokenId}</div>
                 </div>
               </div>
@@ -369,10 +714,12 @@ function FulfillOrderDialog({
 
 function OrdersTable({
   orders,
+  metadata,
   action,
   emptyMessage,
 }: {
   orders: MarketOfferRow[];
+  metadata: TokenMetadata[];
   action?: (order: MarketOfferRow) => React.ReactNode;
   emptyMessage: string;
 }) {
@@ -399,8 +746,8 @@ function OrdersTable({
             </TableRow>
           ) : (
             orders.map(order => {
-              const ask = formatMarketItem(order.offer.ask);
-              const requested = formatMarketItem(order.offer.for);
+              const ask = formatMarketItem(order.offer.ask, metadata);
+              const requested = formatMarketItem(order.offer.for, metadata);
 
               return (
                 <TableRow key={order.id}>
@@ -418,6 +765,11 @@ function OrdersTable({
                   <TableCell className="whitespace-normal">
                     <div className="font-medium">{requested.title}</div>
                     <div className="text-xs text-muted-foreground">{requested.token}</div>
+                    {requested.sourceChainLabel ? (
+                      <div className="text-xs text-muted-foreground">
+                        Source: {requested.sourceChainLabel}
+                      </div>
+                    ) : null}
                     <div className="text-xs text-muted-foreground">Token ID: {order.offer.for.tokenId}</div>
                   </TableCell>
                   <TableCell>
@@ -446,15 +798,13 @@ function OrdersTable({
 
 export default function MarketPage() {
   const { address } = useConnection();
+  const walletChainId = useChainId();
+  const metadata = useTokenMetadata(walletChainId || SUPPORTED_CHAIN_IDS[0]);
   const [activeTab, setActiveTab] = useState("open");
   const [selectedOrder, setSelectedOrder] = useState<MarketOfferRow | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  const {
-    data: offersResponse,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery({
+  const { data: offersResponse, isLoading, error, refetch } = useQuery({
     queryKey: ["marketOffers"],
     queryFn: async () => {
       const response = await fetch("/api/market/offers");
@@ -496,11 +846,17 @@ export default function MarketPage() {
   return (
     <div className="w-full max-w-7xl mx-auto py-12 px-6">
       <div className="glass rounded-2xl overflow-hidden">
-        <div className="border-b border-border/50 p-6">
-          <h2 className="text-lg font-semibold">Market Offers</h2>
-          <p className="text-sm text-muted-foreground">
-            Browse open offers and review every order you have created.
-          </p>
+        <div className="border-b border-border/50 p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Market Offers</h2>
+            <p className="text-sm text-muted-foreground">
+              Browse open offers and review every order you have created.
+            </p>
+          </div>
+          <Button onClick={() => setIsCreateDialogOpen(true)} disabled={!address}>
+            <Plus className="size-4" />
+            New Market Offer
+          </Button>
         </div>
 
         <div className="p-6">
@@ -533,6 +889,7 @@ export default function MarketPage() {
               ) : (
                 <OrdersTable
                   orders={openOrdersForFulfillment}
+                  metadata={metadata}
                   emptyMessage="No open market offers available."
                   action={order => (
                     <Button
@@ -564,6 +921,7 @@ export default function MarketPage() {
               ) : (
                 <OrdersTable
                   orders={myOrders}
+                  metadata={metadata}
                   emptyMessage="You have not created any market orders yet."
                 />
               )}
@@ -571,6 +929,16 @@ export default function MarketPage() {
           </Tabs>
         </div>
       </div>
+
+      <CreateOfferDialog
+        open={isCreateDialogOpen}
+        connectedAddress={address}
+        onOpenChange={setIsCreateDialogOpen}
+        onSubmitted={async () => {
+          await refetch();
+          setActiveTab("mine");
+        }}
+      />
 
       <FulfillOrderDialog
         open={!!selectedOrder}

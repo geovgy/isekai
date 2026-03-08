@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { offer, signerDelegation, signature, notes } = body;
+    const { offer, makerAddress, signerDelegation, signature, notes } = body;
 
     if (!isRecord(offer)) {
       return NextResponse.json(
@@ -32,16 +32,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isRecord(signerDelegation)) {
+    if (typeof makerAddress !== "string" || makerAddress.length === 0) {
       return NextResponse.json(
-        { error: "Missing or invalid `signerDelegation` object" },
+        { error: "Missing or invalid `makerAddress`" },
         { status: 400 },
       );
     }
 
-    if (typeof signature !== "string" || signature.length === 0) {
+    if (signerDelegation !== undefined && signerDelegation !== null && !isRecord(signerDelegation)) {
       return NextResponse.json(
-        { error: "Missing or invalid `signature`" },
+        { error: "Invalid `signerDelegation` object" },
+        { status: 400 },
+      );
+    }
+
+    if (signature !== undefined && signature !== null && typeof signature !== "string") {
+      return NextResponse.json(
+        { error: "Invalid `signature`" },
         { status: 400 },
       );
     }
@@ -50,9 +57,11 @@ export async function POST(request: NextRequest) {
     const record = await saveMarketOfferRequest({
       offer: offer as MarketOffer,
       offerStatus: normalizeOfferStatus(body, offer as MarketOffer),
-      makerAddress: (signerDelegation as MarketSignerDelegation).owner,
-      signerDelegation: signerDelegation as MarketSignerDelegation,
-      signature,
+      makerAddress: makerAddress as `0x${string}`,
+      signerDelegation: isRecord(signerDelegation)
+        ? (signerDelegation as MarketSignerDelegation)
+        : null,
+      signature: typeof signature === "string" ? signature : null,
       shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
       inputNotes: normalizedNotes.inputNotes,
       outputNotes: normalizedNotes.outputNotes,
