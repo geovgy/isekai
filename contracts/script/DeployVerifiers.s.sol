@@ -20,7 +20,7 @@ contract DeployVerifiersScript is Script {
         vm.startBroadcast();
 
         // ragequitVerifier = new RagequitVerifier();
-        utxo2x2Verifier = new UTXO2x2Verifier();
+        utxo2x2Verifier = IVerifier(address(new UTXO2x2Verifier()));
 
         // add utxo verifiers
         console.log("\nDeployed verifiers:");

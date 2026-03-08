@@ -51,13 +51,13 @@ contract DeployShieldedPoolScript is Script {
         assert(GOVERNOR != address(0));
 
         poseidon2 = IPoseidon2(address(new Poseidon2{salt: SALT}()));
-        ragequitVerifier = new RagequitVerifier{salt: SALT}();
+        ragequitVerifier = IVerifier(address(new RagequitVerifier{salt: SALT}()));
         shieldedPool = new ShieldedPool{salt: SALT}(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
         shieldedPoolDelegateBranch =
             new ShieldedPoolDelegateBranch{salt: SALT}(IShieldedPool(address(shieldedPool)), msg.sender);
 
-        delegatedUtxo2x2Verifier = new DelegatedUTXO2x2Verifier();
-        batchDelegatedUtxo2x2Verifier = new BatchDelegatedUTXO2x2Verifier();
+        delegatedUtxo2x2Verifier = IVerifier(address(new DelegatedUTXO2x2Verifier()));
+        batchDelegatedUtxo2x2Verifier = IVerifier(address(new BatchDelegatedUTXO2x2Verifier()));
 
         console.log("\nDeployment Results:");
         console.log("\nShieldedPool -->", address(shieldedPool));

@@ -46,6 +46,8 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
 
     uint8 public constant MERKLE_TREE_DEPTH = 20;
 
+    uint256 public constant TIMESTAMP_MARGIN = 1 minutes; // 1 minute margin for timestamp
+
     bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
     bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32 signerRoot,bytes32 signerCommitment,bytes32 signerNullifier,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
     bytes32 private constant SIGNER_DELEGATION_TYPEHASH = keccak256("SignerDelegation(uint64 chainId,address owner,address delegate,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)");
@@ -134,8 +136,12 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         emit BatchVerifierAdded(address(verifier), batchSize, inputs, outputs);
     }
 
-    function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof) external {
+    function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof, uint256 timestamp) external {
         bytes32 messageHash = _hashTypedData(shieldedTx);
+
+        require(timestamp > block.timestamp - TIMESTAMP_MARGIN, "ShieldedPool: timestamp is too old");
+        require(timestamp < block.timestamp + TIMESTAMP_MARGIN, "ShieldedPool: timestamp is too new");
+
         _validateShieldedTx(shieldedTx);
 
         // Get verifier
@@ -143,7 +149,7 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         require(address(verifier) != address(0), "ShieldedPool: verifier is not registered");
 
         // Get public inputs
-        bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash);
+        bytes32[] memory inputs = _formatPublicInputs(shieldedTx, messageHash, timestamp);
 
         // Verify proof
         require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
@@ -153,10 +159,14 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
 
     function batchShieldedTransfers(
         ShieldedTx[] memory shieldedTxs,
-        bytes calldata proof
+        bytes calldata proof,
+        uint256 timestamp
     ) external {
         uint256 batchSize = shieldedTxs.length;
         require(batchSize > 0, "ShieldedPool: batch is empty");
+
+        require(timestamp > block.timestamp - TIMESTAMP_MARGIN, "ShieldedPool: timestamp is too old");
+        require(timestamp < block.timestamp + TIMESTAMP_MARGIN, "ShieldedPool: timestamp is too new");
 
         uint256 nullifierLength = shieldedTxs[0].nullifiers.length;
         uint256 commitmentLength = _outputCommitmentLength(shieldedTxs[0]);
@@ -175,7 +185,7 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         IVerifier verifier = _batchUtxoVerifiers[batchSize][nullifierLength][commitmentLength];
         require(address(verifier) != address(0), "ShieldedPool: batch verifier is not registered");
 
-        bytes32[] memory inputs = _formatBatchPublicInputs(shieldedTxs, messageHashes);
+        bytes32[] memory inputs = _formatBatchPublicInputs(shieldedTxs, messageHashes, timestamp);
         require(verifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
 
         for (uint256 i; i < batchSize; i++) {
@@ -296,7 +306,7 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         return (chainId, shieldedTreeId, shieldedTreeRoot, blockNumber, timestamp);
     }
 
-    function _formatPublicInputs(ShieldedTx memory shieldedTx, bytes32 messageHash) internal view returns (bytes32[] memory inputs) {
+    function _formatPublicInputs(ShieldedTx memory shieldedTx, bytes32 messageHash, uint256 timestamp) internal view returns (bytes32[] memory inputs) {
         (bytes32 messageHashHi, bytes32 messageHashLo) = _splitHash(messageHash);
 
         // Public inputs ordering matches `circuits/circuits/main/delegated_utxo_2x2/src/main.nr`.
@@ -323,7 +333,7 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         inputs[0] = _eip712DomainHashLo;
         inputs[1] = _eip712DomainHashHi;
         inputs[2] = bytes32(block.chainid);
-        inputs[3] = bytes32(block.timestamp);
+        inputs[3] = bytes32(timestamp);
         inputs[4] = shieldedTx.shieldedRoot;
         inputs[5] = shieldedTx.wormholeRoot;
         inputs[6] = shieldedTx.signerRoot;
@@ -340,7 +350,8 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
 
     function _formatBatchPublicInputs(
         ShieldedTx[] memory shieldedTxs,
-        bytes32[] memory messageHashes
+        bytes32[] memory messageHashes,
+        uint256 timestamp
     ) internal view returns (bytes32[] memory inputs) {
         uint256 batchSize = shieldedTxs.length;
         uint256 nullifierLength = shieldedTxs[0].nullifiers.length;
@@ -359,13 +370,18 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
                 messageHashes[i],
                 inputs,
                 i,
-                batchSize,
-                nullifierLength,
-                commitmentLength,
-                inputNullifiersOffset,
-                outputCommitmentsOffset
+                BatchLengthsAndOffsets(batchSize, nullifierLength, commitmentLength, inputNullifiersOffset, outputCommitmentsOffset),
+                timestamp
             );
         }
+    }
+
+    struct BatchLengthsAndOffsets {
+        uint256 batchSize;
+        uint256 nullifierLength;
+        uint256 commitmentLength;
+        uint256 inputNullifiersOffset;
+        uint256 outputCommitmentsOffset;
     }
 
     function _fillBatchPublicInputs(
@@ -373,31 +389,38 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         bytes32 messageHash,
         bytes32[] memory inputs,
         uint256 batchIndex,
-        uint256 batchSize,
-        uint256 nullifierLength,
-        uint256 commitmentLength,
-        uint256 inputNullifiersOffset,
-        uint256 outputCommitmentsOffset
+        BatchLengthsAndOffsets memory batchLengthsAndOffsets,
+        uint256 timestamp
+        // ShieldedTx memory shieldedTx,
+        // bytes32 messageHash,
+        // bytes32[] memory inputs,
+        // uint256 batchIndex,
+        // uint256 batchSize,
+        // uint256 nullifierLength,
+        // uint256 commitmentLength,
+        // uint256 inputNullifiersOffset,
+        // uint256 outputCommitmentsOffset,
+        // uint256 timestamp
     ) internal view {
         (bytes32 messageHashHi, bytes32 messageHashLo) = _splitHash(messageHash);
         uint256 columnOffset = 3 + batchIndex;
 
-        inputs[columnOffset] = bytes32(block.timestamp);
-        inputs[columnOffset + batchSize] = shieldedTx.shieldedRoot;
-        inputs[columnOffset + (2 * batchSize)] = shieldedTx.wormholeRoot;
-        inputs[columnOffset + (3 * batchSize)] = shieldedTx.signerRoot;
-        inputs[columnOffset + (4 * batchSize)] = messageHashHi;
-        inputs[columnOffset + (5 * batchSize)] = messageHashLo;
-        inputs[columnOffset + (6 * batchSize)] = shieldedTx.signerCommitment;
-        inputs[columnOffset + (7 * batchSize)] = shieldedTx.signerNullifier;
-        inputs[columnOffset + (8 * batchSize)] = shieldedTx.wormholeNullifier;
+        inputs[columnOffset] = bytes32(timestamp);
+        inputs[columnOffset + batchLengthsAndOffsets.batchSize] = shieldedTx.shieldedRoot;
+        inputs[columnOffset + (2 * batchLengthsAndOffsets.batchSize)] = shieldedTx.wormholeRoot;
+        inputs[columnOffset + (3 * batchLengthsAndOffsets.batchSize)] = shieldedTx.signerRoot;
+        inputs[columnOffset + (4 * batchLengthsAndOffsets.batchSize)] = messageHashHi;
+        inputs[columnOffset + (5 * batchLengthsAndOffsets.batchSize)] = messageHashLo;
+        inputs[columnOffset + (6 * batchLengthsAndOffsets.batchSize)] = shieldedTx.signerCommitment;
+        inputs[columnOffset + (7 * batchLengthsAndOffsets.batchSize)] = shieldedTx.signerNullifier;
+        inputs[columnOffset + (8 * batchLengthsAndOffsets.batchSize)] = shieldedTx.wormholeNullifier;
 
-        uint256 nullifierOffset = inputNullifiersOffset + (batchIndex * nullifierLength);
-        for (uint256 i; i < nullifierLength; i++) {
+        uint256 nullifierOffset = batchLengthsAndOffsets.inputNullifiersOffset + (batchIndex * batchLengthsAndOffsets.nullifierLength);
+        for (uint256 i; i < batchLengthsAndOffsets.nullifierLength; i++) {
             inputs[nullifierOffset + i] = shieldedTx.nullifiers[i];
         }
 
-        _fillOutputCommitments(shieldedTx, inputs, outputCommitmentsOffset + (batchIndex * commitmentLength));
+        _fillOutputCommitments(shieldedTx, inputs, batchLengthsAndOffsets.outputCommitmentsOffset + (batchIndex * batchLengthsAndOffsets.commitmentLength));
     }
 
     function _fillOutputCommitments(ShieldedTx memory shieldedTx, bytes32[] memory inputs, uint256 offset) internal view {
