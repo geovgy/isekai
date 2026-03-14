@@ -28,6 +28,8 @@ export interface SignerDelegation {
   chainId: bigint;
   owner: Address;
   delegate: Address;
+  recipient: Address;
+  recipientLocked: boolean;
   startTime: bigint;
   endTime: bigint;
   token: Address;

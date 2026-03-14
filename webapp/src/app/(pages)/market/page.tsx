@@ -36,7 +36,7 @@ import { Loader2, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Address } from "viem";
-import { erc20Abi, getAddress, isAddress, isAddressEqual, parseUnits } from "viem";
+import { erc20Abi, getAddress, isAddress, isAddressEqual, parseUnits, zeroAddress } from "viem";
 import {
   useChainId,
   useConfig as useWagmiConfig,
@@ -63,6 +63,8 @@ interface MarketSignerDelegation {
   chainId: string;
   owner: Address;
   delegate: Address;
+  recipient: Address;
+  recipientLocked: boolean;
   startTime: string;
   endTime: string;
   token: Address;
@@ -106,6 +108,8 @@ const signerDelegationTypes = {
     { name: "chainId", type: "uint64" },
     { name: "owner", type: "address" },
     { name: "delegate", type: "address" },
+    { name: "recipient", type: "address" },
+    { name: "recipientLocked", type: "bool" },
     { name: "startTime", type: "uint64" },
     { name: "endTime", type: "uint64" },
     { name: "token", type: "address" },
@@ -120,7 +124,7 @@ const signerDelegationTypes = {
 } as const;
 
 const tokenOptions = WORMHOLE_TOKENS.map(token => getAddress(token));
-const fallbackToken = tokenOptions[0] ?? getAddress("0x0000000000000000000000000000000000000000");
+const fallbackToken = tokenOptions[0] ?? zeroAddress;
 const MARKET_DELEGATION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 function statusBadgeClass(status: string) {
@@ -349,6 +353,8 @@ function CreateOfferDialog({
         chainId: forSourceChainId,
         owner: connectedAddress,
         delegate: delegateAddress,
+        recipient: zeroAddress,
+        recipientLocked: false,
         startTime: String(now),
         endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: requireValidAddress(forToken, "For token address"),
@@ -586,6 +592,8 @@ function FulfillOrderDialog({
         chainId: String(askChainId),
         owner: connectedAddress,
         delegate: getAddress(relayerAddress),
+        recipient: zeroAddress,
+        recipientLocked: false,
         startTime: String(now),
         endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: askToken,

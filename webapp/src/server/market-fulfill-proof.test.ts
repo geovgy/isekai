@@ -11,6 +11,7 @@ import {
   toHex,
   type Address,
   type Hex,
+  zeroAddress,
 } from "viem";
 import { poseidon2Hash } from "@zkpassport/poseidon2";
 import { getMerkleTree } from "../merkle";
@@ -88,6 +89,8 @@ function getSignerDelegationHash(delegation: {
   chainId: bigint;
   owner: Address;
   delegate: Address;
+  recipient: Address;
+  recipientLocked: boolean;
   startTime: bigint;
   endTime: bigint;
   token: Address;
@@ -107,6 +110,8 @@ function getSignerDelegationHash(delegation: {
         { name: "chainId", type: "uint64" },
         { name: "owner", type: "address" },
         { name: "delegate", type: "address" },
+        { name: "recipient", type: "address" },
+        { name: "recipientLocked", type: "bool" },
         { name: "startTime", type: "uint64" },
         { name: "endTime", type: "uint64" },
         { name: "token", type: "address" },
@@ -124,7 +129,7 @@ function getSignerDelegationHash(delegation: {
 }
 
 function getSignerDelegationTypehashBytes() {
-  return [...hexToBytes(keccak256(stringToHex("SignerDelegation(uint64 chainId,address owner,address delegate,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)")))];
+  return [...hexToBytes(keccak256(stringToHex("SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)")))];
 }
 
 function getInputCommitment(ownerAddress: Address, token: bigint, tokenIdValue: bigint, note: Pick<InputNote, "chain_id" | "blinding" | "amount">) {
@@ -246,6 +251,8 @@ function toCircuitSignerDelegation(delegation: ReturnType<typeof buildDelegation
     chainId: delegation.chainId.toString(),
     owner: delegation.owner,
     delegate: delegation.delegate,
+    recipient: delegation.recipient,
+    recipientLocked: delegation.recipientLocked,
     startTime: delegation.startTime.toString(),
     endTime: delegation.endTime.toString(),
     token: delegation.token,
@@ -264,11 +271,13 @@ function buildDelegation() {
     chainId,
     owner: owner.address,
     delegate: delegate.address,
+    recipient: zeroAddress,
+    recipientLocked: false,
     startTime: 0n,
     endTime: 0n,
     token: tokenAddress as Address,
     tokenId,
-    amount: 200n,
+    amount: 150n,
     amountType: 0,
     maxCumulativeAmount: 0n,
     maxNonce: 0n,

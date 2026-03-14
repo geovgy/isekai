@@ -79,6 +79,9 @@ pub impl <let M: u32, let N: u32, let C: u32> DelegateJoinSplit<M, N, C> {
             totalAmountOut += output_note.amount;
             if (output_note.recipient != self.owner_address) {
                 totalAmountSent += output_note.amount;
+                if self.delegation.recipientLocked {
+                    assert(output_note.recipient == self.delegation.recipient, "Output note recipient must match delegation recipient");
+                }
             }
             output_commitments[i] = output_note.to_commitment(self.token, self.token_id);
         }

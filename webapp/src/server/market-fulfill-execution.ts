@@ -47,6 +47,7 @@ import {
   parseAbi,
   stringToHex,
   toHex,
+  zeroAddress,
   type Address,
   type Hex,
 } from "viem";
@@ -55,12 +56,14 @@ import { privateKeyToAccount } from "viem/accounts";
 const MERKLE_TREE_DEPTH = 20;
 const ZERO_32 = toHex(0n, { size: 32 });
 const SIGNER_DELEGATION_TYPE =
-  "SignerDelegation(uint64 chainId,address owner,address delegate,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)";
+  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)";
 
 type ParsedSignerDelegation = {
   chainId: bigint;
   owner: Address;
   delegate: Address;
+  recipient: Address;
+  recipientLocked: boolean;
   startTime: bigint;
   endTime: bigint;
   token: Address;
@@ -206,6 +209,8 @@ function getSignerDelegationHash(
         { name: "chainId", type: "uint64" },
         { name: "owner", type: "address" },
         { name: "delegate", type: "address" },
+        { name: "recipient", type: "address" },
+        { name: "recipientLocked", type: "bool" },
         { name: "startTime", type: "uint64" },
         { name: "endTime", type: "uint64" },
         { name: "token", type: "address" },
@@ -270,6 +275,8 @@ function parseDelegation(delegation: MarketSignerDelegation): ParsedSignerDelega
     chainId: BigInt(delegation.chainId),
     owner: getAddress(delegation.owner),
     delegate: getAddress(delegation.delegate),
+    recipient: typeof delegation.recipient === "string" ? getAddress(delegation.recipient) : zeroAddress,
+    recipientLocked: delegation.recipientLocked === true,
     startTime: BigInt(delegation.startTime),
     endTime: BigInt(delegation.endTime),
     token: getAddress(delegation.token),
@@ -449,6 +456,8 @@ function toCircuitSignerDelegation(delegation: ParsedSignerDelegation) {
     chainId: delegation.chainId.toString(),
     owner: delegation.owner,
     delegate: delegation.delegate,
+    recipient: delegation.recipient,
+    recipientLocked: delegation.recipientLocked,
     startTime: delegation.startTime.toString(),
     endTime: delegation.endTime.toString(),
     token: delegation.token,
@@ -698,6 +707,8 @@ async function resolveSignerState(args: {
       chainId: args.delegation.chainId.toString(),
       owner: args.delegation.owner,
       delegate: args.delegation.delegate,
+      recipient: args.delegation.recipient,
+      recipientLocked: args.delegation.recipientLocked,
       startTime: args.delegation.startTime.toString(),
       endTime: args.delegation.endTime.toString(),
       token: args.delegation.token,
@@ -900,6 +911,8 @@ async function prepareProofFixtureRequest(args: {
       chainId: args.delegation.chainId.toString(),
       owner: args.delegation.owner,
       delegate: args.delegation.delegate,
+      recipient: args.delegation.recipient,
+      recipientLocked: args.delegation.recipientLocked,
       startTime: args.delegation.startTime.toString(),
       endTime: args.delegation.endTime.toString(),
       token: args.delegation.token,

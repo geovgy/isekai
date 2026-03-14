@@ -8,7 +8,7 @@ import type {
 } from "@/src/types";
 import { poseidon2Hash } from "@zkpassport/poseidon2";
 import { ConvexHttpClient } from "convex/browser";
-import type { Address, Hex } from "viem";
+import { zeroAddress, type Address, type Hex } from "viem";
 
 interface MarketOfferItem {
   dstChainId: string;
@@ -28,6 +28,8 @@ export interface MarketSignerDelegation {
   chainId: string;
   owner: Address;
   delegate: Address;
+  recipient: Address;
+  recipientLocked: boolean;
   startTime: string;
   endTime: string;
   token: Address;
@@ -613,6 +615,8 @@ function getDelegationKey(delegation: MarketSignerDelegation | null | undefined)
     chainId: delegation.chainId,
     owner: delegation.owner.toLowerCase(),
     delegate: delegation.delegate.toLowerCase(),
+    recipient: typeof delegation.recipient === "string" ? delegation.recipient.toLowerCase() : zeroAddress,
+    recipientLocked: delegation.recipientLocked === true,
     token: delegation.token.toLowerCase(),
     tokenId: delegation.tokenId,
     amount: delegation.amount,

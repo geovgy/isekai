@@ -5,7 +5,7 @@ import { getDelegatedPublicInputHashes, getShieldedPoolDomain, getShieldedPoolDo
 import { Prover } from "../src/prover";
 import { privateKeyToAccount } from "viem/accounts";
 import { ConfidentialType, TransferType, type InputNote, type OutputNote, type SignerDelegation, type SignerNote, type WormholeNote } from "../src/types";
-import { createPublicClient, getAddress, hashTypedData, hexToBytes, http, keccak256, recoverPublicKey, toHex, type Abi, type Address } from "viem";
+import { createPublicClient, getAddress, hashTypedData, hexToBytes, http, recoverPublicKey, toHex, zeroAddress, type Abi, type Address } from "viem";
 import type { ProofData } from "@aztec/bb.js";
 import { sepolia } from "viem/chains";
 
@@ -201,6 +201,8 @@ function toCircuitSignerDelegation(delegation: SignerDelegation) {
     chainId: delegation.chainId.toString(),
     owner: delegation.owner,
     delegate: delegation.delegate,
+    recipient: delegation.recipient,
+    recipientLocked: delegation.recipientLocked,
     startTime: delegation.startTime.toString(),
     endTime: delegation.endTime.toString(),
     token: delegation.token,
@@ -315,11 +317,13 @@ describe("delegated utxo", () => {
       chainId,
       owner: owner.address,
       delegate: delegate.address,
+      recipient: zeroAddress,
+      recipientLocked: false,
       startTime: 0n,
       endTime: 0n,
       token: tokenAddress,
       tokenId,
-      amount: 200n,
+      amount: 150n,
       amountType: 0,
       maxCumulativeAmount: 0n,
       maxNonce: 0n,
@@ -513,11 +517,13 @@ describe("delegated utxo", () => {
       chainId,
       owner: owner.address,
       delegate: delegate.address,
+      recipient: zeroAddress,
+      recipientLocked: false,
       startTime: 0n,
       endTime: 0n,
       token: tokenAddress,
       tokenId,
-      amount: 200n,
+      amount: 150n,
       amountType: 0,
       maxCumulativeAmount: 0n,
       maxNonce: 0n,
@@ -670,12 +676,14 @@ describe("delegated utxo", () => {
       chainId,
       owner: owner.address,
       delegate: delegate.address,
+      recipient: zeroAddress,
+      recipientLocked: false,
       startTime: 0n,
       endTime: 0n,
       token: tokenAddress,
       tokenId,
-      amount: 200n,
-      amountType: 0,
+      amount: 100n,
+      amountType: 2,
       maxCumulativeAmount: 300n,
       maxNonce: 0n,
       timeInterval: 0n,

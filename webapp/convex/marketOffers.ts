@@ -12,6 +12,8 @@ const signerDelegation = v.object({
   chainId: v.string(),
   owner: v.string(),
   delegate: v.string(),
+  recipient: v.string(),
+  recipientLocked: v.boolean(),
   startTime: v.string(),
   endTime: v.string(),
   token: v.string(),
