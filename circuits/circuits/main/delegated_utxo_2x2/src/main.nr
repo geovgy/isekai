@@ -29,9 +29,9 @@ fn main(
     token_id: Field,
     input_notes: [InputNote<MERKLE_TREE_DEPTH>; 2],
     output_notes: [OutputNote; 2],
-    wormhole_note: Option<WormholeNote<MERKLE_TREE_DEPTH>>,
-    wormhole_pseudo_secret: Option<Field>,
-) -> pub (Field, Field, Field, Field, Field, [Field; 2], [Field; 2]) {
+    wormhole_notes: [Option<WormholeNote<MERKLE_TREE_DEPTH>>; 1],
+    wormhole_pseudo_secrets: [Option<Field>; 1],
+) -> pub (Field, Field, Field, Field, [Field; 1], [Field; 2], [Field; 2]) {
     execute_delegated_utxo(
         eip712_domain_lo,
         eip712_domain_hi,
@@ -55,7 +55,7 @@ fn main(
         token_id,
         input_notes,
         output_notes,
-        wormhole_note,
-        wormhole_pseudo_secret,
+        wormhole_notes,
+        wormhole_pseudo_secrets,
     )
 }

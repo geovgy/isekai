@@ -396,8 +396,8 @@ async function createNoWormholeFixture(timestamp: bigint, signerBlinding: bigint
     token_id: tokenId.toString(),
     input_notes: toCircuitInputNotes(inputNotes),
     output_notes: toCircuitOutputNotes(outputNotes),
-    wormhole_note: emptyWormholeNote(),
-    wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
+    wormhole_notes: [emptyWormholeNote()],
+    wormhole_pseudo_secrets: [{ _is_some: true, _value: wormholePseudoSecret.toString() }],
   });
 
   const actual = extractDelegatedPublicInputs(proofData.publicInputs);
@@ -574,8 +574,8 @@ async function createIncludedWormholeFixture(timestamp: bigint) {
     token_id: tokenId.toString(),
     input_notes: toCircuitInputNotes(inputNotes),
     output_notes: toCircuitOutputNotes(outputNotes),
-    wormhole_note: toCircuitWormholeNote(wormholeNote, wormholeProof, wormholeBranchTree.root, masterWormholeProof),
-    wormhole_pseudo_secret: { _is_some: false, _value: "0" },
+    wormhole_notes: [toCircuitWormholeNote(wormholeNote, wormholeProof, wormholeBranchTree.root, masterWormholeProof)],
+    wormhole_pseudo_secrets: [{ _is_some: false, _value: "0" }],
   });
 
   const actual = extractDelegatedPublicInputs(proofData.publicInputs);
@@ -610,7 +610,7 @@ async function proveBatch(fixtures: [DelegatedFixture, DelegatedFixture]) {
     message_hash_los: fixtures.map(fixture => fieldHexToDecimal(fixture.publicInputs.hashedMessageLo)),
     signer_commitments: fixtures.map(fixture => fieldHexToDecimal(fixture.publicInputs.signerCommitment)),
     signer_nullifiers: fixtures.map(fixture => fieldHexToDecimal(fixture.publicInputs.signerNullifier)),
-    wormhole_nullifiers: fixtures.map(fixture => fieldHexToDecimal(fixture.publicInputs.wormholeNullifier)),
+    wormhole_nullifiers: fixtures.map(fixture => [fieldHexToDecimal(fixture.publicInputs.wormholeNullifier)]),
     input_nullifiers: fixtures.map(fixture => fieldHexesToDecimals(fixture.publicInputs.inputNullifiers)),
     output_commitments: fixtures.map(fixture => fieldHexesToDecimals(fixture.publicInputs.outputCommitments)),
     proofs,

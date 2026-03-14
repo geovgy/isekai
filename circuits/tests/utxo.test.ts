@@ -178,7 +178,7 @@ describe("utxo", () => {
         amount: note.amount.toString(),
         transfer_type: note.transfer_type,
       })),
-      wormhole_note: { 
+      wormhole_notes: [{ 
         _is_some: false, 
         _value: { 
           dst_chain_id: "0",
@@ -199,8 +199,8 @@ describe("utxo", () => {
           is_approved: false,
           confidential_type: ConfidentialType.NONE,
         } 
-      },
-      wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
+      }],
+      wormhole_pseudo_secrets: [{ _is_some: true, _value: wormholePseudoSecret.toString() }],
     }
 
     const prover = new Prover("utxo_2x2")
@@ -348,7 +348,7 @@ describe("utxo", () => {
         amount: note.amount.toString(),
         transfer_type: note.transfer_type,
       })),
-      wormhole_note: { 
+      wormhole_notes: [{ 
         _is_some: true, 
         _value: { 
           dst_chain_id: "1",
@@ -369,8 +369,8 @@ describe("utxo", () => {
           is_approved: true,
           confidential_type: ConfidentialType.NONE,
         } 
-      },
-      wormhole_pseudo_secret: { _is_some: false, _value: "0" },
+      }],
+      wormhole_pseudo_secrets: [{ _is_some: false, _value: "0" }],
     }
 
     const prover = new Prover("utxo_2x2")

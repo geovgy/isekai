@@ -1,6 +1,7 @@
 use bb_proof_verification::{UltraHonkProof, UltraHonkVerificationKey, verify_honk_proof_non_zk};
 
 global B: u32 = 2; // batch size
+global W: u32 = 1; // number of wormhole notes per transaction
 global N: u32 = 2; // number of input notes per transaction
 global C: u32 = 2; // number of output notes per transaction
 
@@ -16,7 +17,7 @@ fn main(
     message_hash_los: pub [Field; B], // pub
     signer_commitments: pub [Field; B], // pub
     signer_nullifiers: pub [Field; B], // pub
-    wormhole_nullifiers: pub [Field; B], // pub
+    wormhole_nullifiers: pub [[Field; W]; B], // pub
     input_nullifiers: pub [[Field; N]; B], // pub
     output_commitments: pub [[Field; C]; B], // pub
     proofs: [UltraHonkProof; B],
@@ -36,9 +37,8 @@ fn main(
             message_hash_los[i],
             signer_commitments[i],
             signer_nullifiers[i],
-            wormhole_nullifiers[i],
         ];
-        let public_inputs: [Field; 16] = public_inputs.concat(input_nullifiers[i]).concat(output_commitments[i]);
+        let public_inputs: [Field; 16] = public_inputs.concat(wormhole_nullifiers[i]).concat(input_nullifiers[i]).concat(output_commitments[i]);
         verify_honk_proof_non_zk(verification_key, proofs[i], public_inputs, key_hash);
     }
 }

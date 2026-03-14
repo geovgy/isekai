@@ -97,7 +97,7 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
     eip712::hash_typed_data_v4(eip712_domain, struct_hash)
 }
 
-pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
+pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(
     eip712_domain_lo: Field,
     eip712_domain_hi: Field,
     pub_key_x: [u8; 32],
@@ -120,9 +120,9 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
     token_id: Field,
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
-    wormhole_note: Option<WormholeNote<M>>,
-    wormhole_pseudo_secret: Option<Field>,
-) -> (Field, Field, Field, Field, Field, [Field; N], [Field; C]) {
+    wormhole_notes: [Option<WormholeNote<M>>; W],
+    wormhole_pseudo_secrets: [Option<Field>; W],
+) -> (Field, Field, Field, Field, [Field; W], [Field; N], [Field; C]) {
     let delegate_address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
     assert(delegate_address == delegation.delegate, "delegation signer is not delegate address");
     
@@ -161,11 +161,11 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
         delegation,
         input_notes,
         output_notes,
-        wormhole_note,
-        wormhole_pseudo_secret,
+        wormhole_notes,
+        wormhole_pseudo_secrets,
         signer_note
     );
-    let (totalAmountSent, wormhole_nullifier, input_nullifiers, output_commitments) = joinsplit.execute();
+    let (totalAmountSent, wormhole_nullifiers, input_nullifiers, output_commitments) = joinsplit.execute();
 
     signer_note.total_amount += totalAmountSent as u64;
     if (delegation.maxCumulativeAmount != 0) {
@@ -178,5 +178,5 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32>(
     // Get new signer commitment
     signer_commitment = signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
 
-    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), signer_commitment, signer_nullifier, wormhole_nullifier, input_nullifiers, output_commitments)
+    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), signer_commitment, signer_nullifier, wormhole_nullifiers, input_nullifiers, output_commitments)
 }

@@ -404,8 +404,8 @@ describe("delegated utxo", () => {
       token_id: tokenId.toString(),
       input_notes: toCircuitInputNotes(inputNotes),
       output_notes: toCircuitOutputNotes(outputNotes),
-      wormhole_note: emptyWormholeNote(),
-      wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
+      wormhole_notes: [emptyWormholeNote()],
+      wormhole_pseudo_secrets: [{ _is_some: true, _value: wormholePseudoSecret.toString() }],
     }
 
     console.time("prove")
@@ -603,8 +603,8 @@ describe("delegated utxo", () => {
       token_id: tokenId.toString(),
       input_notes: toCircuitInputNotes(inputNotes),
       output_notes: toCircuitOutputNotes(outputNotes),
-      wormhole_note: toCircuitWormholeNote(wormholeNote, wormholeProof, wormholeBranchTree.root, masterWormholeProof),
-      wormhole_pseudo_secret: { _is_some: false, _value: "0" },
+      wormhole_notes: [toCircuitWormholeNote(wormholeNote, wormholeProof, wormholeBranchTree.root, masterWormholeProof)],
+      wormhole_pseudo_secrets: [{ _is_some: false, _value: "0" }],
     }
 
     console.time("prove wormhole")
@@ -777,8 +777,8 @@ describe("delegated utxo", () => {
       token_id: tokenId.toString(),
       input_notes: toCircuitInputNotes(inputNotes),
       output_notes: toCircuitOutputNotes(secondOutputNotes),
-      wormhole_note: emptyWormholeNote(),
-      wormhole_pseudo_secret: { _is_some: true, _value: "123".toString() },
+      wormhole_notes: [emptyWormholeNote()],
+      wormhole_pseudo_secrets: [{ _is_some: true, _value: "123".toString() }],
     }
 
     const result = await prover.prove(circuitInputs)

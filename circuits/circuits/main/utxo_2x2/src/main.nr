@@ -14,15 +14,15 @@ fn main(
     owner_address: Field,
     input_notes: [InputNote<MERKLE_TREE_DEPTH>; 2],
     output_notes: [OutputNote; 2],
-    wormhole_note: Option<WormholeNote<MERKLE_TREE_DEPTH>>,
+    wormhole_notes: [Option<WormholeNote<MERKLE_TREE_DEPTH>>; 1],
     // wormhole_leaf_root: Option<Field>,
     // wormhole_leaf_index: Option<Field>,
     // wormhole_leaf_siblings: Option<[Field; MERKLE_TREE_DEPTH]>,
     // wormhole_master_leaf_index: Option<Field>,
     // wormhole_master_leaf_siblings: Option<[Field; MERKLE_TREE_DEPTH]>,
     // wormhole_approved: Option<bool>,
-    wormhole_pseudo_secret: Option<Field>,
-) -> pub (Field, Field, Field, [Field; 2], [Field; 2]) {
+    wormhole_pseudo_secrets: [Option<Field>; 1],
+) -> pub (Field, Field, [Field; 1], [Field; 2], [Field; 2]) {
     execute_utxo(
         pub_key_x,
         pub_key_y,
@@ -36,13 +36,13 @@ fn main(
         owner_address,
         input_notes,
         output_notes,
-        wormhole_note,
+        wormhole_notes,
         // wormhole_leaf_root,
         // wormhole_leaf_index,
         // wormhole_leaf_siblings,
         // wormhole_master_leaf_index,
         // wormhole_master_leaf_siblings,
         // wormhole_approved,
-        wormhole_pseudo_secret
+        wormhole_pseudo_secrets
     )
 }

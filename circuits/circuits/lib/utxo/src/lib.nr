@@ -7,7 +7,7 @@ use ecrecover::ecrecover;
 
 pub global MERKLE_TREE_DEPTH: u32 = 20;
 
-pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
+pub fn execute_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(
     pub_key_x: [u8; 32],
     pub_key_y: [u8; 32],
     signature: [u8; 64],
@@ -20,9 +20,9 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
     owner_address: Field,
     input_notes: [InputNote<M>; N],
     output_notes: [OutputNote; C],
-    wormhole_note: Option<WormholeNote<M>>,
-    wormhole_pseudo_secret: Option<Field>,
-) -> (Field, Field, Field, [Field; N], [Field; C]) {
+    wormhole_notes: [Option<WormholeNote<M>>; W],
+    wormhole_pseudo_secrets: [Option<Field>; W],
+) -> (Field, Field, [Field; W], [Field; N], [Field; C]) {
     let address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
     assert(address == owner_address, "signer address is not owner address");
 
@@ -44,11 +44,11 @@ pub fn execute_utxo<let M: u32, let N: u32, let C: u32>(
         owner_address,
         input_notes,
         output_notes,
-        wormhole_note,
-        wormhole_pseudo_secret
+        wormhole_notes,
+        wormhole_pseudo_secrets
     );
-    let (wormhole_nullifier, input_nullifiers, output_commitments) = joinsplit.execute();
-    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), wormhole_nullifier, input_nullifiers, output_commitments)
+    let (wormhole_nullifiers, input_nullifiers, output_commitments) = joinsplit.execute();
+    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), wormhole_nullifiers, input_nullifiers, output_commitments)
 }
 
 pub fn execute_confidential_utxo<let M: u32, let N: u32, let C: u32>(

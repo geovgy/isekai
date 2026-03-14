@@ -860,7 +860,7 @@ export class ShieldedPool {
         amount: note.amount.toString(),
         transfer_type: note.transfer_type,
       })),
-      wormhole_note: {
+      wormhole_notes: [{
         _is_some: !!wormholeDeposit,
         _value: {
           dst_chain_id: wormholeDeposit?.dst_chain_id?.toString() ?? "0",
@@ -878,11 +878,11 @@ export class ShieldedPool {
           master_siblings: (wormholeDeposit?.master_siblings ?? []).map(s => s.toString()).concat(Array(MERKLE_TREE_DEPTH - (wormholeDeposit?.master_siblings?.length ?? 0)).fill("0")),
           is_approved: wormholeDeposit?.is_approved ?? false,
         },
-      },
-      wormhole_pseudo_secret: {
+      }],
+      wormhole_pseudo_secrets: [{
         _is_some: !wormholeDeposit,
         _value: wormholePseudoSecret?.toString() ?? "0",
-      },
+      }],
     }
 
     return {

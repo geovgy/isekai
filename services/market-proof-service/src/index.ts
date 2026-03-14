@@ -762,10 +762,12 @@ async function buildFixture(
     token_id: delegation.tokenId.toString(),
     input_notes: toCircuitInputNotes(inputNotes),
     output_notes: toCircuitOutputNotes(outputNotes),
-    wormhole_note: wormholeDeposit ? toCircuitWormholeNote(wormholeDeposit) : emptyWormholeNote(),
-    wormhole_pseudo_secret: wormholeDeposit
-      ? { _is_some: false, _value: "0" }
-      : { _is_some: true, _value: wormholePseudoSecret!.toString() },
+    wormhole_notes: [wormholeDeposit ? toCircuitWormholeNote(wormholeDeposit) : emptyWormholeNote()],
+    wormhole_pseudo_secrets: [
+      wormholeDeposit
+        ? { _is_some: false, _value: "0" }
+        : { _is_some: true, _value: wormholePseudoSecret!.toString() },
+    ],
   });
   const proofData = await prover.backend.generateProof(witness, { verifierTarget: RECURSIVE_INNER_TARGET } as never);
   const publicInputs = extractDelegatedPublicInputs(proofData.publicInputs);
@@ -807,7 +809,7 @@ async function proveBatch(fixtures: [DelegatedFixture, DelegatedFixture]) {
     message_hash_los: fixtures.map((fixture) => fieldHexToDecimal(fixture.publicInputs.hashedMessageLo)),
     signer_commitments: fixtures.map((fixture) => fieldHexToDecimal(fixture.publicInputs.signerCommitment)),
     signer_nullifiers: fixtures.map((fixture) => fieldHexToDecimal(fixture.publicInputs.signerNullifier)),
-    wormhole_nullifiers: fixtures.map((fixture) => fieldHexToDecimal(fixture.publicInputs.wormholeNullifier)),
+    wormhole_nullifiers: fixtures.map((fixture) => [fieldHexToDecimal(fixture.publicInputs.wormholeNullifier)]),
     input_nullifiers: fixtures.map((fixture) => fieldHexesToDecimals(fixture.publicInputs.inputNullifiers)),
     output_commitments: fixtures.map((fixture) => fieldHexesToDecimals(fixture.publicInputs.outputCommitments)),
     proofs,

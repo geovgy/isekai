@@ -423,7 +423,7 @@ async function createFixture(timestamp: bigint, signerBlinding: bigint, wormhole
     token_id: tokenId.toString(),
     input_notes: toCircuitInputNotes(inputNotes),
     output_notes: toCircuitOutputNotes(outputNotes),
-    wormhole_note: {
+    wormhole_notes: [{
       _is_some: false,
       _value: {
         dst_chain_id: "0",
@@ -444,8 +444,8 @@ async function createFixture(timestamp: bigint, signerBlinding: bigint, wormhole
         is_approved: false,
         confidential_type: 0,
       },
-    },
-    wormhole_pseudo_secret: { _is_some: true, _value: wormholePseudoSecret.toString() },
+    }],
+    wormhole_pseudo_secrets: [{ _is_some: true, _value: wormholePseudoSecret.toString() }],
   });
   const proofData = await prover.backend.generateProof(witness, { verifierTarget: RECURSIVE_INNER_TARGET } as never);
   const publicInputs = extractDelegatedPublicInputs(proofData.publicInputs);
@@ -479,7 +479,7 @@ describe("market fulfill recursive proofs", () => {
       message_hash_los: [fixtureA, fixtureB].map((fixture) => fieldHexToDecimal(fixture.publicInputs.hashedMessageLo)),
       signer_commitments: [fixtureA, fixtureB].map((fixture) => fieldHexToDecimal(fixture.publicInputs.signerCommitment)),
       signer_nullifiers: [fixtureA, fixtureB].map((fixture) => fieldHexToDecimal(fixture.publicInputs.signerNullifier)),
-      wormhole_nullifiers: [fixtureA, fixtureB].map((fixture) => fieldHexToDecimal(fixture.publicInputs.wormholeNullifier)),
+      wormhole_nullifiers: [fixtureA, fixtureB].map((fixture) => [fieldHexToDecimal(fixture.publicInputs.wormholeNullifier)]),
       input_nullifiers: [fixtureA, fixtureB].map((fixture) => fieldHexesToDecimals(fixture.publicInputs.inputNullifiers)),
       output_commitments: [fixtureA, fixtureB].map((fixture) => fieldHexesToDecimals(fixture.publicInputs.outputCommitments)),
       proofs,
