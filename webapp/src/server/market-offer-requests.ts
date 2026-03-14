@@ -2,6 +2,11 @@ import "server-only";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type {
+  MarketFulfillmentExecutionPayload,
+  MarketSignerNoteStatePayload,
+} from "@/src/types";
+import { poseidon2Hash } from "@zkpassport/poseidon2";
 import { ConvexHttpClient } from "convex/browser";
 import type { Address, Hex } from "viem";
 
@@ -125,8 +130,26 @@ export interface MarketOfferRequestRecord {
   fulfillerInputNotes?: MarketInputNote[] | null;
   fulfillerOutputNotes?: MarketOutputNote[] | null;
   fulfillerWormholeNote?: MarketWormholeNote | null;
+  executionTxHash?: string | null;
+  executionBlockNumber?: string | null;
+  makerSignerStateBefore?: MarketSignerNoteStatePayload | null;
+  makerSignerStateAfter?: MarketSignerNoteStatePayload | null;
+  fulfillerSignerStateBefore?: MarketSignerNoteStatePayload | null;
+  fulfillerSignerStateAfter?: MarketSignerNoteStatePayload | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CompleteMarketFulfillmentInput {
+  id: string;
+  makerOutputNotes: MarketOutputNote[] | null;
+  signerDelegation: MarketSignerDelegation;
+  signature: Hex | string;
+  shieldedMasterRoot: string | null;
+  inputNotes: MarketInputNote[] | null;
+  outputNotes: MarketOutputNote[] | null;
+  wormholeNote: MarketWormholeNote | null;
+  execution: MarketFulfillmentExecutionPayload;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -229,6 +252,58 @@ function getFulfillSourceOrderId(record: {
   return sourceId.length > 0 ? sourceId : null;
 }
 
+function trimTrailingZeroSiblings(siblings: string[]) {
+  let end = siblings.length;
+  while (end > 0 && BigInt(siblings[end - 1]!) === 0n) {
+    end -= 1;
+  }
+  return siblings.slice(0, end);
+}
+
+function computeRootFromProof(leaf: bigint, index: bigint, siblings: string[]) {
+  let node = leaf;
+  let currentIndex = index;
+  for (const siblingString of trimTrailingZeroSiblings(siblings)) {
+    const sibling = BigInt(siblingString);
+    node = currentIndex % 2n === 0n
+      ? poseidon2Hash([node, sibling])
+      : poseidon2Hash([sibling, node]);
+    currentIndex /= 2n;
+  }
+  return node;
+}
+
+export function inferShieldedMasterRootFromInputNotes(inputNotes: MarketInputNote[] | null | undefined) {
+  const notes = (inputNotes ?? []).filter(note => BigInt(note.amount) > 0n);
+  if (notes.length === 0) {
+    return null;
+  }
+
+  const roots = new Set(
+    notes.map(note =>
+      computeRootFromProof(
+        BigInt(note.branch_root),
+        BigInt(note.master_index),
+        note.master_siblings,
+      ).toString(),
+    ),
+  );
+
+  if (roots.size !== 1) {
+    throw new Error("Inconsistent shielded master roots derived from stored input notes");
+  }
+
+  return [...roots][0] ?? null;
+}
+
+function safeInferShieldedMasterRootFromInputNotes(inputNotes: MarketInputNote[] | null | undefined) {
+  try {
+    return inferShieldedMasterRootFromInputNotes(inputNotes);
+  } catch {
+    return null;
+  }
+}
+
 function mapRecord(record: {
   _id?: string;
   id?: string;
@@ -247,6 +322,12 @@ function mapRecord(record: {
   fulfillerInputNotes?: MarketInputNote[] | null;
   fulfillerOutputNotes?: MarketOutputNote[] | null;
   fulfillerWormholeNote?: MarketWormholeNote | null;
+  executionTxHash?: string | null;
+  executionBlockNumber?: string | null;
+  makerSignerStateBefore?: MarketSignerNoteStatePayload | null;
+  makerSignerStateAfter?: MarketSignerNoteStatePayload | null;
+  fulfillerSignerStateBefore?: MarketSignerNoteStatePayload | null;
+  fulfillerSignerStateAfter?: MarketSignerNoteStatePayload | null;
   createdAt: number;
   updatedAt: number;
 }): MarketOfferRequestRecord {
@@ -257,16 +338,25 @@ function mapRecord(record: {
     offerStatus: deriveOfferStatus(record),
     signerDelegation: record.signerDelegation,
     signature: record.signature,
-    shieldedMasterRoot: record.shieldedMasterRoot,
+    shieldedMasterRoot: record.shieldedMasterRoot ?? safeInferShieldedMasterRootFromInputNotes(record.inputNotes),
     inputNotes: record.inputNotes,
     outputNotes: record.outputNotes,
     wormholeNote: record.wormholeNote,
     fulfillerSignerDelegation: record.fulfillerSignerDelegation ?? null,
     fulfillerSignature: record.fulfillerSignature ?? null,
-    fulfillerShieldedMasterRoot: record.fulfillerShieldedMasterRoot ?? null,
+    fulfillerShieldedMasterRoot:
+      record.fulfillerShieldedMasterRoot
+      ?? safeInferShieldedMasterRootFromInputNotes(record.fulfillerInputNotes)
+      ?? null,
     fulfillerInputNotes: record.fulfillerInputNotes ?? null,
     fulfillerOutputNotes: record.fulfillerOutputNotes ?? null,
     fulfillerWormholeNote: record.fulfillerWormholeNote ?? null,
+    executionTxHash: record.executionTxHash ?? null,
+    executionBlockNumber: record.executionBlockNumber ?? null,
+    makerSignerStateBefore: record.makerSignerStateBefore ?? null,
+    makerSignerStateAfter: record.makerSignerStateAfter ?? null,
+    fulfillerSignerStateBefore: record.fulfillerSignerStateBefore ?? null,
+    fulfillerSignerStateAfter: record.fulfillerSignerStateAfter ?? null,
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString(),
   };
@@ -304,6 +394,12 @@ function mergeLinkedPendingOrders(records: Parameters<typeof mapRecord>[0][]) {
       fulfillerInputNotes: pendingChild.inputNotes,
       fulfillerOutputNotes: pendingChild.outputNotes,
       fulfillerWormholeNote: pendingChild.wormholeNote,
+      executionTxHash: pendingChild.executionTxHash ?? null,
+      executionBlockNumber: pendingChild.executionBlockNumber ?? null,
+      makerSignerStateBefore: pendingChild.makerSignerStateBefore ?? null,
+      makerSignerStateAfter: pendingChild.makerSignerStateAfter ?? null,
+      fulfillerSignerStateBefore: pendingChild.fulfillerSignerStateBefore ?? null,
+      fulfillerSignerStateAfter: pendingChild.fulfillerSignerStateAfter ?? null,
       updatedAt: pendingChild.updatedAt,
     }];
   });
@@ -335,6 +431,8 @@ export function normalizeNotes(notes: unknown): MarketRequestNotes {
   }
 
   const shieldedMasterRoot =
+    notes.shieldedMasterRoot ??
+    notes.shielded_master_root ??
     notes.inputNotesMasterRoot ??
     notes.input_notes_master_root ??
     notes.masterTreeRoot ??
@@ -408,7 +506,7 @@ export async function attachMakerOfferBundle(input: {
   outputNotes: MarketOutputNote[] | null;
   wormholeNote: MarketWormholeNote | null;
 }) {
-  const record = await getConvexClient().mutation(api.marketOffers.attachMakerBundle, {
+  const record = await getConvexClient().mutation(api.marketOffers.attachMakerBundle as never, {
     id: input.id as Id<"marketOrders">,
     signerDelegation: input.signerDelegation,
     signature: String(input.signature),
@@ -416,7 +514,7 @@ export async function attachMakerOfferBundle(input: {
     inputNotes: input.inputNotes,
     outputNotes: input.outputNotes,
     wormholeNote: input.wormholeNote,
-  });
+  } as never);
 
   return record ? mapRecord(record as Parameters<typeof mapRecord>[0]) : null;
 }
@@ -483,6 +581,78 @@ export async function createPendingFulfillMarketOffer(input: {
     outputNotes: input.outputNotes,
     wormholeNote: input.wormholeNote,
   });
+}
+
+export async function completeMarketFulfillment(input: CompleteMarketFulfillmentInput) {
+  const record = await getConvexClient().mutation(api.marketOffers.completeFulfillment as never, {
+    id: input.id as Id<"marketOrders">,
+    makerOutputNotes: input.makerOutputNotes,
+    signerDelegation: input.signerDelegation,
+    signature: String(input.signature),
+    shieldedMasterRoot: input.shieldedMasterRoot,
+    inputNotes: input.inputNotes,
+    outputNotes: input.outputNotes,
+    wormholeNote: input.wormholeNote,
+    executionTxHash: input.execution.txHash,
+    executionBlockNumber: input.execution.blockNumber,
+    makerSignerStateBefore: input.execution.makerSignerStateBefore,
+    makerSignerStateAfter: input.execution.makerSignerStateAfter,
+    fulfillerSignerStateBefore: input.execution.fulfillerSignerStateBefore,
+    fulfillerSignerStateAfter: input.execution.fulfillerSignerStateAfter,
+  } as never);
+
+  return record ? mapRecord(record as Parameters<typeof mapRecord>[0]) : null;
+}
+
+function getDelegationKey(delegation: MarketSignerDelegation | null | undefined) {
+  if (!delegation) {
+    return null;
+  }
+
+  return JSON.stringify({
+    chainId: delegation.chainId,
+    owner: delegation.owner.toLowerCase(),
+    delegate: delegation.delegate.toLowerCase(),
+    token: delegation.token.toLowerCase(),
+    tokenId: delegation.tokenId,
+    amount: delegation.amount,
+    amountType: delegation.amountType,
+    maxCumulativeAmount: delegation.maxCumulativeAmount,
+    maxNonce: delegation.maxNonce,
+    timeInterval: delegation.timeInterval,
+    transferType: delegation.transferType,
+  });
+}
+
+export async function findLatestSignerStateForDelegation(args: {
+  role: "maker" | "fulfiller";
+  delegation: MarketSignerDelegation;
+  excludeOrderId?: string;
+}) {
+  const delegationKey = getDelegationKey(args.delegation);
+  if (!delegationKey) {
+    return null;
+  }
+
+  const records = await listMarketOfferRequests();
+  const fulfilled = records
+    .filter((record) => record.id !== args.excludeOrderId && record.offerStatus === "fulfilled")
+    .filter((record) => {
+      const candidateDelegation = args.role === "maker"
+        ? record.signerDelegation
+        : record.fulfillerSignerDelegation ?? null;
+      return getDelegationKey(candidateDelegation) === delegationKey;
+    })
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+
+  const latest = fulfilled[0];
+  if (!latest) {
+    return null;
+  }
+
+  return args.role === "maker"
+    ? latest.makerSignerStateAfter ?? null
+    : latest.fulfillerSignerStateAfter ?? null;
 }
 
 export async function cancelOpenMarketOfferRequest(id: string) {

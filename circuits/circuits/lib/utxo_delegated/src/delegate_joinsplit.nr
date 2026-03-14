@@ -104,11 +104,11 @@ pub impl <let M: u32, let N: u32, let C: u32> DelegateJoinSplit<M, N, C> {
             assert(self.delegation.tokenId == self.token_id, "Delegation token_id must match token_id");
         }
         if (self.delegation.amountType == 0) | (self.delegation.amountType == 3) {
-            assert(self.delegation.amount == totalAmountIn, "Delegation amount must match total amount in");
+            assert(self.delegation.amount == totalAmountSent, "Delegation amount must match total amount sent");
         } else if (self.delegation.amountType == 1) | (self.delegation.amountType == 4) {
-            assert(self.delegation.amount as u64 <= totalAmountIn as u64, "Delegation amount must be less than or equal to total amount in");
+            assert(self.delegation.amount as u64 <= totalAmountSent as u64, "Delegation amount must be less than or equal to total amount sent");
         } else if (self.delegation.amountType == 2) | (self.delegation.amountType == 5) {
-            assert(self.delegation.amount as u64 >= totalAmountIn as u64, "Delegation amount must be greater than or equal to total amount in");
+            assert(self.delegation.amount as u64 >= totalAmountSent as u64, "Delegation amount must be greater than or equal to total amount sent");
         }
 
         // Return (wormhole nullifier, input nullifiers, output commitments)

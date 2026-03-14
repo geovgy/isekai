@@ -45,6 +45,12 @@ export default defineSchema({
     fulfillerInputNotes: v.optional(v.union(v.array(v.any()), v.null())),
     fulfillerOutputNotes: v.optional(v.union(v.array(v.any()), v.null())),
     fulfillerWormholeNote: v.optional(v.union(v.any(), v.null())),
+    executionTxHash: v.optional(v.union(v.string(), v.null())),
+    executionBlockNumber: v.optional(v.union(v.string(), v.null())),
+    makerSignerStateBefore: v.optional(v.union(v.any(), v.null())),
+    makerSignerStateAfter: v.optional(v.union(v.any(), v.null())),
+    fulfillerSignerStateBefore: v.optional(v.union(v.any(), v.null())),
+    fulfillerSignerStateAfter: v.optional(v.union(v.any(), v.null())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

@@ -40,15 +40,18 @@ contract ShieldedPoolDelegateBranchTest is Test {
     MockVerifier verifier;
     MockCrossL2Prover crossL2Prover;
 
-    uint64 constant masterChainId = 11155111;
+    uint64 masterChainId;
 
     function setUp() public {
+        vm.warp(1 days);
+
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         verifier = new MockVerifier();
         crossL2Prover = new MockCrossL2Prover();
         shieldedPool = new ShieldedPool(poseidon2, verifier, crossL2Prover, owner);
         branch = new ShieldedPoolDelegateBranch(IShieldedPool(address(shieldedPool)), owner);
         wormholeVault = new ERC4626Wormhole(shieldedPool);
+        masterChainId = shieldedPool.MASTER_CHAIN_ID();
 
         underlying = new MockERC20();
         vault = new MockERC4626(underlying);
@@ -191,7 +194,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
 
     function _baseShieldedTx(bytes32 wormholeRoot, bytes32 shieldedRoot)
         internal
-        pure
+        view
         returns (ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx)
     {
         bytes32[] memory nullifiers = new bytes32[](2);
@@ -308,6 +311,10 @@ contract ShieldedPoolDelegateBranchTest is Test {
         _fillExpectedOutputCommitments(shieldedTx, inputs, outputCommitmentsOffset + (batchIndex * outputLength));
     }
 
+    function _validTimestamp() internal view returns (uint256) {
+        return block.timestamp;
+    }
+
     function test_shieldedTransfer_revert_invalidSignerRoot() public {
         (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
 
@@ -315,7 +322,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         shieldedTx.signerRoot = keccak256("invalid signer root");
 
         vm.expectRevert("ShieldedPool: signer root is not valid");
-        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), _validTimestamp());
     }
 
     function test_constructor_seeds_firstValidSignerRoot() public view {
@@ -330,7 +337,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         bytes32[] memory expectedInputs = _expectedPublicInputs(shieldedTx);
 
         vm.expectCall(address(verifier), abi.encodeCall(IVerifier.verify, (proof, expectedInputs)));
-        branch.shieldedTransfer(shieldedTx, proof);
+        branch.shieldedTransfer(shieldedTx, proof, _validTimestamp());
     }
 
     function test_shieldedTransfer_updatesSignerStateAndEmitsEvents() public {
@@ -357,7 +364,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         vm.expectEmit(address(branch));
         emit ShieldedPoolDelegateBranch.SignerTreeUpdated(0, uint256(expectedSignerRoot), block.number, block.timestamp);
 
-        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), _validTimestamp());
 
         (bytes32 newShieldedRoot, uint256 shieldedSize, uint256 shieldedDepth) = branch.branchShieldedTree(0);
         assertEq(newShieldedRoot, expectedShieldedRoot, "Shielded root is incorrect after delegated transfer");
@@ -399,7 +406,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         emit ShieldedPoolDelegateBranch.ShieldedTransferSigner(0, 0, shieldedTx.signerCommitment, shieldedTx.signerNullifier);
         vm.expectCall(address(wormholeVault), abi.encodeWithSelector(IWormhole.unshield.selector, unshieldTo, 0, 50e18));
 
-        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), _validTimestamp());
 
         (bytes32 newShieldedRoot, uint256 shieldedSize, uint256 shieldedDepth) = branch.branchShieldedTree(0);
         assertEq(newShieldedRoot, bytes32(shieldedTx.commitments[0]), "Shielded root should be the single commitment");
@@ -415,10 +422,10 @@ contract ShieldedPoolDelegateBranchTest is Test {
         ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
         bytes memory proof = abi.encodePacked("mock zk proof");
 
-        branch.shieldedTransfer(shieldedTx, proof);
+        branch.shieldedTransfer(shieldedTx, proof, _validTimestamp());
 
         vm.expectRevert("ShieldedPool: signer nullifier is already used");
-        branch.shieldedTransfer(shieldedTx, proof);
+        branch.shieldedTransfer(shieldedTx, proof, _validTimestamp());
     }
 
     function test_shieldedTransfer_revert_invalidProof() public {
@@ -428,14 +435,14 @@ contract ShieldedPoolDelegateBranchTest is Test {
         verifier.setReturnValue(false);
 
         vm.expectRevert("ShieldedPool: proof is not valid");
-        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), _validTimestamp());
     }
 
     function test_shieldedTransfer_acceptsNextSignerRootAfterFirstTransfer() public {
         (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
 
         ShieldedPoolDelegateBranch.ShieldedTx memory firstTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
-        branch.shieldedTransfer(firstTx, abi.encodePacked("first proof"));
+        branch.shieldedTransfer(firstTx, abi.encodePacked("first proof"), _validTimestamp());
 
         ShieldedPoolDelegateBranch.ShieldedTx memory secondTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
         secondTx.signerRoot = firstTx.signerCommitment;
@@ -447,7 +454,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         secondTx.commitments[0] = uint256(keccak256("second commitment 1")) % SNARK_SCALAR_FIELD;
         secondTx.commitments[1] = uint256(keccak256("second commitment 2")) % SNARK_SCALAR_FIELD;
 
-        branch.shieldedTransfer(secondTx, abi.encodePacked("second proof"));
+        branch.shieldedTransfer(secondTx, abi.encodePacked("second proof"), _validTimestamp());
 
         bytes32 expectedSecondSignerRoot = bytes32(
             poseidon2.hash_2(uint256(firstTx.signerCommitment), uint256(secondTx.signerCommitment))
@@ -477,7 +484,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         bytes32[] memory expectedInputs = _expectedBatchPublicInputs(shieldedTxs);
 
         vm.expectCall(address(verifier), abi.encodeCall(IVerifier.verify, (proof, expectedInputs)));
-        branch.batchShieldedTransfers(shieldedTxs, proof);
+        branch.batchShieldedTransfers(shieldedTxs, proof, _validTimestamp());
     }
 
     function test_batchShieldedTransfers_updatesStateForEachTransfer() public {
@@ -494,7 +501,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         shieldedTxs[1].commitments[1] = uint256(keccak256("state commitment 4")) % SNARK_SCALAR_FIELD;
         shieldedTxs[1].signerCommitment = bytes32(uint256(keccak256("state signer commitment 2")) % SNARK_SCALAR_FIELD);
 
-        branch.batchShieldedTransfers(shieldedTxs, abi.encodePacked("mock recursive proof"));
+        branch.batchShieldedTransfers(shieldedTxs, abi.encodePacked("mock recursive proof"), _validTimestamp());
 
         (bytes32 branchShieldedRoot, uint256 shieldedSize,) = branch.branchShieldedTree(0);
         bytes32 expectedLeft = bytes32(poseidon2.hash_2(shieldedTxs[0].commitments[0], shieldedTxs[0].commitments[1]));
@@ -623,6 +630,98 @@ contract ShieldedPoolDelegateBranchTest is Test {
         branch.updateMasterTrees(abi.encodePacked("proof"));
     }
 
+    function test_shieldedTransfer_acceptsTimestampWithinMargin() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        uint256 validTimestamp = block.timestamp + branch.TIMESTAMP_MARGIN() - 1;
+
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), validTimestamp);
+
+        assertTrue(branch.signerNullifierUsed(shieldedTx.signerNullifier), "Transfer should succeed with timestamp inside margin");
+    }
+
+    function test_shieldedTransfer_revert_timestampTooOld() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        uint256 staleTimestamp = block.timestamp - branch.TIMESTAMP_MARGIN();
+
+        vm.expectRevert("ShieldedPool: timestamp is too old");
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), staleTimestamp);
+    }
+
+    function test_shieldedTransfer_revert_timestampTooNew() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        uint256 futureTimestamp = block.timestamp + branch.TIMESTAMP_MARGIN();
+
+        vm.expectRevert("ShieldedPool: timestamp is too new");
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), futureTimestamp);
+    }
+
+    function test_batchShieldedTransfers_acceptsTimestampWithinMargin() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx[] memory shieldedTxs = new ShieldedPoolDelegateBranch.ShieldedTx[](2);
+        shieldedTxs[0] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1].wormholeNullifier = keccak256("valid batch wormhole nullifier 2");
+        shieldedTxs[1].signerNullifier = keccak256("valid batch signer nullifier 2");
+        shieldedTxs[1].nullifiers[0] = keccak256("valid batch nullifier 3");
+        shieldedTxs[1].nullifiers[1] = keccak256("valid batch nullifier 4");
+        shieldedTxs[1].commitments[0] = uint256(keccak256("valid batch commitment 3")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].commitments[1] = uint256(keccak256("valid batch commitment 4")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].signerCommitment = bytes32(uint256(keccak256("valid batch signer commitment 2")) % SNARK_SCALAR_FIELD);
+
+        uint256 validTimestamp = block.timestamp + branch.TIMESTAMP_MARGIN() - 1;
+        branch.batchShieldedTransfers(shieldedTxs, abi.encodePacked("mock recursive proof"), validTimestamp);
+
+        assertTrue(branch.signerNullifierUsed(shieldedTxs[0].signerNullifier), "First batch transfer should succeed");
+        assertTrue(branch.signerNullifierUsed(shieldedTxs[1].signerNullifier), "Second batch transfer should succeed");
+    }
+
+    function test_batchShieldedTransfers_revert_timestampTooOld() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx[] memory shieldedTxs = new ShieldedPoolDelegateBranch.ShieldedTx[](2);
+        shieldedTxs[0] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1].wormholeNullifier = keccak256("stale batch wormhole nullifier 2");
+        shieldedTxs[1].signerNullifier = keccak256("stale batch signer nullifier 2");
+        shieldedTxs[1].nullifiers[0] = keccak256("stale batch nullifier 3");
+        shieldedTxs[1].nullifiers[1] = keccak256("stale batch nullifier 4");
+        shieldedTxs[1].commitments[0] = uint256(keccak256("stale batch commitment 3")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].commitments[1] = uint256(keccak256("stale batch commitment 4")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].signerCommitment = bytes32(uint256(keccak256("stale batch signer commitment 2")) % SNARK_SCALAR_FIELD);
+
+        uint256 staleTimestamp = block.timestamp - branch.TIMESTAMP_MARGIN();
+
+        vm.expectRevert("ShieldedPool: timestamp is too old");
+        branch.batchShieldedTransfers(shieldedTxs, abi.encodePacked("mock recursive proof"), staleTimestamp);
+    }
+
+    function test_batchShieldedTransfers_revert_timestampTooNew() public {
+        (, , bytes32 wormholeRoot, bytes32 shieldedRoot) = _prepareWormholeState();
+
+        ShieldedPoolDelegateBranch.ShieldedTx[] memory shieldedTxs = new ShieldedPoolDelegateBranch.ShieldedTx[](2);
+        shieldedTxs[0] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1] = _baseShieldedTx(wormholeRoot, shieldedRoot);
+        shieldedTxs[1].wormholeNullifier = keccak256("future batch wormhole nullifier 2");
+        shieldedTxs[1].signerNullifier = keccak256("future batch signer nullifier 2");
+        shieldedTxs[1].nullifiers[0] = keccak256("future batch nullifier 3");
+        shieldedTxs[1].nullifiers[1] = keccak256("future batch nullifier 4");
+        shieldedTxs[1].commitments[0] = uint256(keccak256("future batch commitment 3")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].commitments[1] = uint256(keccak256("future batch commitment 4")) % SNARK_SCALAR_FIELD;
+        shieldedTxs[1].signerCommitment = bytes32(uint256(keccak256("future batch signer commitment 2")) % SNARK_SCALAR_FIELD);
+
+        uint256 futureTimestamp = block.timestamp + branch.TIMESTAMP_MARGIN();
+
+        vm.expectRevert("ShieldedPool: timestamp is too new");
+        branch.batchShieldedTransfers(shieldedTxs, abi.encodePacked("mock recursive proof"), futureTimestamp);
+    }
+
     function test_shieldedTransfer_masterChain_updatesMasterShieldedTree() public {
         vm.chainId(masterChainId);
 
@@ -641,7 +740,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
 
         ShieldedPoolDelegateBranch.ShieldedTx memory shieldedTx = _baseShieldedTx(wormholeRoot, shieldedRoot);
 
-        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
+        branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"), _validTimestamp());
 
         (bytes32 masterShieldedRootAfter, uint256 masterShieldedSize,) = shieldedPool.masterShieldedTree(0);
         (bytes32 branchShieldedRoot, uint256 branchSize,) = branch.branchShieldedTree(0);

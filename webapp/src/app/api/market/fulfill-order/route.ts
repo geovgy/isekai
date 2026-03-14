@@ -1,9 +1,10 @@
 import {
-  createPendingFulfillMarketOffer,
+  completeMarketFulfillment,
   getMarketOfferRequest,
   normalizeNotes,
   type MarketSignerDelegation,
 } from "@/src/server/market-offer-requests";
+import { executeMarketFulfillment } from "@/src/server/market-fulfill-execution";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -47,21 +48,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Order maker address not found" }, { status: 409 });
     }
 
-    const updated = await createPendingFulfillMarketOffer({
-      sourceOrderId: marketOfferId,
-      makerAddress: existing.makerAddress,
-      offer: existing.offer,
-      signerDelegation: signerDelegation as MarketSignerDelegation,
-      signature,
-      shieldedMasterRoot: normalizedNotes.shieldedMasterRoot,
-      inputNotes: normalizedNotes.inputNotes,
-      outputNotes: normalizedNotes.outputNotes,
-      wormholeNote: normalizedNotes.wormholeNote,
+    const executionResult = await executeMarketFulfillment({
+      orderId: marketOfferId,
+      existing,
+      fulfillerDelegation: signerDelegation as MarketSignerDelegation,
+      fulfillerSignature: signature,
+      fulfillerNotes: normalizedNotes,
+    });
+    const updated = await completeMarketFulfillment({
+      id: marketOfferId,
+      ...executionResult.completionInput,
     });
 
     if (!updated) {
       return NextResponse.json(
-        { error: "Failed to attach fulfiller bundle" },
+        { error: "Failed to mark fulfilled market order" },
         { status: 409 },
       );
     }
@@ -69,9 +70,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         id: updated.id,
-        offerStatus: "pending",
+        offerStatus: "fulfilled",
         updatedAt: updated.updatedAt,
         persisted: true,
+        txHash: executionResult.txHash,
       },
       { status: 200 },
     );

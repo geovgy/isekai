@@ -131,7 +131,9 @@ library HonkVerificationKey {
 
 pragma solidity ^0.8.27;
 
-import {IVerifier} from "../interfaces/IVerifier.sol";
+interface IVerifier {
+    function verify(bytes calldata _proof, bytes32[] calldata _publicInputs) external returns (bool);
+}
 
 type Fr is uint256;
 
@@ -486,7 +488,7 @@ library TranscriptLib {
         uint256 vkHash,
         uint256 publicInputsSize,
         uint256 logN
-    ) internal pure returns (Transcript memory t) {
+    ) internal view returns (Transcript memory t) {
         Fr previousChallenge;
         (t.relationParameters, previousChallenge) =
             generateRelationParametersChallenges(proof, publicInputs, vkHash, publicInputsSize, previousChallenge);
@@ -692,7 +694,7 @@ library TranscriptLib {
 
     function generateShplonkZChallenge(Honk.Proof memory proof, Fr prevChallenge)
         internal
-        pure
+        view
         returns (Fr shplonkZ, Fr nextPreviousChallenge)
     {
         uint256[3] memory shplonkZChallengeElements;
