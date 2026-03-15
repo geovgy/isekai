@@ -26,7 +26,7 @@ pub struct SignerDelegation {
     pub maxCumulativeAmount: u64,
     pub maxNonce: u64,
     pub timeInterval: u64,
-    pub transferType: u8, // 0: transfer, 1: withdrawal
+    pub transferType: u8, // 0: any, 1: transfer, 2: withdrawal
 }
 
 pub struct SignerNote<let M: u32> {

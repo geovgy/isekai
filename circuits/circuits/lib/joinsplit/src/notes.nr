@@ -4,6 +4,10 @@ fn hash<let N: u32>(inputs: [Field; N]) -> Field {
     Poseidon2::hash(inputs, N)
 }
 
+pub global TRANSFER_TYPE_ANY: u8 = 0;
+pub global TRANSFER_TYPE_TRANSFER: u8 = 1;
+pub global TRANSFER_TYPE_WITHDRAWAL: u8 = 2;
+
 pub struct InputNote<let M: u32> {
     pub chain_id: Field,
     pub blinding: Field,
@@ -22,7 +26,7 @@ pub impl <let M: u32> InputNote<M> {
 
     pub fn to_commitment(self, owner_address: Field, token: Field, token_id: Field) -> Field {
         let blinded_owner = hash([self.chain_id, owner_address, self.blinding]);
-        hash([blinded_owner, token, token_id, self.amount, 1])
+        hash([blinded_owner, token, token_id, self.amount, TRANSFER_TYPE_TRANSFER as Field])
     }
 
     pub fn get_nullifier(self, owner_address: Field, token: Field, token_id: Field) -> Field {
@@ -45,7 +49,7 @@ pub impl OutputNote {
     }
 
     pub fn get_recipient_hash(self) -> Field {
-        if ((self.chain_id == 0) & (self.blinding == 0)) | (self.transfer_type == 2) {
+        if ((self.chain_id == 0) & (self.blinding == 0)) | (self.transfer_type == TRANSFER_TYPE_WITHDRAWAL) {
             // If blinding is 0 and its a transfer, then assume recipient is already hashed with blinding
             // If its a withdrawal, then recipient should be Ethereum address and not hashed
             self.recipient
@@ -56,6 +60,7 @@ pub impl OutputNote {
 
     pub fn to_commitment(self, token: Field, token_id: Field) -> Field {
         let recipient_hash = self.get_recipient_hash();
+        assert((self.transfer_type == TRANSFER_TYPE_TRANSFER) | (self.transfer_type == TRANSFER_TYPE_WITHDRAWAL), "Transfer type must be transfer or withdrawal");
         hash([recipient_hash, token, token_id, self.amount, self.transfer_type as Field])
     }
 }

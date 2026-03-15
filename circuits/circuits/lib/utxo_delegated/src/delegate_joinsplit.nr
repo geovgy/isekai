@@ -1,5 +1,12 @@
 use joinsplit::{
-    notes::{InputNote, OutputNote, WormholeNote, get_wormhole_pseudo_nullifier},
+    notes::{
+        InputNote, 
+        OutputNote, 
+        WormholeNote, 
+        get_wormhole_pseudo_nullifier, 
+        TRANSFER_TYPE_ANY, 
+        TRANSFER_TYPE_WITHDRAWAL
+    },
     assert_merkle_leaf_membership,
 };
 use crate::{SignerDelegation, SignerNote};
@@ -79,10 +86,13 @@ pub impl <let M: u32, let N: u32, let C: u32, let W: u32> DelegateJoinSplit<M, N
         for i in 0..C {
             let output_note = self.output_notes[i];
             totalAmountOut += output_note.amount;
-            if (output_note.recipient != self.owner_address) {
+            if (output_note.recipient != self.owner_address) | (output_note.transfer_type == TRANSFER_TYPE_WITHDRAWAL) {
                 totalAmountSent += output_note.amount;
                 if self.delegation.recipientLocked {
                     assert(output_note.recipient == self.delegation.recipient, "Output note recipient must match delegation recipient");
+                }
+                if self.delegation.transferType != TRANSFER_TYPE_ANY {
+                    assert(output_note.transfer_type == self.delegation.transferType, "Output note transfer type must match delegation transfer type");
                 }
             }
             output_commitments[i] = output_note.to_commitment(self.token, self.token_id);
