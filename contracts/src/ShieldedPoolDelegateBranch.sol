@@ -46,6 +46,13 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         uint8 transferType; // 0: transfer, 1: withdrawal
     }
 
+    struct RevokedSignerDelegation {
+        bytes32 delegationHash;
+        bytes32 signerRoot;
+        bytes32 signerCommitment;
+        bytes32 signerNullifier;
+    }
+
     uint8 public constant MERKLE_TREE_DEPTH = 20;
 
     uint256 public constant TIMESTAMP_MARGIN = 1 minutes; // 1 minute margin for timestamp
@@ -53,10 +60,12 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
     bytes32 private constant WITHDRAWAL_TYPEHASH = keccak256("Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
     bytes32 private constant SHIELDED_TX_TYPEHASH = keccak256("ShieldedTx(uint64 chainId,bytes32 wormholeRoot,bytes32 wormholeNullifier,bytes32 shieldedRoot,bytes32 signerRoot,bytes32 signerCommitment,bytes32 signerNullifier,bytes32[] nullifiers,uint256[] commitments,Withdrawal[] withdrawals)Withdrawal(address to,address asset,uint256 id,uint256 amount,bytes32 confidentialContext)");
     bytes32 private constant SIGNER_DELEGATION_TYPEHASH = keccak256("SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)");
+    bytes32 private constant REVOKED_SIGNER_DELEGATION_TYPEHASH = keccak256("RevokedSignerDelegation(bytes32 delegationHash,bytes32 signerRoot,bytes32 signerCommitment,bytes32 signerNullifier)");
 
     IShieldedPool public immutable masterShieldedPool;
     IPoseidon2 public immutable poseidon2;
     ICrossL2ProverV2 public immutable crossL2Prover;
+    IVerifier public immutable delegateRevocationVerifier;
     bytes32 private immutable _eip712DomainHashLo;
     bytes32 private immutable _eip712DomainHashHi;
 
@@ -104,9 +113,10 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
     event BatchVerifierAdded(address verifier, uint256 batchSize, uint256 inputs, uint256 outputs);
 
-    constructor(IShieldedPool masterShieldedPool_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
+    constructor(IShieldedPool masterShieldedPool_, IVerifier delegateRevocationVerifier_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         masterShieldedPool = masterShieldedPool_;
         poseidon2 = masterShieldedPool_.poseidon2();
+        delegateRevocationVerifier = delegateRevocationVerifier_;
         _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
         uint256 signerRoot = _initializeMerkleTree(_signerTrees[currentSignerTreeId]);
         isSignerRoot[bytes32(signerRoot)] = true;
@@ -136,6 +146,31 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         require(batchSize > 0 && inputs > 0 && outputs > 0, "ShieldedPool: invalid batch size, inputs or outputs");
         _batchUtxoVerifiers[batchSize][inputs][outputs] = verifier;
         emit BatchVerifierAdded(address(verifier), batchSize, inputs, outputs);
+    }
+
+    function revokeSignerDelegation(RevokedSignerDelegation memory revokedSignerDelegation, bytes calldata proof) external {
+        bytes32 messageHash = _hashTypedData(revokedSignerDelegation);
+        require(isSignerRoot[revokedSignerDelegation.signerRoot], "ShieldedPool: signer root is not valid");
+        require(!signerNullifierUsed[revokedSignerDelegation.signerNullifier], "ShieldedPool: signer nullifier is already used");
+        
+        // format public inputs
+        bytes32[] memory inputs = _formatPublicInputs(revokedSignerDelegation, messageHash);
+
+        // verify proof
+        require(delegateRevocationVerifier.verify(proof, inputs), "ShieldedPool: proof is not valid");
+
+        // mark signer nullifier as used
+        signerNullifierUsed[revokedSignerDelegation.signerNullifier] = true;
+
+        // insert new signer commitment into signer tree
+        if (_isMerkleTreeSizeOverflow(_signerTrees[currentSignerTreeId], 1)) {
+            currentSignerTreeId++;
+            _initializeMerkleTree(_signerTrees[currentSignerTreeId]);
+        }
+        uint256 signerRoot = _signerTrees[currentSignerTreeId].insert(uint256(revokedSignerDelegation.signerCommitment));
+        isSignerRoot[bytes32(signerRoot)] = true;
+
+        emit SignerTreeUpdated(currentSignerTreeId, signerRoot, block.number, block.timestamp);
     }
 
     function shieldedTransfer(ShieldedTx memory shieldedTx, bytes calldata proof, uint256 timestamp) external {
@@ -350,6 +385,33 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
         _fillOutputCommitments(shieldedTx, inputs, offset);
     }
 
+    function _formatPublicInputs(RevokedSignerDelegation memory revokedSignerDelegation, bytes32 messageHash) internal view returns (bytes32[] memory inputs) {
+        (bytes32 messageHashHi, bytes32 messageHashLo) = _splitHash(messageHash);
+        (bytes32 delegationHashHi, bytes32 delegationHashLo) = _splitHash(revokedSignerDelegation.delegationHash);
+
+        // Public inputs ordering matches `circuits/circuits/main/revoke_delegation/src/main.nr`.
+        // Public params:
+        // - eip712_domain_lo
+        // - eip712_domain_hi
+        // - signer_root
+        // - hashed_message_hi
+        // - hashed_message_lo
+        // - delegation_hash_hi
+        // - delegation_hash_lo
+        // - signer_commitment
+        // - signer_nullifier
+        inputs = new bytes32[](9);
+        inputs[0] = _eip712DomainHashLo;
+        inputs[1] = _eip712DomainHashHi;
+        inputs[2] = revokedSignerDelegation.signerRoot;
+        inputs[3] = messageHashHi;
+        inputs[4] = messageHashLo;
+        inputs[5] = delegationHashHi;
+        inputs[6] = delegationHashLo;
+        inputs[7] = revokedSignerDelegation.signerCommitment;
+        inputs[8] = revokedSignerDelegation.signerNullifier;
+    }
+
     function _formatBatchPublicInputs(
         ShieldedTx[] memory shieldedTxs,
         bytes32[] memory messageHashes,
@@ -522,6 +584,20 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
                     signerDelegation.maxNonce,
                     signerDelegation.timeInterval,
                     signerDelegation.transferType
+                )
+            )
+        );
+    }
+
+    function _hashTypedData(RevokedSignerDelegation memory revokedSignerDelegation) internal view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    REVOKED_SIGNER_DELEGATION_TYPEHASH,
+                    revokedSignerDelegation.delegationHash,
+                    revokedSignerDelegation.signerRoot,
+                    revokedSignerDelegation.signerCommitment,
+                    revokedSignerDelegation.signerNullifier
                 )
             )
         );

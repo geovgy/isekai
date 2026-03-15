@@ -49,7 +49,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         verifier = new MockVerifier();
         crossL2Prover = new MockCrossL2Prover();
         shieldedPool = new ShieldedPool(poseidon2, verifier, crossL2Prover, owner);
-        branch = new ShieldedPoolDelegateBranch(IShieldedPool(address(shieldedPool)), owner);
+        branch = new ShieldedPoolDelegateBranch(IShieldedPool(address(shieldedPool)), verifier, owner);
         wormholeVault = new ERC4626Wormhole(shieldedPool);
         masterChainId = shieldedPool.MASTER_CHAIN_ID();
 

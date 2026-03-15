@@ -12,6 +12,7 @@ import {IShieldedPool} from "../src/interfaces/IShieldedPool.sol";
 import {HonkVerifier as RagequitVerifier} from "../src/verifiers/ragequit_verifier.sol";
 import {HonkVerifier as DelegatedUTXO2x2Verifier} from "../src/verifiers/delegated_utxo_2x2_verifier.sol";
 import {HonkVerifier as BatchDelegatedUTXO2x2Verifier} from "../src/verifiers/batch_delegated_utxo_2x2_verifier.sol";
+import {HonkVerifier as DelegateRevocationVerifier} from "../src/verifiers/revoke_delegation_verifier.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {ICrossL2ProverV2} from "../src/interfaces/ICrossL2ProverV2.sol";
 
@@ -54,7 +55,7 @@ contract DeployShieldedPoolScript is Script {
         ragequitVerifier = IVerifier(address(new RagequitVerifier{salt: SALT}()));
         shieldedPool = new ShieldedPool{salt: SALT}(poseidon2, ragequitVerifier, CROSS_L2_PROVER, msg.sender);
         shieldedPoolDelegateBranch =
-            new ShieldedPoolDelegateBranch{salt: SALT}(IShieldedPool(address(shieldedPool)), msg.sender);
+            new ShieldedPoolDelegateBranch{salt: SALT}(IShieldedPool(address(shieldedPool)), IVerifier(address(new DelegateRevocationVerifier{salt: SALT}())), msg.sender);
 
         delegatedUtxo2x2Verifier = IVerifier(address(new DelegatedUTXO2x2Verifier()));
         batchDelegatedUtxo2x2Verifier = IVerifier(address(new BatchDelegatedUTXO2x2Verifier()));
