@@ -180,3 +180,108 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(
 
     (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), signer_commitment, signer_nullifier, wormhole_nullifiers, input_nullifiers, output_commitments)
 }
+
+
+pub struct BatchDelegatedUtxo<let M: u32, let N: u32, let C: u32, let W: u32> {
+    signer_note: SignerNote<M>,
+    signer_blinding: Field,
+    delegation: SignerDelegation,
+    owner_pub_key_x: [u8; 32],
+    owner_pub_key_y: [u8; 32],
+    delegation_signature: [u8; 64],
+    token: Field,
+    token_id: Field,
+    input_notes: [InputNote<M>; N],
+    output_notes: [OutputNote; C],
+    wormhole_notes: [Option<WormholeNote<M>>; W],
+    wormhole_pseudo_secrets: [Option<Field>; W],
+}
+
+pub fn execute_batch_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32, let B: u32>(
+    eip712_domain_lo: Field,
+    eip712_domain_hi: Field,
+    pub_key_x: [u8; 32],
+    pub_key_y: [u8; 32],
+    signature: [u8; 64],
+    hashed_message: [u8; 32], // Full 256-bit EIP-712 message hash
+    chain_id: Field, // pub
+    timestamp: u64, // pub
+    delegation_typehash: [u8; 32],
+    shielded_roots: [Field; B], // pub
+    wormhole_roots: [Field; B], // pub
+    signer_roots: [Field; B], // pub
+    transactions: [BatchDelegatedUtxo<M, N, C, W>; B],
+) -> (Field, Field, [Field; B], [Field; B], [[Field; W]; B], [[Field; N]; B], [[Field; C]; B]) {
+    let delegate_address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
+    
+    let eip712_domain_lo_bytes: [u8; 16] = eip712_domain_lo.to_be_bytes();
+    let eip712_domain_hi_bytes: [u8; 16] = eip712_domain_hi.to_be_bytes();
+    let eip712_domain: [u8; 32] = eip712_domain_hi_bytes.concat(eip712_domain_lo_bytes);
+
+    // Split 256-bit hash into two 128-bit halves for public output
+    // Each half fits safely within the BN254 scalar field
+    let mut hashed_message_hi: [u8; 16] = [0; 16];
+    let mut hashed_message_lo: [u8; 16] = [0; 16];
+    for i in 0..16 {
+        hashed_message_hi[i] = hashed_message[i];
+        hashed_message_lo[i] = hashed_message[i + 16];
+    }
+
+    let mut all_signer_commitments: [Field; B] = [0; B];
+    let mut all_signer_nullifiers: [Field; B] = [0; B];
+    let mut all_wormhole_nullifiers: [[Field; W]; B] = [[0; W]; B];
+    let mut all_input_nullifiers: [[Field; N]; B] = [[0; N]; B];
+    let mut all_output_commitments: [[Field; C]; B] = [[0; C]; B];
+
+    for i in 0..B {
+        let transaction = transactions[i];
+        
+        assert(delegate_address == transaction.delegation.delegate, "delegation signer is not delegate address");
+    
+        let delegation_hash = hash_signer_delegation(eip712_domain, delegation_typehash, transaction.delegation);
+        let owner_address = ecrecover(transaction.owner_pub_key_x, transaction.owner_pub_key_y, transaction.delegation_signature, delegation_hash);
+        assert(owner_address == transaction.delegation.owner, "delegation signer is not owner address");
+    
+        let signer_commitment = transaction.signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
+        if (transaction.signer_note.nonce > 0) {
+            assert_merkle_leaf_membership(signer_roots[i], signer_commitment, transaction.signer_note.index, transaction.signer_note.siblings);
+        }
+        
+        all_signer_nullifiers[i] = transaction.signer_note.get_nullifier(delegate_address, owner_address, delegation_hash);
+
+        let joinsplit = DelegateJoinSplit::new(
+            chain_id,
+            timestamp,
+            shielded_roots[i],
+            wormhole_roots[i],
+            transaction.token,
+            transaction.token_id,
+            owner_address,
+            transaction.delegation,
+            transaction.input_notes,
+            transaction.output_notes,
+            transaction.wormhole_notes,
+            transaction.wormhole_pseudo_secrets,
+            transaction.signer_note
+        );
+        let (totalAmountSent, wormhole_nullifiers, input_nullifiers, output_commitments) = joinsplit.execute();
+
+        let mut signer_note = transaction.signer_note;
+
+        signer_note.total_amount += totalAmountSent as u64;
+        if (transaction.delegation.maxCumulativeAmount != 0) {
+            assert(signer_note.total_amount <= transaction.delegation.maxCumulativeAmount as u64, "Signer note total amount must be less than or equal to max cumulative amount");
+        }
+        signer_note.nonce += 1;
+        signer_note.timestamp = timestamp;
+        signer_note.blinding = transaction.signer_blinding;
+
+        // Get new signer commitment
+        all_signer_commitments[i] = signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
+        
+        all_wormhole_nullifiers[i] = wormhole_nullifiers;
+        all_input_nullifiers[i] = input_nullifiers;
+        all_output_commitments[i] = output_commitments;
+    }
+    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), all_signer_commitments, all_signer_nullifiers, all_wormhole_nullifiers, all_input_nullifiers, all_output_commitments)
+}

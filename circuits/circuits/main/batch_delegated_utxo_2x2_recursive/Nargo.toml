@@ -1,0 +1,9 @@
+[package]
+name = "batch_delegated_utxo_2x2_recursive"
+type = "bin"
+authors = [""]
+
+[dependencies]
+delegated_utxo = { path = "../../lib/utxo_delegated" }
+joinsplit = { path = "../../lib/joinsplit" }
+bb_proof_verification = { git = "https://github.com/AztecProtocol/aztec-packages/", tag = "v3.0.0-nightly.20260102", directory = "barretenberg/noir/bb_proof_verification" }
