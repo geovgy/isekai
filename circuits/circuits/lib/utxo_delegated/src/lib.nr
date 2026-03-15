@@ -104,13 +104,12 @@ pub fn invalidate_signer_delegation<let M: u32>(
     pub_key_y: [u8; 32], // of owner
     signature: [u8; 64], // of owner
     hashed_message: [u8; 32], // Full 256-bit EIP-712 message hash of revoked delegation
-    timestamp: u64, // pub
     signer_root: Field, // pub
     mut signer_note: SignerNote<M>,
     signer_blinding: Field,
     delegation_typehash: [u8; 32],
     delegation: SignerDelegation,
-) -> (Field, Field, Field, Field) {
+) -> (Field, Field, Field, Field, Field, Field) {
     let owner_address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
     assert(owner_address == delegation.owner, "signer is not owner address");
 
@@ -124,9 +123,13 @@ pub fn invalidate_signer_delegation<let M: u32>(
     // Each half fits safely within the BN254 scalar field
     let mut hashed_message_hi: [u8; 16] = [0; 16];
     let mut hashed_message_lo: [u8; 16] = [0; 16];
+    let mut delegation_hash_hi: [u8; 16] = [0; 16];
+    let mut delegation_hash_lo: [u8; 16] = [0; 16];
     for i in 0..16 {
         hashed_message_hi[i] = hashed_message[i];
         hashed_message_lo[i] = hashed_message[i + 16];
+        delegation_hash_hi[i] = delegation_hash[i];
+        delegation_hash_lo[i] = delegation_hash[i + 16];
     }
 
     let mut signer_commitment = signer_note.get_commitment(delegation.delegate, owner_address, delegation_hash, true);
@@ -137,13 +140,12 @@ pub fn invalidate_signer_delegation<let M: u32>(
     let signer_nullifier = signer_note.get_nullifier(delegation.delegate, owner_address, delegation_hash);
 
     signer_note.nonce += 1;
-    signer_note.timestamp = timestamp;
     signer_note.blinding = signer_blinding;
 
     // Get new signer commitment
     signer_commitment = signer_note.get_commitment(delegation.delegate, owner_address, delegation_hash, false);
 
-    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), signer_commitment, signer_nullifier)
+    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), Field::from_be_bytes(delegation_hash_hi), Field::from_be_bytes(delegation_hash_lo), signer_commitment, signer_nullifier)
 }
 
 pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(

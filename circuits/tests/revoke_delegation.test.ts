@@ -9,10 +9,23 @@ import { privateKeyToAccount } from "viem/accounts";
 
 function extractPublicInputs(result: string[]) {
   return {
-    returnedHashedMessageHi: result[0]!,
-    returnedHashedMessageLo: result[1]!,
-    signerCommitment: result[2]!,
-    signerNullifier: result[3]!,
+    eip712DomainLo: result[0]!,
+    eip712DomainHi: result[1]!,
+    signerRoot: result[2]!,
+    returnedHashedMessageHi: result[3]!,
+    returnedHashedMessageLo: result[4]!,
+    returnedDelegationHashHi: result[5]!,
+    returnedDelegationHashLo: result[6]!,
+    signerCommitment: result[7]!,
+    signerNullifier: result[8]!,
+  };
+}
+
+function splitHashWords(hash: `0x${string}`) {
+  const hashBytes = hexToBytes(hash);
+  return {
+    hi: BigInt(toHex(hashBytes.slice(0, 16))),
+    lo: BigInt(toHex(hashBytes.slice(16, 32))),
   };
 }
 
@@ -41,7 +54,6 @@ describe("revoke_delegation", () => {
   const verifyingContract = "0x0000000000000000000000000000000000001000";
   const tokenAddress = "0x0000000000000000000000000000000000000001";
   const chainId = 1n;
-  const timestamp = 2_000n;
   const signerBlinding = 999n;
   const signerDelegationTypehashBytes = getSignerDelegationTypehashBytes();
   const domainSeparator = getShieldedPoolDomainSeparator(chainId, verifyingContract);
@@ -96,11 +108,12 @@ describe("revoke_delegation", () => {
     const signature = await owner.signMessage({ message: `Revoke delegation: ${delegationHash}` });
     const publicKey = await recoverPublicKey({ hash: hashedMessage, signature });
     const publicHashes = getDelegatedPublicInputHashes(domainSeparator, hashedMessage);
+    const hashedMessageWords = splitHashWords(hashedMessage);
+    const delegationHashWords = splitHashWords(delegationHash);
     const expectedSignerNullifier = getSignerNullifier(delegate.address, owner.address, delegationHash, signerNote);
     const revokedSignerNote: SignerNote = {
       ...signerNote,
       nonce: signerNote.nonce + 1n,
-      timestamp,
       blinding: signerBlinding,
     };
     const expectedSignerCommitment = getSignerCommitment(
@@ -118,7 +131,6 @@ describe("revoke_delegation", () => {
       pub_key_y: [...hexToBytes(publicKey).slice(33, 65)],
       signature: [...hexToBytes(signature).slice(0, 64)],
       hashed_message: [...hexToBytes(hashedMessage)],
-      timestamp: timestamp.toString(),
       signer_root: signerTree.root.toString(),
       signer_note: {
         index: signerNote.index.toString(),
@@ -161,8 +173,13 @@ describe("revoke_delegation", () => {
     expect(isValid).toBe(true);
 
     const actual = extractPublicInputs(result.publicInputs);
-    expect(actual.returnedHashedMessageHi).toBe(toHex(publicHashes.hashedMessageHi, { size: 32 }));
-    expect(actual.returnedHashedMessageLo).toBe(toHex(publicHashes.hashedMessageLo, { size: 32 }));
+    expect(actual.eip712DomainLo).toBe(toHex(publicHashes.eip712DomainLo, { size: 32 }));
+    expect(actual.eip712DomainHi).toBe(toHex(publicHashes.eip712DomainHi, { size: 32 }));
+    expect(actual.signerRoot).toBe(toHex(signerTree.root, { size: 32 }));
+    expect(actual.returnedHashedMessageHi).toBe(toHex(hashedMessageWords.hi, { size: 32 }));
+    expect(actual.returnedHashedMessageLo).toBe(toHex(hashedMessageWords.lo, { size: 32 }));
+    expect(actual.returnedDelegationHashHi).toBe(toHex(delegationHashWords.hi, { size: 32 }));
+    expect(actual.returnedDelegationHashLo).toBe(toHex(delegationHashWords.lo, { size: 32 }));
     expect(actual.signerCommitment).toBe(toHex(expectedSignerCommitment, { size: 32 }));
     expect(actual.signerNullifier).toBe(toHex(expectedSignerNullifier, { size: 32 }));
   }, { timeout: 20000 });
