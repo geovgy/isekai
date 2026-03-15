@@ -183,6 +183,7 @@ export interface MarketSignerDelegationPayload {
   startTime: string;
   endTime: string;
   token: Address;
+  tokenLocked: boolean;
   tokenId: string;
   amount: string;
   amountType: number;

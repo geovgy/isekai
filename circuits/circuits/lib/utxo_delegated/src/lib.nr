@@ -19,6 +19,7 @@ pub struct SignerDelegation {
     pub startTime: u64,
     pub endTime: u64,
     pub token: Field,
+    pub tokenLocked: bool, // true: send only token address in delegation, false: send any token address
     pub tokenId: Field,
     pub amount: Field,
     pub amountType: u8, // 0: exact (enforce tokenId), 1: max (enforce tokenId), 2: min (enforce tokenId), 3: exact (ignore tokenId), 4: max (ignore tokenId), 5: min (ignore tokenId)
@@ -64,6 +65,7 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
     let start_time_bytes: [u8; 32] = (delegation.startTime as Field).to_be_bytes();
     let end_time_bytes: [u8; 32] = (delegation.endTime as Field).to_be_bytes();
     let token_bytes: [u8; 32] = delegation.token.to_be_bytes();
+    let token_locked_bytes: [u8; 32] = (delegation.tokenLocked as Field).to_be_bytes();
     let token_id_bytes: [u8; 32] = delegation.tokenId.to_be_bytes();
     let amount_bytes: [u8; 32] = delegation.amount.to_be_bytes();
     let amount_type_bytes: [u8; 32] = (delegation.amountType as Field).to_be_bytes();
@@ -74,7 +76,7 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
 
     // abi.encode(...) for the struct fields, excluding the typehash prefix that
     // `to_struct_hash` prepends internally.
-    let mut encoded: [u8; 480] = [0; 480];
+    let mut encoded: [u8; 512] = [0; 512];
     for i in 0..32 {
         encoded[i] = chain_id_bytes[i];
         encoded[32 + i] = owner_bytes[i];
@@ -84,13 +86,14 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
         encoded[160 + i] = start_time_bytes[i];
         encoded[192 + i] = end_time_bytes[i];
         encoded[224 + i] = token_bytes[i];
-        encoded[256 + i] = token_id_bytes[i];
-        encoded[288 + i] = amount_bytes[i];
-        encoded[320 + i] = amount_type_bytes[i];
-        encoded[352 + i] = max_cumulative_amount_bytes[i];
-        encoded[384 + i] = max_nonce_bytes[i];
-        encoded[416 + i] = time_interval_bytes[i];
-        encoded[448 + i] = transfer_type_bytes[i];
+        encoded[256 + i] = token_locked_bytes[i];
+        encoded[288 + i] = token_id_bytes[i];
+        encoded[320 + i] = amount_bytes[i];
+        encoded[352 + i] = amount_type_bytes[i];
+        encoded[384 + i] = max_cumulative_amount_bytes[i];
+        encoded[416 + i] = max_nonce_bytes[i];
+        encoded[448 + i] = time_interval_bytes[i];
+        encoded[480 + i] = transfer_type_bytes[i];
     }
 
     let struct_hash = eip712::to_struct_hash(delegation_typehash, encoded);

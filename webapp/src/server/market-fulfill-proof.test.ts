@@ -94,6 +94,7 @@ function getSignerDelegationHash(delegation: {
   startTime: bigint;
   endTime: bigint;
   token: Address;
+  tokenLocked: boolean;
   tokenId: bigint;
   amount: bigint;
   amountType: number;
@@ -115,6 +116,7 @@ function getSignerDelegationHash(delegation: {
         { name: "startTime", type: "uint64" },
         { name: "endTime", type: "uint64" },
         { name: "token", type: "address" },
+        { name: "tokenLocked", type: "bool" },
         { name: "tokenId", type: "uint256" },
         { name: "amount", type: "uint256" },
         { name: "amountType", type: "uint8" },
@@ -129,7 +131,7 @@ function getSignerDelegationHash(delegation: {
 }
 
 function getSignerDelegationTypehashBytes() {
-  return [...hexToBytes(keccak256(stringToHex("SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)")))];
+  return [...hexToBytes(keccak256(stringToHex("SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,bool tokenLocked,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)")))];
 }
 
 function getInputCommitment(ownerAddress: Address, token: bigint, tokenIdValue: bigint, note: Pick<InputNote, "chain_id" | "blinding" | "amount">) {
@@ -156,7 +158,11 @@ function getPseudoNullifier(secret: bigint) {
   return poseidon2Hash([1n, chainId, secret, pseudoCommitment]);
 }
 
-function getSignerCommitment(delegationHash: Hex, signerNote: { total_amount: bigint; nonce: bigint; timestamp: bigint; blinding: bigint }) {
+function getSignerCommitment(
+  delegationHash: Hex,
+  signerNote: { total_amount: bigint; nonce: bigint; timestamp: bigint; blinding: bigint },
+  valid = true,
+) {
   return poseidon2Hash([
     BigInt(delegate.address),
     BigInt(owner.address),
@@ -165,6 +171,7 @@ function getSignerCommitment(delegationHash: Hex, signerNote: { total_amount: bi
     signerNote.nonce,
     signerNote.timestamp,
     signerNote.blinding,
+    BigInt(valid),
   ]);
 }
 
@@ -256,6 +263,7 @@ function toCircuitSignerDelegation(delegation: ReturnType<typeof buildDelegation
     startTime: delegation.startTime.toString(),
     endTime: delegation.endTime.toString(),
     token: delegation.token,
+    tokenLocked: delegation.tokenLocked,
     tokenId: delegation.tokenId.toString(),
     amount: delegation.amount.toString(),
     amountType: delegation.amountType,
@@ -276,6 +284,7 @@ function buildDelegation() {
     startTime: 0n,
     endTime: 0n,
     token: tokenAddress as Address,
+    tokenLocked: true,
     tokenId,
     amount: 150n,
     amountType: 0,
@@ -458,7 +467,7 @@ describe("market fulfill recursive proofs", () => {
     const fixtureB = await createFixture(1001n, 1999n, 96n, [123123123n, 321321321n], [333333333n, 444444444n]);
 
     const innerProver = new ZKProver("delegated_utxo_2x2");
-    const outerProver = new ZKProver("batch_delegated_utxo_2x2");
+    const outerProver = new ZKProver("batch_delegated_utxo_2x2_recursive");
     await Promise.all([innerProver.init(), outerProver.init()]);
 
     const recursiveArtifacts = await innerProver.backend.generateRecursiveProofArtifacts(

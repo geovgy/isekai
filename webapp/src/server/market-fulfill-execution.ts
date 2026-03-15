@@ -56,7 +56,7 @@ import { privateKeyToAccount } from "viem/accounts";
 const MERKLE_TREE_DEPTH = 20;
 const ZERO_32 = toHex(0n, { size: 32 });
 const SIGNER_DELEGATION_TYPE =
-  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)";
+  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,bool tokenLocked,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)";
 
 type ParsedSignerDelegation = {
   chainId: bigint;
@@ -67,6 +67,7 @@ type ParsedSignerDelegation = {
   startTime: bigint;
   endTime: bigint;
   token: Address;
+  tokenLocked: boolean;
   tokenId: bigint;
   amount: bigint;
   amountType: number;
@@ -214,6 +215,7 @@ function getSignerDelegationHash(
         { name: "startTime", type: "uint64" },
         { name: "endTime", type: "uint64" },
         { name: "token", type: "address" },
+        { name: "tokenLocked", type: "bool" },
         { name: "tokenId", type: "uint256" },
         { name: "amount", type: "uint256" },
         { name: "amountType", type: "uint8" },
@@ -232,6 +234,7 @@ function getSignerCommitment(
   ownerAddress: Address,
   delegationHash: Hex,
   signerNote: { total_amount: bigint; nonce: bigint; timestamp: bigint; blinding: bigint },
+  valid = true,
 ) {
   return poseidon2Hash([
     BigInt(delegateAddress),
@@ -241,6 +244,7 @@ function getSignerCommitment(
     signerNote.nonce,
     signerNote.timestamp,
     signerNote.blinding,
+    BigInt(valid),
   ]);
 }
 
@@ -280,6 +284,7 @@ function parseDelegation(delegation: MarketSignerDelegation): ParsedSignerDelega
     startTime: BigInt(delegation.startTime),
     endTime: BigInt(delegation.endTime),
     token: getAddress(delegation.token),
+    tokenLocked: delegation.tokenLocked === true,
     tokenId: BigInt(delegation.tokenId),
     amount: BigInt(delegation.amount),
     amountType: delegation.amountType,
@@ -461,6 +466,7 @@ function toCircuitSignerDelegation(delegation: ParsedSignerDelegation) {
     startTime: delegation.startTime.toString(),
     endTime: delegation.endTime.toString(),
     token: delegation.token,
+    tokenLocked: delegation.tokenLocked,
     tokenId: delegation.tokenId.toString(),
     amount: delegation.amount.toString(),
     amountType: delegation.amountType,
@@ -712,6 +718,7 @@ async function resolveSignerState(args: {
       startTime: args.delegation.startTime.toString(),
       endTime: args.delegation.endTime.toString(),
       token: args.delegation.token,
+      tokenLocked: args.delegation.tokenLocked,
       tokenId: args.delegation.tokenId.toString(),
       amount: args.delegation.amount.toString(),
       amountType: args.delegation.amountType,
@@ -916,6 +923,7 @@ async function prepareProofFixtureRequest(args: {
       startTime: args.delegation.startTime.toString(),
       endTime: args.delegation.endTime.toString(),
       token: args.delegation.token,
+      tokenLocked: args.delegation.tokenLocked,
       tokenId: args.delegation.tokenId.toString(),
       amount: args.delegation.amount.toString(),
       amountType: args.delegation.amountType,

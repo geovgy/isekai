@@ -68,6 +68,7 @@ interface MarketSignerDelegation {
   startTime: string;
   endTime: string;
   token: Address;
+  tokenLocked: boolean;
   tokenId: string;
   amount: string;
   amountType: number;
@@ -113,6 +114,7 @@ const signerDelegationTypes = {
     { name: "startTime", type: "uint64" },
     { name: "endTime", type: "uint64" },
     { name: "token", type: "address" },
+    { name: "tokenLocked", type: "bool" },
     { name: "tokenId", type: "uint256" },
     { name: "amount", type: "uint256" },
     { name: "amountType", type: "uint8" },
@@ -358,6 +360,7 @@ function CreateOfferDialog({
         startTime: String(now),
         endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: requireValidAddress(forToken, "For token address"),
+        tokenLocked: true,
         tokenId: "0",
         amount: forAmountUnits.toString(),
         amountType: 0,
@@ -597,6 +600,7 @@ function FulfillOrderDialog({
         startTime: String(now),
         endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: askToken,
+        tokenLocked: true,
         tokenId: order.offer.ask.tokenId,
         amount: askAmountUnits.toString(),
         amountType: 0,

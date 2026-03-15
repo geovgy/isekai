@@ -4,13 +4,20 @@ import { Barretenberg, ProofData, UltraHonkBackend } from "@aztec/bb.js"
 // Static imports for circuits - these get bundled by webpack
 import ragequitCircuit from "@/artifacts/circuits/ragequit.json"
 import batchDelegatedUtxo2x2Circuit from "@/artifacts/circuits/batch_delegated_utxo_2x2.json"
+import batchDelegatedUtxo2x2RecursiveCircuit from "@/artifacts/circuits/batch_delegated_utxo_2x2_recursive.json"
 import delegatedUtxo2x2Circuit from "@/artifacts/circuits/delegated_utxo_2x2.json"
 import utxo2x2Circuit from "@/artifacts/circuits/utxo_2x2.json"
 
-export type CircuitType = "utxo_2x2" | "delegated_utxo_2x2" | "batch_delegated_utxo_2x2" | "ragequit";
+export type CircuitType =
+  | "utxo_2x2"
+  | "delegated_utxo_2x2"
+  | "batch_delegated_utxo_2x2"
+  | "batch_delegated_utxo_2x2_recursive"
+  | "ragequit";
 
 const circuits: Record<CircuitType, CompiledCircuit> = {
   batch_delegated_utxo_2x2: batchDelegatedUtxo2x2Circuit as unknown as CompiledCircuit,
+  batch_delegated_utxo_2x2_recursive: batchDelegatedUtxo2x2RecursiveCircuit as unknown as CompiledCircuit,
   delegated_utxo_2x2: delegatedUtxo2x2Circuit as unknown as CompiledCircuit,
   ragequit: ragequitCircuit as unknown as CompiledCircuit,
   utxo_2x2: utxo2x2Circuit as unknown as CompiledCircuit,

@@ -104,7 +104,9 @@ pub impl <let M: u32, let N: u32, let C: u32, let W: u32> DelegateJoinSplit<M, N
         if (self.delegation.timeInterval != 0) {
             assert(self.delegation.timeInterval <= self.timestamp - self.signer_note.timestamp, "Delegation time interval must be less than or equal to time interval");
         }
-        assert(self.delegation.token == self.token, "Delegation token must match token");
+        if self.delegation.tokenLocked {
+            assert(self.delegation.token == self.token, "Delegation token must match token");
+        }
         if (self.delegation.amountType == 0) | (self.delegation.amountType == 1) | (self.delegation.amountType == 2) {
             assert(self.delegation.tokenId == self.token_id, "Delegation token_id must match token_id");
         }

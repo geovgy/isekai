@@ -33,6 +33,7 @@ export interface MarketSignerDelegation {
   startTime: string;
   endTime: string;
   token: Address;
+  tokenLocked: boolean;
   tokenId: string;
   amount: string;
   amountType: number;
@@ -618,6 +619,7 @@ function getDelegationKey(delegation: MarketSignerDelegation | null | undefined)
     recipient: typeof delegation.recipient === "string" ? delegation.recipient.toLowerCase() : zeroAddress,
     recipientLocked: delegation.recipientLocked === true,
     token: delegation.token.toLowerCase(),
+    tokenLocked: delegation.tokenLocked === true,
     tokenId: delegation.tokenId,
     amount: delegation.amount,
     amountType: delegation.amountType,

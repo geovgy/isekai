@@ -33,6 +33,7 @@ export interface SignerDelegation {
   startTime: bigint;
   endTime: bigint;
   token: Address;
+  tokenLocked: boolean;
   tokenId: bigint;
   amount: bigint;
   amountType: number;

@@ -17,6 +17,7 @@ const signerDelegation = v.object({
   startTime: v.string(),
   endTime: v.string(),
   token: v.string(),
+  tokenLocked: v.boolean(),
   tokenId: v.string(),
   amount: v.string(),
   amountType: v.number(),
