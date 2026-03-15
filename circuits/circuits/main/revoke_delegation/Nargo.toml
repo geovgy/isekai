@@ -1,0 +1,7 @@
+[package]
+name = "revoke_delegation"
+type = "bin"
+authors = [""]
+
+[dependencies]
+utxo_delegated = { path = "../../lib/utxo_delegated" }

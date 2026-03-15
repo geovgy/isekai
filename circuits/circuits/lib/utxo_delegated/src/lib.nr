@@ -42,8 +42,8 @@ pub impl <let M: u32> SignerNote<M> {
         Self { index, siblings, total_amount, nonce, timestamp, blinding }
     }
 
-    pub fn get_commitment(self, delegate_address: Field, owner_address: Field, delegation_hash: [u8; 32]) -> Field {
-        hash([delegate_address, owner_address, Field::from_be_bytes(delegation_hash), self.total_amount as Field, self.nonce as Field, self.timestamp as Field, self.blinding])
+    pub fn get_commitment(self, delegate_address: Field, owner_address: Field, delegation_hash: [u8; 32], valid: bool) -> Field {
+        hash([delegate_address, owner_address, Field::from_be_bytes(delegation_hash), self.total_amount as Field, self.nonce as Field, self.timestamp as Field, self.blinding, valid as Field])
     }
 
     pub fn get_nullifier(self, delegate_address: Field, owner_address: Field, delegation_hash: [u8; 32]) -> Field {
@@ -97,6 +97,55 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
     eip712::hash_typed_data_v4(eip712_domain, struct_hash)
 }
 
+pub fn invalidate_signer_delegation<let M: u32>(
+    eip712_domain_lo: Field,
+    eip712_domain_hi: Field,
+    pub_key_x: [u8; 32], // of owner
+    pub_key_y: [u8; 32], // of owner
+    signature: [u8; 64], // of owner
+    hashed_message: [u8; 32], // Full 256-bit EIP-712 message hash of revoked delegation
+    timestamp: u64, // pub
+    signer_root: Field, // pub
+    mut signer_note: SignerNote<M>,
+    signer_blinding: Field,
+    delegation_typehash: [u8; 32],
+    delegation: SignerDelegation,
+) -> (Field, Field, Field, Field) {
+    let owner_address = ecrecover(pub_key_x, pub_key_y, signature, hashed_message);
+    assert(owner_address == delegation.owner, "signer is not owner address");
+
+    let eip712_domain_lo_bytes: [u8; 16] = eip712_domain_lo.to_be_bytes();
+    let eip712_domain_hi_bytes: [u8; 16] = eip712_domain_hi.to_be_bytes();
+    let eip712_domain: [u8; 32] = eip712_domain_hi_bytes.concat(eip712_domain_lo_bytes);
+
+    let delegation_hash = hash_signer_delegation(eip712_domain, delegation_typehash, delegation);
+
+    // Split 256-bit hash into two 128-bit halves for public output
+    // Each half fits safely within the BN254 scalar field
+    let mut hashed_message_hi: [u8; 16] = [0; 16];
+    let mut hashed_message_lo: [u8; 16] = [0; 16];
+    for i in 0..16 {
+        hashed_message_hi[i] = hashed_message[i];
+        hashed_message_lo[i] = hashed_message[i + 16];
+    }
+
+    let mut signer_commitment = signer_note.get_commitment(delegation.delegate, owner_address, delegation_hash, true);
+    if (signer_note.nonce > 0) {
+        assert_merkle_leaf_membership(signer_root, signer_commitment, signer_note.index, signer_note.siblings);
+    }
+    
+    let signer_nullifier = signer_note.get_nullifier(delegation.delegate, owner_address, delegation_hash);
+
+    signer_note.nonce += 1;
+    signer_note.timestamp = timestamp;
+    signer_note.blinding = signer_blinding;
+
+    // Get new signer commitment
+    signer_commitment = signer_note.get_commitment(delegation.delegate, owner_address, delegation_hash, false);
+
+    (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), signer_commitment, signer_nullifier)
+}
+
 pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(
     eip712_domain_lo: Field,
     eip712_domain_hi: Field,
@@ -143,7 +192,7 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(
         hashed_message_lo[i] = hashed_message[i + 16];
     }
 
-    let mut signer_commitment = signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
+    let mut signer_commitment = signer_note.get_commitment(delegate_address, owner_address, delegation_hash, true);
     if (signer_note.nonce > 0) {
         assert_merkle_leaf_membership(signer_root, signer_commitment, signer_note.index, signer_note.siblings);
     }
@@ -176,7 +225,7 @@ pub fn execute_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u32>(
     signer_note.blinding = signer_blinding;
 
     // Get new signer commitment
-    signer_commitment = signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
+    signer_commitment = signer_note.get_commitment(delegate_address, owner_address, delegation_hash, true);
 
     (Field::from_be_bytes(hashed_message_hi), Field::from_be_bytes(hashed_message_lo), signer_commitment, signer_nullifier, wormhole_nullifiers, input_nullifiers, output_commitments)
 }
@@ -242,7 +291,7 @@ pub fn execute_batch_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u
         let owner_address = ecrecover(transaction.owner_pub_key_x, transaction.owner_pub_key_y, transaction.delegation_signature, delegation_hash);
         assert(owner_address == transaction.delegation.owner, "delegation signer is not owner address");
     
-        let signer_commitment = transaction.signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
+        let signer_commitment = transaction.signer_note.get_commitment(delegate_address, owner_address, delegation_hash, true);
         if (transaction.signer_note.nonce > 0) {
             assert_merkle_leaf_membership(signer_roots[i], signer_commitment, transaction.signer_note.index, transaction.signer_note.siblings);
         }
@@ -277,7 +326,7 @@ pub fn execute_batch_delegated_utxo<let M: u32, let N: u32, let C: u32, let W: u
         signer_note.blinding = transaction.signer_blinding;
 
         // Get new signer commitment
-        all_signer_commitments[i] = signer_note.get_commitment(delegate_address, owner_address, delegation_hash);
+        all_signer_commitments[i] = signer_note.get_commitment(delegate_address, owner_address, delegation_hash, true);
         
         all_wormhole_nullifiers[i] = wormhole_nullifiers;
         all_input_nullifiers[i] = input_nullifiers;
