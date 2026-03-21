@@ -29,11 +29,9 @@ export interface MarketSignerDelegation {
   owner: Address;
   delegate: Address;
   recipient: Address;
-  recipientLocked: boolean;
   startTime: string;
   endTime: string;
   token: Address;
-  tokenLocked: boolean;
   tokenId: string;
   amount: string;
   amountType: number;
@@ -617,9 +615,9 @@ function getDelegationKey(delegation: MarketSignerDelegation | null | undefined)
     owner: delegation.owner.toLowerCase(),
     delegate: delegation.delegate.toLowerCase(),
     recipient: typeof delegation.recipient === "string" ? delegation.recipient.toLowerCase() : zeroAddress,
-    recipientLocked: delegation.recipientLocked === true,
+    startTime: delegation.startTime,
+    endTime: delegation.endTime,
     token: delegation.token.toLowerCase(),
-    tokenLocked: delegation.tokenLocked === true,
     tokenId: delegation.tokenId,
     amount: delegation.amount,
     amountType: delegation.amountType,

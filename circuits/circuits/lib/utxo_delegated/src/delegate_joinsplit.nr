@@ -88,7 +88,7 @@ pub impl <let M: u32, let N: u32, let C: u32, let W: u32> DelegateJoinSplit<M, N
             totalAmountOut += output_note.amount;
             if (output_note.recipient != self.owner_address) | (output_note.transfer_type == TRANSFER_TYPE_WITHDRAWAL) {
                 totalAmountSent += output_note.amount;
-                if self.delegation.recipientLocked {
+                if self.delegation.recipient != 0 {
                     assert(output_note.recipient == self.delegation.recipient, "Output note recipient must match delegation recipient");
                 }
                 if self.delegation.transferType != TRANSFER_TYPE_ANY {
@@ -103,7 +103,9 @@ pub impl <let M: u32, let N: u32, let C: u32, let W: u32> DelegateJoinSplit<M, N
         assert(totalAmountIn == totalAmountOut, "Total amount in and out must be equal");
 
         // verify delegation
-        assert(self.delegation.chainId as Field == self.chain_id, "Delegation chain id must match chain id");
+        if (self.delegation.chainId != 0) {
+            assert(self.delegation.chainId as Field == self.chain_id, "Delegation chain id must match chain id");
+        }
         assert(self.delegation.owner == self.owner_address, "Delegation owner must match owner address");
         if (self.delegation.startTime != 0) {
             assert(self.delegation.startTime <= self.timestamp, "Delegation start time must be before timestamp");
@@ -114,7 +116,7 @@ pub impl <let M: u32, let N: u32, let C: u32, let W: u32> DelegateJoinSplit<M, N
         if (self.delegation.timeInterval != 0) {
             assert(self.delegation.timeInterval <= self.timestamp - self.signer_note.timestamp, "Delegation time interval must be less than or equal to time interval");
         }
-        if self.delegation.tokenLocked {
+        if self.delegation.token != 0 {
             assert(self.delegation.token == self.token, "Delegation token must match token");
         }
         if (self.delegation.amountType == 0) | (self.delegation.amountType == 1) | (self.delegation.amountType == 2) {

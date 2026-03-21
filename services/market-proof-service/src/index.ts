@@ -40,7 +40,7 @@ const OUTER_TARGET = "evm" as const;
 const ZERO_32 = toHex(0n, { size: 32 });
 const MERKLE_TREE_DEPTH = 20;
 const SIGNER_DELEGATION_TYPE =
-  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,bool tokenLocked,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)";
+  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)";
 
 function getRandomField() {
   return BigInt(`0x${randomBytes(31).toString("hex")}`);
@@ -51,11 +51,9 @@ type ParsedSignerDelegation = {
   owner: Address;
   delegate: Address;
   recipient: Address;
-  recipientLocked: boolean;
   startTime: bigint;
   endTime: bigint;
   token: Address;
-  tokenLocked: boolean;
   tokenId: bigint;
   amount: bigint;
   amountType: number;
@@ -218,11 +216,9 @@ function getSignerDelegationHash(
         { name: "owner", type: "address" },
         { name: "delegate", type: "address" },
         { name: "recipient", type: "address" },
-        { name: "recipientLocked", type: "bool" },
         { name: "startTime", type: "uint64" },
         { name: "endTime", type: "uint64" },
         { name: "token", type: "address" },
-        { name: "tokenLocked", type: "bool" },
         { name: "tokenId", type: "uint256" },
         { name: "amount", type: "uint256" },
         { name: "amountType", type: "uint8" },
@@ -286,11 +282,9 @@ function parseDelegation(delegation: MarketSignerDelegationPayload): ParsedSigne
     owner: getAddress(delegation.owner),
     delegate: getAddress(delegation.delegate),
     recipient: typeof delegation.recipient === "string" ? getAddress(delegation.recipient) : zeroAddress,
-    recipientLocked: delegation.recipientLocked === true,
     startTime: BigInt(delegation.startTime),
     endTime: BigInt(delegation.endTime),
     token: getAddress(delegation.token),
-    tokenLocked: delegation.tokenLocked === true,
     tokenId: BigInt(delegation.tokenId),
     amount: BigInt(delegation.amount),
     amountType: delegation.amountType,
@@ -455,11 +449,9 @@ function toCircuitSignerDelegation(delegation: ParsedSignerDelegation) {
     owner: delegation.owner,
     delegate: delegation.delegate,
     recipient: delegation.recipient,
-    recipientLocked: delegation.recipientLocked,
     startTime: delegation.startTime.toString(),
     endTime: delegation.endTime.toString(),
     token: delegation.token,
-    tokenLocked: delegation.tokenLocked,
     tokenId: delegation.tokenId.toString(),
     amount: delegation.amount.toString(),
     amountType: delegation.amountType,

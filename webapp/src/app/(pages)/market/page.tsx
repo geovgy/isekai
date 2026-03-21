@@ -64,11 +64,9 @@ interface MarketSignerDelegation {
   owner: Address;
   delegate: Address;
   recipient: Address;
-  recipientLocked: boolean;
   startTime: string;
   endTime: string;
   token: Address;
-  tokenLocked: boolean;
   tokenId: string;
   amount: string;
   amountType: number;
@@ -110,11 +108,9 @@ const signerDelegationTypes = {
     { name: "owner", type: "address" },
     { name: "delegate", type: "address" },
     { name: "recipient", type: "address" },
-    { name: "recipientLocked", type: "bool" },
     { name: "startTime", type: "uint64" },
     { name: "endTime", type: "uint64" },
     { name: "token", type: "address" },
-    { name: "tokenLocked", type: "bool" },
     { name: "tokenId", type: "uint256" },
     { name: "amount", type: "uint256" },
     { name: "amountType", type: "uint8" },
@@ -356,11 +352,9 @@ function CreateOfferDialog({
         owner: connectedAddress,
         delegate: delegateAddress,
         recipient: zeroAddress,
-        recipientLocked: false,
         startTime: String(now),
         endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: requireValidAddress(forToken, "For token address"),
-        tokenLocked: true,
         tokenId: "0",
         amount: forAmountUnits.toString(),
         amountType: 0,
@@ -596,11 +590,9 @@ function FulfillOrderDialog({
         owner: connectedAddress,
         delegate: getAddress(relayerAddress),
         recipient: zeroAddress,
-        recipientLocked: false,
         startTime: String(now),
         endTime: String(now + MARKET_DELEGATION_TTL_SECONDS),
         token: askToken,
-        tokenLocked: true,
         tokenId: order.offer.ask.tokenId,
         amount: askAmountUnits.toString(),
         amountType: 0,

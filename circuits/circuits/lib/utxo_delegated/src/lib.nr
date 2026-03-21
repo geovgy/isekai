@@ -11,21 +11,19 @@ use poseidon::poseidon2::Poseidon2;
 pub global MERKLE_TREE_DEPTH: u32 = 20;
 
 pub struct SignerDelegation {
-    pub chainId: u64,
+    pub chainId: u64, // If 0, the delegation is valid on all chains
     pub owner: Field,
     pub delegate: Field,
-    pub recipient: Field,
-    pub recipientLocked: bool, // true: only send to recipient, false: send to anyone
-    pub startTime: u64,
-    pub endTime: u64,
-    pub token: Field,
-    pub tokenLocked: bool, // true: send only token address in delegation, false: send any token address
+    pub recipient: Field, // If 0, can send to any recipient
+    pub startTime: u64, // If 0, can start immediately
+    pub endTime: u64, // If 0, it is infinite
+    pub token: Field, // If 0, can send to any token
     pub tokenId: Field,
     pub amount: Field,
     pub amountType: u8, // 0: exact (enforce tokenId), 1: max (enforce tokenId), 2: min (enforce tokenId), 3: exact (ignore tokenId), 4: max (ignore tokenId), 5: min (ignore tokenId)
-    pub maxCumulativeAmount: u64,
-    pub maxNonce: u64,
-    pub timeInterval: u64,
+    pub maxCumulativeAmount: u64, // If 0, there is no limit
+    pub maxNonce: u64, // If 0, there is no limit
+    pub timeInterval: u64, // If 0, there is no time interval
     pub transferType: u8, // 0: any, 1: transfer, 2: withdrawal
 }
 
@@ -61,11 +59,9 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
     let owner_bytes: [u8; 32] = delegation.owner.to_be_bytes();
     let delegate_bytes: [u8; 32] = delegation.delegate.to_be_bytes();
     let recipient_bytes: [u8; 32] = delegation.recipient.to_be_bytes();
-    let recipient_locked_bytes: [u8; 32] = (delegation.recipientLocked as Field).to_be_bytes();
     let start_time_bytes: [u8; 32] = (delegation.startTime as Field).to_be_bytes();
     let end_time_bytes: [u8; 32] = (delegation.endTime as Field).to_be_bytes();
     let token_bytes: [u8; 32] = delegation.token.to_be_bytes();
-    let token_locked_bytes: [u8; 32] = (delegation.tokenLocked as Field).to_be_bytes();
     let token_id_bytes: [u8; 32] = delegation.tokenId.to_be_bytes();
     let amount_bytes: [u8; 32] = delegation.amount.to_be_bytes();
     let amount_type_bytes: [u8; 32] = (delegation.amountType as Field).to_be_bytes();
@@ -76,24 +72,22 @@ fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32]
 
     // abi.encode(...) for the struct fields, excluding the typehash prefix that
     // `to_struct_hash` prepends internally.
-    let mut encoded: [u8; 512] = [0; 512];
+    let mut encoded: [u8; 448] = [0; 448];
     for i in 0..32 {
         encoded[i] = chain_id_bytes[i];
         encoded[32 + i] = owner_bytes[i];
         encoded[64 + i] = delegate_bytes[i];
         encoded[96 + i] = recipient_bytes[i];
-        encoded[128 + i] = recipient_locked_bytes[i];
-        encoded[160 + i] = start_time_bytes[i];
-        encoded[192 + i] = end_time_bytes[i];
-        encoded[224 + i] = token_bytes[i];
-        encoded[256 + i] = token_locked_bytes[i];
-        encoded[288 + i] = token_id_bytes[i];
-        encoded[320 + i] = amount_bytes[i];
-        encoded[352 + i] = amount_type_bytes[i];
-        encoded[384 + i] = max_cumulative_amount_bytes[i];
-        encoded[416 + i] = max_nonce_bytes[i];
-        encoded[448 + i] = time_interval_bytes[i];
-        encoded[480 + i] = transfer_type_bytes[i];
+        encoded[128 + i] = start_time_bytes[i];
+        encoded[160 + i] = end_time_bytes[i];
+        encoded[192 + i] = token_bytes[i];
+        encoded[224 + i] = token_id_bytes[i];
+        encoded[256 + i] = amount_bytes[i];
+        encoded[288 + i] = amount_type_bytes[i];
+        encoded[320 + i] = max_cumulative_amount_bytes[i];
+        encoded[352 + i] = max_nonce_bytes[i];
+        encoded[384 + i] = time_interval_bytes[i];
+        encoded[416 + i] = transfer_type_bytes[i];
     }
 
     let struct_hash = eip712::to_struct_hash(delegation_typehash, encoded);

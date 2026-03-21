@@ -25,15 +25,16 @@ export interface OutputNote {
 }
 
 export interface SignerDelegation {
+  /** If 0, delegation is valid on all chains */
   chainId: bigint;
   owner: Address;
   delegate: Address;
+  /** Zero address: any recipient; otherwise outputs that send externally must use this recipient */
   recipient: Address;
-  recipientLocked: boolean;
   startTime: bigint;
   endTime: bigint;
+  /** Zero address: any token; otherwise must match the transaction token */
   token: Address;
-  tokenLocked: boolean;
   tokenId: bigint;
   amount: bigint;
   amountType: number;

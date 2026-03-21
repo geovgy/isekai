@@ -4,7 +4,7 @@ import type { SignerDelegation, SignerNote } from "./types"
 
 const EIP712_DOMAIN_TYPE = "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
 const SIGNER_DELEGATION_TYPE =
-  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,bool recipientLocked,uint64 startTime,uint64 endTime,address token,bool tokenLocked,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)"
+  "SignerDelegation(uint64 chainId,address owner,address delegate,address recipient,uint64 startTime,uint64 endTime,address token,uint256 tokenId,uint256 amount,uint8 amountType,uint64 maxCumulativeAmount,uint64 maxNonce,uint64 timeInterval,uint8 transferType)"
 const shieldedPoolDomain = (chainId: bigint, verifyingContract: Address) => ({
   name: "ShieldedPool",
   version: "1",
@@ -17,11 +17,9 @@ const signerDelegationTypes = {
     { name: "owner", type: "address" },
     { name: "delegate", type: "address" },
     { name: "recipient", type: "address" },
-    { name: "recipientLocked", type: "bool" },
     { name: "startTime", type: "uint64" },
     { name: "endTime", type: "uint64" },
     { name: "token", type: "address" },
-    { name: "tokenLocked", type: "bool" },
     { name: "tokenId", type: "uint256" },
     { name: "amount", type: "uint256" },
     { name: "amountType", type: "uint8" },

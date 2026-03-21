@@ -179,11 +179,9 @@ export interface MarketSignerDelegationPayload {
   owner: Address;
   delegate: Address;
   recipient: Address;
-  recipientLocked: boolean;
   startTime: string;
   endTime: string;
   token: Address;
-  tokenLocked: boolean;
   tokenId: string;
   amount: string;
   amountType: number;
