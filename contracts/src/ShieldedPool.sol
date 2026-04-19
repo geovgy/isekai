@@ -50,7 +50,15 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
 
     IPoseidon2 public immutable poseidon2;
     IVerifier public immutable ragequitVerifier;
-    ICrossL2ProverV2 public immutable crossL2Prover;
+    
+    address public masterTreeUpdater;
+    address public pendingMasterTreeUpdater;
+    uint256 public timelockEndTime;
+    uint256 public timelockDelay;
+    uint256 constant MINIMUM_DELAY = 2 days;
+    bool public isSyncingPaused;
+    uint256 public lastSyncedBlockNumber;
+    uint256 public lastSyncedTimestamp;
 
     mapping(uint256 chainId => mapping(address branch => bool)) public isBranch;
 
@@ -86,31 +94,7 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
     mapping(uint64 chainId => uint256 index) internal _currentBranchIndices;
     mapping(uint64 chainId => mapping(uint256 index => BranchInfo)) internal _branchInfos; // for tracking possible chain rollbacks
 
-    event WormholeEntry(uint256 indexed entryId, address indexed token, address indexed from, address to, uint256 id, uint256 amount, bytes32 confidentialContext);
-    event WormholeCommitment(uint256 indexed entryId, uint256 indexed commitment, uint256 treeId, uint256 leafIndex, address token, uint256 tokenId, address from, address to, uint256 amount, bool approved);
-    event WormholeNullifier(bytes32 indexed nullifier);
-
-    event WormholeTreeUpdated(uint256 indexed treeId, uint256 indexed root, uint256 indexed blockNumber, uint256 blockTimestamp);
-
-    event MasterTreesUpdated(
-        uint256 shieldedTreeId,
-        uint256 wormholeTreeId,
-        uint256 indexed masterShieldedRoot,
-        uint256 indexed masterWormholeRoot,
-        uint256 blockNumber,
-        uint256 blockTimestamp
-    );
-
-    event MasterShieldedTreeLeaf(uint256 indexed treeId, uint256 indexed branchRoot, uint256 indexed branchChainId, uint256 branchBlockNumber, uint256 branchTimestamp);
-    event MasterWormholeTreeLeaf(uint256 indexed treeId, uint256 indexed branchRoot, uint256 indexed branchChainId, uint256 branchBlockNumber, uint256 branchTimestamp);
-
-    event Ragequit(uint256 indexed entryId, address indexed quitter, address indexed returnedTo, address asset, uint256 id, uint256 amount);
-
-    event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
-    event WormholeApproverSet(address indexed approver, bool isApprover);
-    event BranchAdded(uint64 indexed chainId, address indexed branch);
-
-    constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, ICrossL2ProverV2 crossL2Prover_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
+    constructor(IPoseidon2 poseidon2_, IVerifier ragequitVerifier_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         poseidon2 = poseidon2_;
         _initializeMerkleTree(_branchWormholeTrees[currentWormholeTreeId]);
         uint256 shieldedRoot = _initializeMerkleTree(_masterShieldedTrees[currentMasterShieldedTreeId]);
@@ -118,13 +102,17 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         isMasterShieldedRoot[bytes32(shieldedRoot)] = true;
         isMasterWormholeRoot[bytes32(wormholeRoot)] = true;
         ragequitVerifier = ragequitVerifier_;
-        crossL2Prover = crossL2Prover_;
 
         rollbackTree.init(address(poseidon2), ROLLBACK_TREE_DEPTH);
     }
 
     modifier onlyBranch(uint256 chainId) {
         require(isBranch[chainId][msg.sender], "ShieldedPool: caller is not a branch");
+        _;
+    }
+
+    modifier onlyMasterTreeUpdater() {
+        require(msg.sender == address(masterTreeUpdater), "ShieldedPool: caller is not the master tree updater");
         _;
     }
 
@@ -178,6 +166,47 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         _isWormholeApprover[approver] = isApprover;
         emit WormholeApproverSet(approver, isApprover);
     }
+
+    function pauseSyncing() external onlyOwner {
+        require(!isSyncingPaused, "ShieldedPool: already paused");
+        isSyncingPaused = true;
+    }
+
+    function unpauseSyncing() external onlyOwner {
+        require(isSyncingPaused, "ShieldedPool: already unpaused");
+        isSyncingPaused = false;
+    }
+
+    function setMasterTreeUpdater(address masterTreeUpdater_) external onlyOwner {
+        require(masterTreeUpdater_ != address(0), "ShieldedPool: master tree updater is zero address");
+        if (masterTreeUpdater == address(0)) {
+            masterTreeUpdater = masterTreeUpdater_;
+            return;
+        }
+        require(block.timestamp >= timelockEndTime, "ShieldedPool: timelock not expired");
+        pendingMasterTreeUpdater = masterTreeUpdater_;
+        timelockEndTime = block.timestamp + timelockDelay;
+    }
+
+    function acceptMasterTreeUpdater() external onlyOwner {
+        require(block.timestamp >= timelockEndTime, "ShieldedPool: timelock not expired");
+        masterTreeUpdater = pendingMasterTreeUpdater;
+        pendingMasterTreeUpdater = address(0);
+        timelockEndTime = 0;
+    }
+
+    function cancelMasterTreeUpdaterChange() external onlyOwner {
+        require(pendingMasterTreeUpdater != address(0), "ShieldedPool: no pending master tree updater change");
+        pendingMasterTreeUpdater = address(0);
+        timelockEndTime = 0;
+    }
+
+    function updateTimelockDelay(uint256 newTimelockDelay) external onlyOwner {
+        require(newTimelockDelay >= MINIMUM_DELAY, "ShieldedPool: timelock delay is too short");
+        timelockDelay = newTimelockDelay;
+    }
+
+    // ZK-Wormhole tree functions
 
     function requestWormholeEntry(address from, address to, uint256 id, uint256 amount, bytes32 confidentialContext) external returns (uint256 index) {
         // Every wormhole asset is a token (ERC20/ERC721/ERC1155/etc.)
@@ -309,25 +338,24 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         emit Ragequit(ragequitTx.entryId, msg.sender, entry.from, entry.asset, entry.id, entry.amount);
     }
 
-    function updateMasterTrees(bytes calldata proof) external {
+    function updateMasterTrees(
+        uint256 newShieldedTreeId, 
+        uint256 newWormholeTreeId, 
+        bytes32 newMasterShieldedRoot, 
+        bytes32 newMasterWormholeRoot, 
+        uint256 blockNumber, 
+        uint256 timestamp
+    ) external onlyMasterTreeUpdater returns (bool) {
+        require(!isSyncingPaused, "ShieldedPool: master tree syncing is paused");
         require(block.chainid != MASTER_CHAIN_ID, "ShieldedPool: cannot update master trees on master chain");
-        (uint256 shieldedTreeId, uint256 wormholeTreeId, bytes32 masterShieldedRoot, bytes32 masterWormholeRoot, uint256 blockNumber, uint256 timestamp) = _verifyMasterTreeEvent(proof);
-        isMasterShieldedRoot[masterShieldedRoot] = true;
-        isMasterWormholeRoot[masterWormholeRoot] = true;
-        emit MasterTreesUpdated(shieldedTreeId, wormholeTreeId, uint256(masterShieldedRoot), uint256(masterWormholeRoot), blockNumber, timestamp);
-        // if (block.chainid == MASTER_CHAIN_ID) {
-        //     (uint64 branchChainId, bytes32 branchShieldedRoot, bytes32 branchWormholeRoot, uint256 branchBlockNumber, uint256 timestamp) = _verifyAndExtractBranchTreeEvent(proof);
-        //     (uint256 masterShieldedRoot, uint256 masterWormholeRoot) = _insertMasterTrees(uint256(branchShieldedRoot), uint256(branchWormholeRoot), branchChainId, branchBlockNumber, timestamp);
-        //     emit MasterShieldedTreeLeaf(currentMasterShieldedTreeId, uint256(branchShieldedRoot), branchChainId, branchBlockNumber, timestamp);
-        //     emit MasterWormholeTreeLeaf(currentMasterWormholeTreeId, uint256(branchWormholeRoot), branchChainId, branchBlockNumber, timestamp);
-        //     emit MasterTreesUpdated(currentShieldedTreeId, currentWormholeTreeId, masterShieldedRoot, masterWormholeRoot, block.number, block.timestamp);
-        // } else {
-        //     (uint256 shieldedTreeId, uint256 wormholeTreeId, bytes32 masterShieldedRoot, bytes32 masterWormholeRoot, uint256 blockNumber, uint256 timestamp) = _verifyMasterTreeEvent(proof);
-        //     isMasterShieldedRoot[masterShieldedRoot] = true;
-        //     isMasterWormholeRoot[masterWormholeRoot] = true;
-        //     // TODO: emit event of received master trees
-        //     emit MasterTreesUpdated(shieldedTreeId, wormholeTreeId, uint256(masterShieldedRoot), uint256(masterWormholeRoot), blockNumber, timestamp);
-        // }
+        require(blockNumber > lastSyncedBlockNumber, "ShieldedPool: New block number is stale");
+        require(timestamp > lastSyncedTimestamp, "ShieldedPool: New timestamp is stale");
+        lastSyncedBlockNumber = blockNumber;
+        lastSyncedTimestamp = timestamp;
+        isMasterShieldedRoot[newMasterShieldedRoot] = true;
+        isMasterWormholeRoot[newMasterWormholeRoot] = true;
+        emit MasterTreesUpdated(newShieldedTreeId, newWormholeTreeId, uint256(newMasterShieldedRoot), uint256(newMasterWormholeRoot), blockNumber, timestamp);
+        return true;
     }
 
     function _insertWormholeMasterLeaf(uint256 chainId, uint256 wormholeRoot, uint256 blockNumber, uint256 blockTimestamp) internal returns (uint256 newMasterWormholeRoot) {
@@ -356,40 +384,6 @@ contract ShieldedPool is IShieldedPool, EIP712, Ownable {
         require(block.chainid == MASTER_CHAIN_ID, "ShieldedPool: cannot insert shielded master leaf on branch chain");
         uint256 newMasterShieldedRoot = _insertShieldedMasterLeaf(chainId, shieldedRoot, blockNumber, blockTimestamp);
         emit MasterTreesUpdated(currentMasterShieldedTreeId, currentMasterWormholeTreeId, newMasterShieldedRoot, _masterWormholeTrees[currentMasterWormholeTreeId].root(), block.number, block.timestamp);
-    }
-
-    // TODO: Verify and extract master tree event log from master chain
-    function _verifyMasterTreeEvent(bytes calldata proof) internal returns (uint256 shieldedTreeId, uint256 wormholeTreeId, bytes32 masterShieldedRoot, bytes32 masterWormholeRoot, uint256 blockNumber, uint256 timestamp) {
-        // TODO: Implement
-        (
-            uint32 chainId,
-            address emittingContract,
-            bytes memory topics,
-            bytes memory unindexedData
-        ) = crossL2Prover.validateEvent(proof);
-        require(chainId == MASTER_CHAIN_ID && block.chainid != MASTER_CHAIN_ID, "Invalid chain id");
-        require(emittingContract == address(this), "Invalid emitting contract");
-        require(topics.length == 96, "Invalid topics length");
-        bytes32[] memory topicsArray = new bytes32[](3);
-        assembly {
-            let topicsPtr := add(topics, 32)
-            // topics: [eventsignature, shieldedTreeRoot, wormholeTreeRoot]
-            for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
-                mstore(
-                    add(add(topicsArray, 32), mul(i, 32)),
-                    mload(add(topicsPtr, mul(i, 32)))
-                )
-            }
-        }
-        require(topicsArray[0] == MasterTreesUpdated.selector, "Invalid event signature");
-        masterShieldedRoot = topicsArray[1];
-        masterWormholeRoot = topicsArray[2];
-
-        (shieldedTreeId, wormholeTreeId, blockNumber, timestamp) = abi.decode(unindexedData, (uint256, uint256, uint256, uint256));
-        require(blockNumber > _lastBlockNumbers[chainId], "Master tree event is not new");
-        _lastBlockNumbers[chainId] = blockNumber;
-
-        return (shieldedTreeId, wormholeTreeId, masterShieldedRoot, masterWormholeRoot, blockNumber, timestamp);
     }
 
     function _insertMasterTrees(uint256 branchShieldedRoot, uint256 branchWormholeRoot, uint64 branchChainId, uint256 branchBlockNumber, uint256 timestamp) internal returns (uint256 masterShieldedRoot, uint256 masterWormholeRoot) {

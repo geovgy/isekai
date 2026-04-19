@@ -48,8 +48,8 @@ contract ShieldedPoolDelegateBranchTest is Test {
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         verifier = new MockVerifier();
         crossL2Prover = new MockCrossL2Prover();
-        shieldedPool = new ShieldedPool(poseidon2, verifier, crossL2Prover, owner);
-        branch = new ShieldedPoolDelegateBranch(IShieldedPool(address(shieldedPool)), verifier, owner);
+        shieldedPool = new ShieldedPool(poseidon2, verifier, owner);
+        branch = new ShieldedPoolDelegateBranch(IShieldedPool(address(shieldedPool)), crossL2Prover, verifier, owner);
         wormholeVault = new ERC4626Wormhole(shieldedPool);
         masterChainId = shieldedPool.MASTER_CHAIN_ID();
 
@@ -573,7 +573,7 @@ contract ShieldedPoolDelegateBranchTest is Test {
         (bytes32 currentMasterWormholeRoot,,) = shieldedPool.masterWormholeTree(0);
 
         vm.expectEmit(true, true, false, true, address(shieldedPool));
-        emit ShieldedPool.MasterTreesUpdated(0, 0, branchShieldedRoot, uint256(currentMasterWormholeRoot), block.number, block.timestamp);
+        emit IShieldedPool.MasterTreesUpdated(0, 0, branchShieldedRoot, uint256(currentMasterWormholeRoot), block.number, block.timestamp);
         branch.updateMasterTrees(abi.encodePacked("proof"));
     }
 

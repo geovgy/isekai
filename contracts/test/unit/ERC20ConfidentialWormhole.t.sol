@@ -38,8 +38,8 @@ contract ERC20ConfidentialWormholeTest is Test {
         confVerifier = new MockVerifier();
         crossL2Prover = new MockCrossL2Prover();
 
-        shieldedPool = new ShieldedPool(poseidon2, utxoVerifier, crossL2Prover, owner);
-        branch = new ShieldedPoolBranch(IShieldedPool(address(shieldedPool)), owner);
+        shieldedPool = new ShieldedPool(poseidon2, utxoVerifier, owner);
+        branch = new ShieldedPoolBranch(IShieldedPool(address(shieldedPool)), crossL2Prover, owner);
         underlying = new MockERC20();
         wormhole = new ERC20ConfidentialWormhole(
             shieldedPool, poseidon2, confVerifier, "Shielded ", "s"

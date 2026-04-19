@@ -7,6 +7,7 @@ import {MockERC20} from "../mock/MockERC20.sol";
 import {MockERC4626} from "../mock/MockERC4626.sol";
 import {IShieldedPool} from "../../src/interfaces/IShieldedPool.sol";
 import {ShieldedPool} from "../../src/ShieldedPool.sol";
+import {MasterTreeUpdater} from "../../src/MasterTreeUpdater.sol";
 import {ShieldedPoolBranch} from "../../src/ShieldedPoolBranch.sol";
 import {IPoseidon2} from "poseidon2-evm/IPoseidon2.sol";
 import {Poseidon2Yul_BN254 as Poseidon2} from "poseidon2-evm/bn254/yul/Poseidon2Yul.sol";
@@ -27,6 +28,7 @@ contract ShieldedPoolTest is Test {
     address screener = makeAddr("wormhole approver");
     ShieldedPool shieldedPool;
     ShieldedPoolBranch branch;
+    MasterTreeUpdater masterTreeUpdater;
     ERC4626Wormhole wormholeVault;
 
     IPoseidon2 poseidon2;
@@ -79,21 +81,22 @@ contract ShieldedPoolTest is Test {
         poseidon2 = IPoseidon2(address(new Poseidon2()));
         verifier = new MockVerifier();
         crossL2Prover = new MockCrossL2Prover();
-        shieldedPool = new ShieldedPool(poseidon2, verifier, crossL2Prover, owner);
-        branch = new ShieldedPoolBranch(IShieldedPool(address(shieldedPool)), owner);
+        shieldedPool = new ShieldedPool(poseidon2, verifier, owner);
+        masterTreeUpdater = new MasterTreeUpdater(shieldedPool, crossL2Prover);
+        branch = new ShieldedPoolBranch(IShieldedPool(address(shieldedPool)), crossL2Prover, owner);
         wormholeVault = new ERC4626Wormhole(shieldedPool);
 
         underlying = new MockERC20();
         vault = new MockERC4626(underlying);
 
         vm.startPrank(owner);
-        // add branch
+        // set master tree updater
+        shieldedPool.setMasterTreeUpdater(address(masterTreeUpdater));
         // add branch
         shieldedPool.addBranch(uint64(block.chainid), address(branch));
         shieldedPool.addBranch(masterChainId, address(branch));
         // add wormhole approver
         shieldedPool.setWormholeApprover(screener, true);
-        // add utxo verifier
         // add utxo verifier
         branch.addVerifier(verifier, 2, 2);
         vm.stopPrank();
@@ -158,7 +161,7 @@ contract ShieldedPoolTest is Test {
         uint256 expectedCommitment = _getWormholeCommitment(1, true, from, to, address(wormholeVault), 0, 100e18);
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, address(wormholeVault), 0, from, to, 100e18, true);
+        emit IShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, address(wormholeVault), 0, from, to, 100e18, true);
         vm.prank(screener);
         shieldedPool.appendWormholeLeaf(1, true);
 
@@ -200,8 +203,8 @@ contract ShieldedPoolTest is Test {
         ];
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(nodes[0].entryId, expectedCommitments[0], 0, 0, address(wormholeVault), 0, address(0), from, 100e18, nodes[0].approved);
-        emit ShieldedPool.WormholeCommitment(nodes[1].entryId, expectedCommitments[1], 0, 1, address(wormholeVault), 0, from, to, 100e18, nodes[1].approved);
+        emit IShieldedPool.WormholeCommitment(nodes[0].entryId, expectedCommitments[0], 0, 0, address(wormholeVault), 0, address(0), from, 100e18, nodes[0].approved);
+        emit IShieldedPool.WormholeCommitment(nodes[1].entryId, expectedCommitments[1], 0, 1, address(wormholeVault), 0, from, to, 100e18, nodes[1].approved);
         vm.prank(screener);
         shieldedPool.appendManyWormholeLeaves(nodes);
 
@@ -263,7 +266,7 @@ contract ShieldedPoolTest is Test {
 
         // Should succeed
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, address(wormholeVault), 0, from, to, 100e18, false);
+        emit IShieldedPool.WormholeCommitment(1, expectedCommitment, 0, 0, address(wormholeVault), 0, from, to, 100e18, false);
         vm.prank(from);
         shieldedPool.initiateRagequit(1);
         
@@ -276,7 +279,7 @@ contract ShieldedPoolTest is Test {
 
         // Can still append leafs of older entries skipped
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(0, expectedCommitment, 0, 1, address(wormholeVault), 0, address(0), from, 100e18, false);
+        emit IShieldedPool.WormholeCommitment(0, expectedCommitment, 0, 1, address(wormholeVault), 0, address(0), from, 100e18, false);
         vm.prank(screener);
         shieldedPool.appendWormholeLeaf(0, false);
 
@@ -331,8 +334,8 @@ contract ShieldedPoolTest is Test {
         verifier.setReturnValue(true);
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.Ragequit(1, address(this), from, address(wormholeVault), 0, 100e18);
-        emit ShieldedPool.WormholeNullifier(ragequitTx.wormholeNullifier);
+        emit IShieldedPool.Ragequit(1, address(this), from, address(wormholeVault), 0, 100e18);
+        emit IShieldedPool.WormholeNullifier(ragequitTx.wormholeNullifier);
         // Anyone can ragequit the entry as long as the proof is valid
         vm.expectCall(address(wormholeVault), abi.encodeWithSelector(IWormhole.unshield.selector, from, 0, 100e18));
         shieldedPool.ragequit(ragequitTx, proof);
@@ -524,7 +527,7 @@ contract ShieldedPoolTest is Test {
         uint256 masterShieldedRoot,
         uint256 masterWormholeRoot
     ) internal pure returns (bytes memory) {
-        bytes32 eventSig = ShieldedPool.MasterTreesUpdated.selector;
+        bytes32 eventSig = IShieldedPool.MasterTreesUpdated.selector;
         return abi.encodePacked(eventSig, bytes32(masterShieldedRoot), bytes32(masterWormholeRoot));
     }
 
@@ -561,8 +564,8 @@ contract ShieldedPoolTest is Test {
 
     function test_updateMasterTrees_revert_onMasterChain() public {
         vm.chainId(masterChainId);
-        vm.expectRevert("ShieldedPool: cannot update master trees on master chain");
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        vm.expectRevert("MasterTreeUpdater: Cannot update master trees on master chain");
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
     }
 
     function test_updateMasterTrees_masterChain_validBranchEvent() public {
@@ -600,7 +603,7 @@ contract ShieldedPoolTest is Test {
         (bytes32 currentMasterWormholeRoot,,) = shieldedPool.masterWormholeTree(0);
 
         vm.expectEmit(true, true, false, true, address(shieldedPool));
-        emit ShieldedPool.MasterTreesUpdated(0, 0, branchShieldedRoot, uint256(currentMasterWormholeRoot), block.number, block.timestamp);
+        emit IShieldedPool.MasterTreesUpdated(0, 0, branchShieldedRoot, uint256(currentMasterWormholeRoot), block.number, block.timestamp);
         branch.updateMasterTrees(abi.encodePacked("proof"));
     }
 
@@ -785,7 +788,7 @@ contract ShieldedPoolTest is Test {
         assertFalse(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot)), "Should not be valid before update");
         assertFalse(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot)), "Should not be valid before update");
 
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
 
         assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot)), "Master shielded root should be valid after update");
         assertTrue(shieldedPool.isMasterWormholeRoot(bytes32(masterWormholeRoot)), "Master wormhole root should be valid after update");
@@ -796,8 +799,8 @@ contract ShieldedPoolTest is Test {
         uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
         _setupMasterEventProof(42, address(shieldedPool), masterShieldedRoot, masterWormholeRoot, 100, 1000, true);
 
-        vm.expectRevert("Invalid chain id");
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        vm.expectRevert("MasterTreeUpdater: Invalid emitting chain id");
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
     }
 
     function test_updateMasterTrees_branchChain_revert_invalidEmittingContract() public {
@@ -805,8 +808,8 @@ contract ShieldedPoolTest is Test {
         uint256 masterWormholeRoot = uint256(keccak256("master wormhole root")) % SNARK_SCALAR_FIELD;
         _setupMasterEventProof(uint32(masterChainId), address(0xdead), masterShieldedRoot, masterWormholeRoot, 100, 1000, true);
 
-        vm.expectRevert("Invalid emitting contract");
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        vm.expectRevert("MasterTreeUpdater: Invalid emitting contract");
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
     }
 
     function test_updateMasterTrees_branchChain_revert_invalidTopicsLength() public {
@@ -814,8 +817,8 @@ contract ShieldedPoolTest is Test {
         bytes memory unindexedData = abi.encode(uint256(0), uint256(0), uint256(100), uint256(1000));
         crossL2Prover.setValidateEventReturn(uint32(masterChainId), address(shieldedPool), invalidTopics, unindexedData, true);
 
-        vm.expectRevert("Invalid topics length");
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        vm.expectRevert("MasterTreeUpdater: Invalid topics length");
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
     }
 
     function test_updateMasterTrees_branchChain_revert_invalidProof() public {
@@ -824,19 +827,19 @@ contract ShieldedPoolTest is Test {
         _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot, masterWormholeRoot, 100, 1000, false);
 
         vm.expectRevert("Mock configured to return invalid data");
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
     }
 
     function test_updateMasterTrees_branchChain_multipleUpdates() public {
         uint256 masterShieldedRoot1 = uint256(keccak256("master shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot1 = uint256(keccak256("master wormhole root 1")) % SNARK_SCALAR_FIELD;
         _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, 100, 1000, true);
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
 
         uint256 masterShieldedRoot2 = uint256(keccak256("master shielded root 2")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot2 = uint256(keccak256("master wormhole root 2")) % SNARK_SCALAR_FIELD;
-        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 101, 1000, true);
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 101, 1001, true);
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
 
         // Both old and new roots should be valid
         assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot1)), "First shielded root should still be valid");
@@ -849,14 +852,14 @@ contract ShieldedPoolTest is Test {
         uint256 masterShieldedRoot1 = uint256(keccak256("master shielded root 1")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot1 = uint256(keccak256("master wormhole root 1")) % SNARK_SCALAR_FIELD;
         _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot1, masterWormholeRoot1, 100, 1000, true);
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
 
         uint256 masterShieldedRoot2 = uint256(keccak256("master shielded root 2")) % SNARK_SCALAR_FIELD;
         uint256 masterWormholeRoot2 = uint256(keccak256("master wormhole root 2")) % SNARK_SCALAR_FIELD;
         _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), masterShieldedRoot2, masterWormholeRoot2, 100, 1000, true);
 
-        vm.expectRevert("Master tree event is not new");
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        vm.expectRevert("ShieldedPool: New block number is stale");
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
 
         // Old root should be valid, new root should be invalid
         assertTrue(shieldedPool.isMasterShieldedRoot(bytes32(masterShieldedRoot1)), "First shielded root should still be valid");
@@ -874,7 +877,7 @@ contract ShieldedPoolTest is Test {
         uint256 newMasterShieldedRoot = uint256(keccak256("new master shielded root")) % SNARK_SCALAR_FIELD;
         uint256 newMasterWormholeRoot = uint256(keccak256("new master wormhole root")) % SNARK_SCALAR_FIELD;
         _setupMasterEventProof(uint32(masterChainId), address(shieldedPool), newMasterShieldedRoot, newMasterWormholeRoot, 100, 1000, true);
-        shieldedPool.updateMasterTrees(abi.encodePacked("proof"));
+        masterTreeUpdater.updateMasterTrees(abi.encodePacked("proof"));
 
         // Use the received roots in a shielded transfer
         bytes32[] memory nullifiers = new bytes32[](2);
@@ -1052,7 +1055,7 @@ contract ShieldedPoolTest is Test {
         uint256 expectedBranchShieldedRoot = poseidon2.hash_2(commitments[0], commitments[1]);
 
         vm.expectEmit(true, true, false, true, address(shieldedPool));
-        emit ShieldedPool.MasterTreesUpdated(0, 0, expectedBranchShieldedRoot, uint256(wormholeRoot), block.number, block.timestamp);
+        emit IShieldedPool.MasterTreesUpdated(0, 0, expectedBranchShieldedRoot, uint256(wormholeRoot), block.number, block.timestamp);
         branch.shieldedTransfer(shieldedTx, abi.encodePacked("mock zk proof"));
     }
 
@@ -1101,7 +1104,7 @@ contract ShieldedPoolTest is Test {
         );
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.WormholeCommitment(
+        emit IShieldedPool.WormholeCommitment(
             entryId, expectedCommitment, 0, 0, address(wormholeConfidential), 0, from, to, 50e18, true
         );
         vm.prank(screener);
@@ -1305,7 +1308,7 @@ contract ShieldedPoolTest is Test {
         });
 
         vm.expectEmit(address(shieldedPool));
-        emit ShieldedPool.Ragequit(entryId, address(this), from, address(wormholeConfidential), 0, 50e18);
+        emit IShieldedPool.Ragequit(entryId, address(this), from, address(wormholeConfidential), 0, 50e18);
         shieldedPool.ragequit(ragequitTx, abi.encodePacked("mock zk proof"));
 
         // Ragequit calls unshield with bytes32(0) context — mints tokens back to original sender

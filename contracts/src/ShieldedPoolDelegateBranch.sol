@@ -112,14 +112,14 @@ contract ShieldedPoolDelegateBranch is EIP712, Ownable {
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
     event BatchVerifierAdded(address verifier, uint256 batchSize, uint256 inputs, uint256 outputs);
 
-    constructor(IShieldedPool masterShieldedPool_, IVerifier delegateRevocationVerifier_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
+    constructor(IShieldedPool masterShieldedPool_, ICrossL2ProverV2 crossL2Prover_, IVerifier delegateRevocationVerifier_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         masterShieldedPool = masterShieldedPool_;
         poseidon2 = masterShieldedPool_.poseidon2();
         delegateRevocationVerifier = delegateRevocationVerifier_;
         _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
         uint256 signerRoot = _initializeMerkleTree(_signerTrees[currentSignerTreeId]);
         isSignerRoot[bytes32(signerRoot)] = true;
-        crossL2Prover = masterShieldedPool_.crossL2Prover();
+        crossL2Prover = crossL2Prover_;
 
         (bytes32 domainHashHi, bytes32 domainHashLo) = _splitHash(_domainSeparatorV4());
         _eip712DomainHashLo = domainHashLo;

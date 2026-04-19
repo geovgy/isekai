@@ -53,11 +53,11 @@ contract ShieldedPoolBranch is EIP712, Ownable {
 
     event VerifierAdded(address verifier, uint256 inputs, uint256 outputs);
 
-    constructor(IShieldedPool masterShieldedPool_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
+    constructor(IShieldedPool masterShieldedPool_, ICrossL2ProverV2 crossL2Prover_, address governor_) EIP712("ShieldedPool", "1") Ownable(governor_) {
         masterShieldedPool = masterShieldedPool_;
         poseidon2 = masterShieldedPool_.poseidon2();
         _initializeMerkleTree(_branchShieldedTrees[currentShieldedTreeId]);
-        crossL2Prover = masterShieldedPool_.crossL2Prover();
+        crossL2Prover = crossL2Prover_;
     }
 
     function branchShieldedTree(uint256 treeId) external view returns (bytes32 root, uint256 size, uint256 depth) {
