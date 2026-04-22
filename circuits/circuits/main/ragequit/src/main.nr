@@ -1,5 +1,5 @@
+use shared::assert_merkle_leaf_membership;
 use joinsplit::notes::WormholeNote;
-use joinsplit::assert_merkle_leaf_membership;
 use utxo::MERKLE_TREE_DEPTH;
 
 fn main(

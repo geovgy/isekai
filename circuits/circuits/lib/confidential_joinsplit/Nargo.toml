@@ -1,0 +1,7 @@
+[package]
+name = "joinsplit"
+type = "lib"
+authors = [""]
+
+[dependencies]
+shared = { path = "../shared" }

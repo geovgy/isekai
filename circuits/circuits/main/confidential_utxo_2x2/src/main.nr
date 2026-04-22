@@ -1,5 +1,5 @@
 use utxo::{execute_confidential_utxo, MERKLE_TREE_DEPTH};
-use joinsplit::notes::{ConfidentialInputNote, ConfidentialOutputNote};
+use confidential_joinsplit::notes::{ConfidentialInputNote, ConfidentialOutputNote};
 
 fn main(
     root: pub Field,

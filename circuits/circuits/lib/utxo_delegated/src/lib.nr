@@ -1,12 +1,11 @@
 pub mod delegate_joinsplit;
 use joinsplit::{
     notes::{InputNote, OutputNote, WormholeNote},
-    assert_merkle_leaf_membership,
 };
+use shared::{hash, assert_merkle_leaf_membership};
 use delegate_joinsplit::DelegateJoinSplit;
 use ecrecover::ecrecover;
 use eip712;
-use poseidon::poseidon2::Poseidon2;
 
 pub global MERKLE_TREE_DEPTH: u32 = 20;
 
@@ -48,10 +47,6 @@ pub impl <let M: u32> SignerNote<M> {
     pub fn get_nullifier(self, delegate_address: Field, owner_address: Field, delegation_hash: [u8; 32]) -> Field {
         hash([delegate_address, owner_address, Field::from_be_bytes(delegation_hash), self.nonce as Field])
     }
-}
-
-fn hash<let N: u32>(inputs: [Field; N]) -> Field {
-    Poseidon2::hash(inputs, N)
 }
 
 fn hash_signer_delegation(eip712_domain: [u8; 32], delegation_typehash: [u8; 32], delegation: SignerDelegation) -> [u8; 32] {

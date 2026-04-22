@@ -5,4 +5,5 @@ authors = [""]
 
 [dependencies]
 joinsplit = { path = "../joinsplit" }
+confidential_joinsplit = { path = "../confidential_joinsplit" }
 ecrecover = { path = "../ecrecover" }

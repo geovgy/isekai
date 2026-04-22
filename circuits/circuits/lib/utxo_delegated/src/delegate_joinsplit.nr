@@ -7,8 +7,8 @@ use joinsplit::{
         TRANSFER_TYPE_ANY, 
         TRANSFER_TYPE_WITHDRAWAL
     },
-    assert_merkle_leaf_membership,
 };
+use shared::assert_merkle_leaf_membership;
 use crate::{SignerDelegation, SignerNote};
 
 pub struct DelegateJoinSplit<let M: u32, let N: u32, let C: u32, let W: u32> {

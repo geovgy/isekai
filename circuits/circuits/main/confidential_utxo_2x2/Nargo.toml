@@ -5,4 +5,5 @@ authors = [""]
 
 [dependencies]
 utxo = { path = "../../lib/utxo" }
-joinsplit = { path = "../../lib/joinsplit" }
+confidential_joinsplit = { path = "../../lib/confidential_joinsplit" }
+shared = { path = "../../lib/shared" }

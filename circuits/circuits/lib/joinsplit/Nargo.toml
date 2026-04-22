@@ -4,5 +4,5 @@ type = "lib"
 authors = [""]
 
 [dependencies]
-poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }
-trees = { tag = "merkle-trees-v0.0.1", git = "https://github.com/privacy-scaling-explorations/zk-kit.noir", directory = "packages/merkle-trees" }
+shared = { path = "../shared" }
+confidential_joinsplit = { path = "../confidential_joinsplit" }

@@ -1,7 +1,10 @@
 use joinsplit::{
     JoinSplit,
+    notes::{InputNote, OutputNote, WormholeNote},
+};
+use confidential_joinsplit::{
     ConfidentialJoinSplit,
-    notes::{InputNote, OutputNote, WormholeNote, ConfidentialInputNote, ConfidentialOutputNote},
+    notes::{ConfidentialInputNote, ConfidentialOutputNote},
 };
 use ecrecover::ecrecover;
 
